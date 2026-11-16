@@ -33,7 +33,6 @@ const graph = (direction: Direction, nodes: GraphNode[], links: string[] = []): 
 const flat = (nodes: readonly PlacedNode[]): PlacedNode[] =>
   nodes.flatMap((node) => [node, ...flat(node.children)]);
 
-/** Every node's box as [x, y, width, height], by id. */
 const boxes = (placement: NodePlacement): Record<string, number[]> =>
   Object.fromEntries(
     flat(placement.nodes).map(({ id, box }) => [id, [box.x, box.y, box.width, box.height]]),

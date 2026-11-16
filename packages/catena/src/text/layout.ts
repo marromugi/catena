@@ -29,7 +29,6 @@ const NO_LINE_END = new Set("（「『【〔｛〈《‘“([{");
 
 const JAPANESE = String.raw`\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\uff00-\uffef`;
 const SPACES = String.raw` \u3000`;
-// Spaces, then either one Japanese character or a run of anything else up to the next space or Japanese character.
 const SPACES_THEN_PIECE = new RegExp(
   `([${SPACES}]*)([${JAPANESE}]|[^${SPACES}${JAPANESE}]+)`,
   "gu",
@@ -43,7 +42,6 @@ interface Unit {
   readonly text: string;
 }
 
-// Joins a piece to the one before it when a break between them would put a character where it may not go.
 function keepTogether(pieces: readonly Unit[]): Unit[] {
   const units: Unit[] = [];
   for (const piece of pieces) {
@@ -107,7 +105,8 @@ function wrapParagraph(paragraph: string, style: TextStyle): string[] {
 /**
  * Breaks `text` into lines at every newline and wherever the next unit would pass `style.maxWidth`.
  * Spaces at either end of a line are dropped, and a tab counts as a space.
- * A line holding a single character is wider than `maxWidth` when that character is.
+ * A line is wider than `maxWidth` when it holds one character, or characters that may not be parted,
+ * such as a character and the punctuation after it, that are wider.
  * @throws UnreadableFontError when a typeface's data turns out to be damaged.
  */
 export function layoutText(text: string, style: TextStyle): TextLayout {

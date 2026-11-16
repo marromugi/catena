@@ -68,25 +68,31 @@ function cellOf(cells: Map<string, Cell>, node: GraphNode): Cell {
   return cell;
 }
 
+/**
+ * Each edge as it bears on one grid: between the two nodes of the grid that hold its ends.
+ * An edge with an end outside the grid is left out.
+ */
+function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): GraphEdge[] {
+  const nodeAround = new Map<string, string>();
+  for (const node of nodes) {
+    for (const id of idsIn(node)) {
+      nodeAround.set(id, node.id);
+    }
+  }
+  return edges.flatMap((edge) => {
+    const from = nodeAround.get(edge.from);
+    const to = nodeAround.get(edge.to);
+    return from === undefined || to === undefined ? [] : [{ from, to }];
+  });
+}
+
 function arrange(
   nodes: readonly GraphNode[],
   direction: Direction,
   edges: readonly GraphEdge[],
   spacing: Spacing,
 ): Arrangement {
-  // An edge orders the two nodes of this grid that hold its ends. With an end outside the grid it orders nothing.
-  const holders = new Map<string, string>();
-  for (const node of nodes) {
-    for (const id of idsIn(node)) {
-      holders.set(id, node.id);
-    }
-  }
-  const between = edges.flatMap((edge) => {
-    const from = holders.get(edge.from);
-    const to = holders.get(edge.to);
-    return from === undefined || to === undefined ? [] : [{ from, to }];
-  });
-  const cells = assignCells(nodes, direction, between);
+  const cells = assignCells(nodes, direction, edgesBetween(nodes, edges));
 
   const items = nodes.map((node) => ({
     id: node.id,
@@ -168,16 +174,16 @@ function requireSound(graph: Graph, spacing: Spacing): void {
 /**
  * Places the nodes of a graph, each grid in rows and columns, without drawing its edges.
  *
- * The edges only decide the order along the flow: a node goes after every node that leads to it. In a
- * grid, an edge counts between the two nodes that hold its ends, so an edge out of a group moves the
- * group. A node sits in the middle of its cell, a group is as large as its grid plus the padding, and
- * the canvas keeps the same padding around the top-level nodes.
+ * The edges only decide the order along the flow: a node goes after every node listed before it that
+ * leads to it, unless it names its cell. In a grid, an edge counts between the two nodes that hold its
+ * ends, so an edge out of a group moves the group. A node sits in the middle of its cell, a group is as
+ * large as its grid plus the padding, and the canvas keeps the same padding around the top-level nodes.
  *
  * @returns Node boxes in canvas coordinates, in the order and nesting of `graph.nodes`.
  * @throws InvalidGraphError when the graph cannot be laid out as written: two nodes share an id or a
  * cell, an edge connects a node that is not in the graph, a cell is not a pair of whole numbers from 0
- * up, or a size is negative or not a number.
- * @throws Error when the gap between nodes or the padding is negative or not a number.
+ * up, or a size is negative or not finite.
+ * @throws Error when the gap between nodes or the padding is negative or not finite.
  */
 export function placeNodes(graph: Graph, spacing: Spacing): NodePlacement {
   requireSound(graph, spacing);

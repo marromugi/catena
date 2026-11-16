@@ -13,7 +13,7 @@ const inter = (weight: 400 | 700) =>
 const regular: FontStack = [inter(400), Typeface.read(readFileSync(sourceHanSansJP.regular))];
 const bold: FontStack = [inter(700), Typeface.read(readFileSync(sourceHanSansJP.bold))];
 
-// At size 10 a Japanese character is 10 wide and a line box is 15 high.
+// At size 10 a Japanese character is 10 wide.
 const body = (maxWidth: number) => ({ fonts: regular, size: 10, lineHeight: 1.5, maxWidth });
 const linesOf = (text: string, maxWidth: number) =>
   layoutText(text, body(maxWidth)).lines.map((line) => line.text);
