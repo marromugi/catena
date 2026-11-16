@@ -60,16 +60,40 @@ function near(a: number, b: number): boolean {
   return Math.abs(a - b) <= TOLERANCE;
 }
 
-export function isOnBorder(rect: Rect, point: Point): boolean {
-  if (!containsPoint(rect, point)) {
-    return false;
-  }
+function isStrictlyBetween(value: number, low: number, high: number): boolean {
+  return value > low + TOLERANCE && value < high - TOLERANCE;
+}
+
+function isOnBorder(rect: Rect, point: Point): boolean {
   return (
-    near(point.x, rect.x) ||
-    near(point.x, rect.x + rect.width) ||
-    near(point.y, rect.y) ||
-    near(point.y, rect.y + rect.height)
+    containsPoint(rect, point) &&
+    (near(point.x, rect.x) ||
+      near(point.x, rect.x + rect.width) ||
+      near(point.y, rect.y) ||
+      near(point.y, rect.y + rect.height))
   );
+}
+
+/**
+ * Whether a segment that starts at `segment.from` is joined to the box there:
+ * on one of its sides, away from the corners, and at a right angle to that side.
+ * A slanted segment only has to start on the border.
+ */
+export function isAttached(rect: Rect, segment: Segment): boolean {
+  const { from } = segment;
+  if (isHorizontal(segment)) {
+    return (
+      (near(from.x, rect.x) || near(from.x, rect.x + rect.width)) &&
+      isStrictlyBetween(from.y, rect.y, rect.y + rect.height)
+    );
+  }
+  if (isVertical(segment)) {
+    return (
+      (near(from.y, rect.y) || near(from.y, rect.y + rect.height)) &&
+      isStrictlyBetween(from.x, rect.x, rect.x + rect.width)
+    );
+  }
+  return isOnBorder(rect, from);
 }
 
 interface Span {
@@ -124,7 +148,7 @@ export function sidesAlong(segment: Segment, rect: Rect): Side[] {
 }
 
 /** How long two parallel segments run side by side, or zero when they are not parallel. */
-export function sharedRun(a: Segment, b: Segment): number {
+function sharedRun(a: Segment, b: Segment): number {
   const horizontal = isHorizontal(a) && isHorizontal(b);
   if (!horizontal && !(isVertical(a) && isVertical(b))) {
     return 0;
@@ -140,6 +164,80 @@ export function sharedRun(a: Segment, b: Segment): number {
 }
 
 /** The distance between the lines two parallel segments lie on. */
-export function distanceBetweenParallels(a: Segment, b: Segment): number {
+function distanceBetweenParallels(a: Segment, b: Segment): number {
   return isHorizontal(a) ? Math.abs(a.from.y - b.from.y) : Math.abs(a.from.x - b.from.x);
+}
+
+function spanOf(segment: Segment, horizontal: boolean): Span {
+  const from = horizontal ? segment.from.x : segment.from.y;
+  const to = horizontal ? segment.to.x : segment.to.y;
+  return { low: Math.min(from, to), high: Math.max(from, to) };
+}
+
+/**
+ * Whether a segment runs beside one of the box's sides closer than `clearance`, without crossing or lying on the border.
+ * A segment that crosses the border, or lies on it, is for the caller to judge by {@link sidesAlong}.
+ */
+export function runsAlongside(segment: Segment, rect: Rect, clearance: number): boolean {
+  const [side, ...others] = sidesAlong(segment, rect);
+  if (side === undefined || side === "border" || others.length > 0) {
+    return false;
+  }
+  const horizontal = isHorizontal(segment);
+  const level = horizontal ? segment.from.y : segment.from.x;
+  const lines = horizontal ? [rect.y, rect.y + rect.height] : [rect.x, rect.x + rect.width];
+  const reach: Span = horizontal
+    ? { low: rect.x - clearance, high: rect.x + rect.width + clearance }
+    : { low: rect.y - clearance, high: rect.y + rect.height + clearance };
+  const run = spanOf(segment, horizontal);
+  const beside = Math.min(run.high, reach.high) - Math.max(run.low, reach.low) > TOLERANCE;
+  return (
+    beside &&
+    lines.some((line) => {
+      const distance = Math.abs(level - line);
+      return distance > TOLERANCE && distance < clearance - TOLERANCE;
+    })
+  );
+}
+
+function boundsOf(segment: Segment): Rect {
+  const x = Math.min(segment.from.x, segment.to.x);
+  const y = Math.min(segment.from.y, segment.to.y);
+  return {
+    x,
+    y,
+    width: Math.max(segment.from.x, segment.to.x) - x,
+    height: Math.max(segment.from.y, segment.to.y) - y,
+  };
+}
+
+/** Whether two segments cross at a right angle with each reaching at least `gap` past the other on both sides. */
+function crossCleanly(a: Segment, b: Segment, gap: number): boolean {
+  const [across, down] = isHorizontal(a) ? [a, b] : [b, a];
+  if (!isHorizontal(across) || !isVertical(down)) {
+    return false;
+  }
+  const wide = spanOf(across, true);
+  const tall = spanOf(down, false);
+  const x = down.from.x;
+  const y = across.from.y;
+  return (
+    x >= wide.low + gap - TOLERANCE &&
+    x <= wide.high - gap + TOLERANCE &&
+    y >= tall.low + gap - TOLERANCE &&
+    y <= tall.high - gap + TOLERANCE
+  );
+}
+
+/** Whether two horizontal or vertical segments lie on top of each other, or come within `gap` without crossing cleanly. */
+export function areTooClose(a: Segment, b: Segment, gap: number): boolean {
+  if (doubleBack(a, b)) {
+    return true;
+  }
+  return !crossCleanly(a, b, gap) && separation(boundsOf(a), boundsOf(b)) < gap - TOLERANCE;
+}
+
+/** Whether two parallel segments lie on the same line and share a stretch of it. */
+export function doubleBack(a: Segment, b: Segment): boolean {
+  return sharedRun(a, b) > TOLERANCE && distanceBetweenParallels(a, b) <= TOLERANCE;
 }
