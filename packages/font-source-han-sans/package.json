@@ -1,0 +1,17 @@
+{
+  "name": "@catena/font-source-han-sans",
+  "private": true,
+  "license": "OFL-1.1",
+  "files": [
+    "src",
+    "fonts",
+    "LICENSE.txt"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  }
+}
