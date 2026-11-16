@@ -1437,3 +1437,171 @@ describe("verify: lengths within a millionth of the limit", () => {
     ]);
   });
 });
+
+describe("verify: an edge that ends by turning straight back", () => {
+  test("is reported, though no other stretch comes near", () => {
+    const back = layout(
+      [node("A", 0, 0, 50, 30)],
+      [
+        edge("A-A", "A", "A", [
+          [50, 15],
+          [100, 15],
+          [50, 15],
+        ]),
+      ],
+    );
+
+    expect(verify(back, spacing)).toEqual([{ kind: "edges-too-close", edges: ["A-A", "A-A"] }]);
+  });
+});
+
+describe("verify: a difference of exactly a millionth", () => {
+  const exactly = 1e-6;
+
+  test("leaves a stretch level", () => {
+    const climbing = layout(
+      [node("L", 0, 0, 50, 40), node("R", 250, 0, 50, 40)],
+      [
+        edge("L-R", "L", "R", [
+          [50, 0],
+          [250, exactly],
+        ]),
+      ],
+    );
+
+    expect(verify(climbing, spacing)).not.toContainEqual({
+      kind: "edge-not-orthogonal",
+      edge: "L-R",
+      segment: 0,
+    });
+  });
+
+  test("leaves a stretch upright", () => {
+    const leaning = layout(
+      [node("T", 0, 0, 40, 50), node("B", 0, 150, 40, 50)],
+      [
+        edge("T-B", "T", "B", [
+          [0, 50],
+          [exactly, 150],
+        ]),
+      ],
+    );
+
+    expect(verify(leaning, spacing)).not.toContainEqual({
+      kind: "edge-not-orthogonal",
+      edge: "T-B",
+      segment: 0,
+    });
+  });
+
+  test("leaves an edge on the border of a group it runs along", () => {
+    const along = layout(
+      [node("G", 0, 0, 140, 180, [node("A", 20, 20, 50, 30)]), node("C", 200, 120, 60, 30)],
+      [
+        edge("A-C", "A", "C", [
+          [45, 20],
+          [45, exactly],
+          [230, exactly],
+          [230, 120],
+        ]),
+      ],
+    );
+
+    expect(verify(along, spacing)).toEqual([
+      { kind: "edge-miscrosses-group", edge: "A-C", group: "G" },
+    ]);
+  });
+
+  test("leaves an edge on the far border of a group it runs along", () => {
+    const along = layout(
+      [node("G", 0, -180, 140, 180, [node("A", 20, -50, 50, 30)]), node("C", 200, 120, 60, 30)],
+      [
+        edge("A-C", "A", "C", [
+          [45, -20],
+          [45, exactly],
+          [230, exactly],
+          [230, 120],
+        ]),
+      ],
+    );
+
+    expect(verify(along, spacing)).toEqual([
+      { kind: "node-outside-canvas", node: "G" },
+      { kind: "edge-outside-canvas", edge: "A-C" },
+      { kind: "edge-miscrosses-group", edge: "A-C", group: "G" },
+    ]);
+  });
+
+  test("leaves an edge attached where it starts", () => {
+    const off = layout(
+      [node("A", 0, 0, 50, 30), node("B", 200, 0, 50, 30)],
+      [
+        edge("A-B", "A", "B", [
+          [exactly, 15],
+          [-50, 15],
+          [-50, 100],
+          [225, 100],
+          [225, 30],
+        ]),
+      ],
+    );
+
+    expect(verify(off, spacing)).toEqual([{ kind: "edge-outside-canvas", edge: "A-B" }]);
+  });
+
+  test("leaves an edge attached where it ends", () => {
+    const off = layout(
+      [node("B", -50, 0, 50, 30), node("A", 200, 0, 50, 30)],
+      [
+        edge("A-B", "A", "B", [
+          [225, 30],
+          [225, 60],
+          [100, 60],
+          [100, 15],
+          [exactly, 15],
+        ]),
+      ],
+    );
+
+    expect(verify(off, spacing)).toEqual([{ kind: "node-outside-canvas", node: "B" }]);
+  });
+
+  test("leaves two stretches on one line, so that turning back along it is reported", () => {
+    const back = layout(
+      [node("A", 0, 100, 50, 30), node("B", 10, -40, 50, 80)],
+      [
+        edge("E", "A", "B", [
+          [25, 100],
+          [25, 0],
+          [100, exactly],
+          [60, exactly],
+        ]),
+      ],
+    );
+
+    expect(verify(back, spacing)).toEqual([
+      { kind: "node-outside-canvas", node: "B" },
+      { kind: "edge-through-node", edge: "E", node: "B" },
+      { kind: "edges-too-close", edges: ["E", "E"] },
+    ]);
+  });
+
+  test("is not a stretch shared by an edge that turns back", () => {
+    const back = layout(
+      [node("A", 80, 100, 40, 30), node("B", 0, 40, 50, 40)],
+      [
+        edge("E", "A", "B", [
+          [100, 100],
+          [100, 60],
+          [0, 60],
+          [exactly, 60],
+        ]),
+      ],
+    );
+
+    expect(verify(back, spacing)).toEqual([
+      { kind: "edge-segment-too-short", edge: "E", segment: 2 },
+      { kind: "edge-through-node", edge: "E", node: "B" },
+    ]);
+  });
+});
