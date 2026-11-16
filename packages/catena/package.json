@@ -11,6 +11,7 @@
   "devDependencies": {
     "@catena/font-source-han-sans": "workspace:*",
     "@fontsource/inter": "^5.3.0",
-    "@types/fontkit": "2.0.9"
+    "@types/fontkit": "2.0.9",
+    "fast-check": "4.10.2"
   }
 }
