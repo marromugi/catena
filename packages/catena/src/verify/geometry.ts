@@ -154,13 +154,8 @@ function sharedRun(a: Segment, b: Segment): number {
   if (!horizontal && !(isVertical(a) && isVertical(b))) {
     return 0;
   }
-  const span = (segment: Segment): Span => {
-    const from = horizontal ? segment.from.x : segment.from.y;
-    const to = horizontal ? segment.to.x : segment.to.y;
-    return { low: Math.min(from, to), high: Math.max(from, to) };
-  };
-  const first = span(a);
-  const second = span(b);
+  const first = spanOf(a, horizontal);
+  const second = spanOf(b, horizontal);
   return Math.max(0, Math.min(first.high, second.high) - Math.max(first.low, second.low));
 }
 
