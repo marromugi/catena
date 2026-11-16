@@ -27,55 +27,93 @@ const NO_LINE_START = new Set(
 );
 const NO_LINE_END = new Set("（「『【〔｛〈《‘“([{");
 
-// Japanese text may break between any two characters; anything else breaks only at spaces.
-const BREAK_UNIT =
-  /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}＀-￯]|[^\S\n]+|[^\s\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}＀-￯]+/gu;
+const JAPANESE = String.raw`\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\uff00-\uffef`;
+const SPACES = String.raw` \u3000`;
+// Spaces, then either one Japanese character or a run of anything else up to the next space or Japanese character.
+const SPACES_THEN_PIECE = new RegExp(
+  `([${SPACES}]*)([${JAPANESE}]|[^${SPACES}${JAPANESE}]+)`,
+  "gu",
+);
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-function breakUnits(paragraph: string): string[] {
-  const units: string[] = [];
-  for (const [part] of paragraph.matchAll(BREAK_UNIT)) {
+/** Text a line never breaks inside, and the spaces before it, which are drawn only inside a line. */
+interface Unit {
+  readonly spaces: string;
+  readonly text: string;
+}
+
+// Joins a piece to the one before it when a break between them would put a character where it may not go.
+function keepTogether(pieces: readonly Unit[]): Unit[] {
+  const units: Unit[] = [];
+  for (const piece of pieces) {
     const previous = units.at(-1);
-    const [first] = part;
-    const mustFollowPrevious =
+    const [first] = piece.text;
+    const joins =
       previous !== undefined &&
-      ((first !== undefined && NO_LINE_START.has(first)) || NO_LINE_END.has(previous.slice(-1)));
-    if (mustFollowPrevious) {
-      units[units.length - 1] = previous + part;
+      piece.spaces === "" &&
+      ((first !== undefined && NO_LINE_START.has(first)) ||
+        NO_LINE_END.has(previous.text.slice(-1)));
+    if (joins) {
+      units[units.length - 1] = { spaces: previous.spaces, text: previous.text + piece.text };
     } else {
-      units.push(part);
+      units.push(piece);
     }
   }
   return units;
 }
 
+function unitsOf(paragraph: string): Unit[] {
+  return keepTogether(
+    Array.from(paragraph.matchAll(SPACES_THEN_PIECE), ([, spaces = "", text = ""]) => ({
+      spaces,
+      text,
+    })),
+  );
+}
+
+function splitByCharacter(unit: Unit): Unit[] {
+  return keepTogether(
+    Array.from(graphemes.segment(unit.text), ({ segment }, index) => ({
+      spaces: index === 0 ? unit.spaces : "",
+      text: segment,
+    })),
+  );
+}
+
 function wrapParagraph(paragraph: string, style: TextStyle): string[] {
-  const width = (text: string) => lineWidth(text, style.fonts, style.size);
-  // A unit wider than the line by itself is broken between characters.
-  const units = breakUnits(paragraph).flatMap((unit) =>
-    width(unit.trim()) > style.maxWidth
-      ? Array.from(graphemes.segment(unit), (grapheme) => grapheme.segment)
-      : [unit],
+  const fits = (text: string) => lineWidth(text, style.fonts, style.size) <= style.maxWidth;
+  const units = unitsOf(paragraph).flatMap((unit) =>
+    fits(unit.text) ? [unit] : splitByCharacter(unit),
   );
 
   const lines: string[] = [];
   let line = "";
   for (const unit of units) {
-    if (line !== "" && width((line + unit).trimEnd()) > style.maxWidth) {
-      lines.push(line.trimEnd());
-      line = unit;
+    const extended = line + unit.spaces + unit.text;
+    if (line === "") {
+      line = unit.text;
+    } else if (fits(extended)) {
+      line = extended;
     } else {
-      line += unit;
+      lines.push(line);
+      line = unit.text;
     }
   }
-  lines.push(line.trimEnd());
+  lines.push(line);
   return lines;
 }
 
-/** Breaks `text` into lines no wider than `style.maxWidth`, and at every newline. */
+/**
+ * Breaks `text` into lines at every newline and wherever the next unit would pass `style.maxWidth`.
+ * Spaces at either end of a line are dropped, and a tab counts as a space.
+ * A line holding a single character is wider than `maxWidth` when that character is.
+ * @throws UnreadableFontError when a typeface's data turns out to be damaged.
+ */
 export function layoutText(text: string, style: TextStyle): TextLayout {
   const lines = text
+    .replaceAll(/\r\n?/g, "\n")
+    .replaceAll("\t", " ")
     .split("\n")
     .flatMap((paragraph) => wrapParagraph(paragraph, style))
     .map((line) => ({ text: line, width: lineWidth(line, style.fonts, style.size) }));

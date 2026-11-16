@@ -1,4 +1,4 @@
-import { create, type Font } from "fontkit";
+import { create, type Font, type GlyphRun } from "fontkit";
 
 /** The bytes given to {@link Typeface.read} are not a single font this library can use. */
 export class UnreadableFontError extends Error {
@@ -21,7 +21,7 @@ export class Typeface {
 
   /**
    * Reads a TTF, OTF, WOFF, or WOFF2 file.
-   * @throws UnreadableFontError when the bytes are not a font, or hold a collection of several.
+   * @throws UnreadableFontError when the bytes are not a whole font, or hold a collection of several.
    */
   static read(bytes: Uint8Array): Typeface {
     let font;
@@ -34,7 +34,10 @@ export class Typeface {
     if (!("layout" in font)) {
       throw new UnreadableFontError("The file is a font collection. Pass a file holding one font.");
     }
-    return new Typeface(font);
+    const typeface = new Typeface(font);
+    // fontkit reads a font's tables on first use, so a file cut short is only noticed by using it.
+    typeface.advance(" ", 1);
+    return typeface;
   }
 
   /** Whether the typeface has a glyph for the character. */
@@ -53,13 +56,13 @@ export class Typeface {
 
   /** The width `text` takes on one line. */
   advance(text: string, size: number): number {
-    return (this.#font.layout(text).advanceWidth / this.#font.unitsPerEm) * size;
+    return (this.#shape(text).advanceWidth / this.#font.unitsPerEm) * size;
   }
 
   /** The outline of `text` on one line, starting at `x` with its baseline at `baseline`. */
   outline(text: string, size: number, x: number, baseline: number): Outline {
     const scale = size / this.#font.unitsPerEm;
-    const run = this.#font.layout(text);
+    const run = this.#shape(text);
     let pathData = "";
     let penX = x;
     run.glyphs.forEach((glyph, index) => {
@@ -74,5 +77,13 @@ export class Typeface {
       penX += position.xAdvance * scale;
     });
     return { advance: penX - x, pathData };
+  }
+
+  #shape(text: string): GlyphRun {
+    try {
+      return this.#font.layout(text);
+    } catch (cause) {
+      throw new UnreadableFontError("The font's data is damaged or cut short.", { cause });
+    }
   }
 }
