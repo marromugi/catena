@@ -1437,3 +1437,78 @@ describe("verify: lengths within a millionth of the limit", () => {
     ]);
   });
 });
+
+describe("verify: an edge that ends by turning straight back", () => {
+  test("is reported, though no other stretch comes near", () => {
+    const back = layout(
+      [node("A", 0, 0, 50, 30)],
+      [
+        edge("A-A", "A", "A", [
+          [50, 15],
+          [100, 15],
+          [50, 15],
+        ]),
+      ],
+    );
+
+    expect(verify(back, spacing)).toEqual([{ kind: "edges-too-close", edges: ["A-A", "A-A"] }]);
+  });
+});
+
+describe("verify: a difference of exactly a millionth", () => {
+  const exactly = 1e-6;
+
+  test("leaves a stretch level", () => {
+    const climbing = layout(
+      [node("L", 0, 0, 50, 40), node("R", 250, 0, 50, 40)],
+      [
+        edge("L-R", "L", "R", [
+          [50, 0],
+          [250, exactly],
+        ]),
+      ],
+    );
+
+    expect(verify(climbing, spacing)).not.toContainEqual({
+      kind: "edge-not-orthogonal",
+      edge: "L-R",
+      segment: 0,
+    });
+  });
+
+  test("leaves a stretch upright", () => {
+    const leaning = layout(
+      [node("T", 0, 0, 40, 50), node("B", 0, 150, 40, 50)],
+      [
+        edge("T-B", "T", "B", [
+          [0, 50],
+          [exactly, 150],
+        ]),
+      ],
+    );
+
+    expect(verify(leaning, spacing)).not.toContainEqual({
+      kind: "edge-not-orthogonal",
+      edge: "T-B",
+      segment: 0,
+    });
+  });
+
+  test("leaves an edge on the border of a group it runs along", () => {
+    const along = layout(
+      [node("G", 0, 0, 140, 180, [node("A", 20, 20, 50, 30)]), node("C", 200, 120, 60, 30)],
+      [
+        edge("A-C", "A", "C", [
+          [45, 20],
+          [45, exactly],
+          [230, exactly],
+          [230, 120],
+        ]),
+      ],
+    );
+
+    expect(verify(along, spacing)).toEqual([
+      { kind: "edge-miscrosses-group", edge: "A-C", group: "G" },
+    ]);
+  });
+});
