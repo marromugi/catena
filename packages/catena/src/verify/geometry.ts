@@ -19,11 +19,11 @@ function near(a: number, b: number): boolean {
   return Math.abs(a - b) <= TOLERANCE;
 }
 
-export function isHorizontal(segment: Segment): boolean {
+function isHorizontal(segment: Segment): boolean {
   return near(segment.from.y, segment.to.y);
 }
 
-export function isVertical(segment: Segment): boolean {
+function isVertical(segment: Segment): boolean {
   return near(segment.from.x, segment.to.x);
 }
 

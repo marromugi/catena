@@ -38,7 +38,7 @@
                 "message": "Import another module through its index, not a file inside it."
               },
               {
-                "group": ["../place", "../place/*"],
+                "group": ["**/place", "**/place/**"],
                 "message": "verify shares no code with the placement it checks."
               }
             ]
@@ -58,7 +58,7 @@
                 "message": "Import another module through its index, not a file inside it."
               },
               {
-                "group": ["../verify", "../verify/*"],
+                "group": ["**/verify", "**/verify/**"],
                 "message": "Placement shares no code with verify, which checks it. Only its tests call verify."
               }
             ]
