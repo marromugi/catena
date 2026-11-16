@@ -18,7 +18,7 @@ const cell = fc.option(fc.record({ row: fc.nat({ max: 4 }), column: fc.nat({ max
 });
 
 const { node: shape } = fc.letrec<{ node: Shape; leaf: Shape; group: Shape }>((tie) => ({
-  node: fc.oneof({ depthSize: "small" }, tie("leaf"), tie("group")),
+  node: fc.oneof(tie("leaf"), tie("group")),
   leaf: fc.record({ size, cell }),
   group: fc.record({
     direction,

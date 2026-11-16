@@ -162,6 +162,41 @@ describe("placeNodes: a node that names its cell", () => {
     });
   });
 
+  test("shares no cell with a node whose row and column read the same when written together", () => {
+    expect(
+      boxes(
+        place("down", [
+          leaf("A", 50, 30, { row: 1, column: 11 }),
+          leaf("B", 50, 30, { row: 11, column: 1 }),
+        ]),
+      ),
+    ).toEqual({
+      A: [80, 10, 50, 30],
+      B: [10, 60, 50, 30],
+    });
+  });
+
+  test("orders the nodes around it as any node does, when it is a group", () => {
+    expect(
+      boxes(
+        place(
+          "down",
+          [
+            group("G", "down", [leaf("A", 50, 30)], { row: 2, column: 1 }),
+            leaf("B", 50, 30),
+            leaf("C", 50, 30),
+          ],
+          ["A>B", "G>C"],
+        ),
+      ),
+    ).toEqual({
+      G: [80, 10, 70, 50],
+      A: [90, 20, 50, 30],
+      B: [10, 80, 50, 30],
+      C: [90, 80, 50, 30],
+    });
+  });
+
   test("keeps its cell from the nodes around it, even those listed before it", () => {
     expect(
       boxes(
@@ -223,6 +258,16 @@ describe("placeNodes: a node that names its cell", () => {
     ).toEqual({
       A: [10, 10, 50, 30],
       P: [80, 10, 50, 30],
+    });
+  });
+});
+
+describe("placeNodes: a node with very many edges", () => {
+  test("is placed like a node with one", () => {
+    const links = Array.from({ length: 200_000 }, () => "A>B");
+    expect(boxes(place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], links))).toEqual({
+      A: [10, 10, 50, 30],
+      B: [10, 60, 50, 30],
     });
   });
 });
