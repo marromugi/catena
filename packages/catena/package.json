@@ -1,0 +1,19 @@
+{
+  "name": "catena",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "fontkit": "^3.0.0"
+  },
+  "devDependencies": {
+    "@catena/font-source-han-sans": "workspace:*",
+    "@fontsource/inter": "^5.3.0",
+    "@types/fontkit": "2.0.9"
+  }
+}
