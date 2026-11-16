@@ -6,7 +6,7 @@ export interface Size {
   readonly height: number;
 }
 
-/** A place in a grid, counted from 0 at the top and at the left. */
+/** A row and a column of a grid, each counted from 0, at the top and at the left. */
 export interface Cell {
   readonly row: number;
   readonly column: number;

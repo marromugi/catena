@@ -50,9 +50,9 @@ function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
 }
 
 /**
- * Graphs of every kind `placeNodes` accepts: nested groups, both directions, sizes that are not whole
- * numbers, nodes that name a cell, and edges between any two nodes, including edges that go back, edges
- * from a node to itself, and edges between a group and a node inside it.
+ * Graphs of the kinds `placeNodes` accepts: nested groups, both directions, sizes from 1 up that are not
+ * whole numbers, nodes that name a cell up to row 4 and column 4, and edges between any two nodes,
+ * including edges that go back, edges from a node to itself, and edges between a group and a node inside it.
  */
 export const graphs: fc.Arbitrary<Graph> = fc
   .record({

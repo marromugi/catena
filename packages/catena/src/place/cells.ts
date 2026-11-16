@@ -3,12 +3,12 @@ import { InvalidGraphError } from "./graph";
 
 const keyOf = (cell: Cell): string => `${cell.row}:${cell.column}`;
 
-/** The cell `slot` places across the flow, in the `level`-th step along it. */
-function cellAt(level: number, slot: number, direction: Direction): Cell {
-  return direction === "down" ? { row: level, column: slot } : { row: slot, column: level };
+/** The cell `step` steps along the flow and `place` places across it. */
+function cellAt(step: number, place: number, direction: Direction): Cell {
+  return direction === "down" ? { row: step, column: place } : { row: place, column: step };
 }
 
-function levelOf(cell: Cell, direction: Direction): number {
+function stepOf(cell: Cell, direction: Direction): number {
   return direction === "down" ? cell.row : cell.column;
 }
 
@@ -54,29 +54,28 @@ export function assignCells(
   }
 
   const cells = new Map<string, Cell>();
-  const levels = new Map<string, number>();
+  const steps = new Map<string, number>();
   for (const node of nodes) {
     if (node.cell !== undefined) {
       cells.set(node.id, node.cell);
-      levels.set(node.id, levelOf(node.cell, direction));
+      steps.set(node.id, stepOf(node.cell, direction));
       continue;
     }
-    // Only nodes listed earlier have a level yet, so an edge that goes back adds nothing here.
-    let level = 0;
+    let step = 0;
     for (const edge of edges) {
-      const from = edge.to === node.id ? levels.get(edge.from) : undefined;
+      const from = edge.to === node.id ? steps.get(edge.from) : undefined;
       if (from !== undefined) {
-        level = Math.max(level, from + 1);
+        step = Math.max(step, from + 1);
       }
     }
-    let slot = 0;
-    while (holders.has(keyOf(cellAt(level, slot, direction)))) {
-      slot += 1;
+    let place = 0;
+    while (holders.has(keyOf(cellAt(step, place, direction)))) {
+      place += 1;
     }
-    const cell = cellAt(level, slot, direction);
+    const cell = cellAt(step, place, direction);
     holders.set(keyOf(cell), node.id);
     cells.set(node.id, cell);
-    levels.set(node.id, level);
+    steps.set(node.id, step);
   }
   return cells;
 }

@@ -1,6 +1,9 @@
 import type { Typeface } from "./typeface";
 
-/** Typefaces of one weight, in order of preference. Each character is drawn in the first one that has it. */
+/**
+ * Typefaces of one weight, in order of preference. Each character is drawn in the first one that has it.
+ * A character none has is drawn by the last one, as its missing-glyph box.
+ */
 export type FontStack = readonly [Typeface, ...Typeface[]];
 
 interface Run {
@@ -8,7 +11,6 @@ interface Run {
   readonly text: string;
 }
 
-// A character no typeface has goes to the last one, which draws its missing-glyph box.
 function typefaceFor(character: string, fonts: FontStack): Typeface {
   return fonts.find((typeface) => typeface.covers(character)) ?? fonts.at(-1) ?? fonts[0];
 }

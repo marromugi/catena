@@ -6,8 +6,7 @@ import {
   doubleBack,
   inflate,
   isAttached,
-  isHorizontal,
-  isVertical,
+  isOrthogonal,
   lengthOf,
   runsAlongside,
   segmentsOf,
@@ -44,8 +43,10 @@ export type Violation =
   /**
    * Two stretches, of two edges or of one, come closer than `edgeGap`.
    * Crossing at a right angle is allowed where each stretch reaches `edgeGap` past the other on both sides.
+   * Two stretches that meet at a bend of one edge count only when the edge turns straight back.
    */
   | { readonly kind: "edges-too-close"; readonly edges: readonly [string, string] }
+  /** Two labels cover part of each other. Labels that only touch do not. */
   | {
       readonly kind: "labels-overlap";
       readonly labels: readonly [LabelReference, LabelReference];
@@ -145,10 +146,6 @@ function canvasViolations(layout: Layout, canvas: Rect): Violation[] {
   ];
 }
 
-function isOrthogonal(segment: Segment): boolean {
-  return isHorizontal(segment) || isVertical(segment);
-}
-
 function shapeViolations(edge: PlacedEdge, index: Index, spacing: Spacing): Violation[] {
   const segments = segmentsOf(edge.points);
   const [first] = segments;
@@ -237,7 +234,6 @@ function closenessViolations(edges: readonly PlacedEdge[], spacing: Spacing): Vi
   const reported = new Set<string>();
   const violations: Violation[] = [];
   for (const [a, b] of pairsOf(stretches)) {
-    // Two stretches that meet at a bend of one edge are close by nature; only turning straight back is wrong.
     const meetAtBend = a.edge === b.edge && b.at - a.at === 1;
     const tooClose = meetAtBend
       ? doubleBack(a.segment, b.segment)
@@ -325,7 +321,7 @@ function requireNumbers(layout: Layout, spacing: Spacing, index: Index): void {
 /**
  * Lists every way `layout` is broken; an empty list means it is sound.
  * @throws Error when the layout or the spacing is not one: two nodes share an id, an edge connects a node
- * that is not there, a coordinate is not a finite number, or a size or a spacing is negative.
+ * that is not there, a coordinate is not a finite number, or a size or a spacing is negative or not finite.
  */
 export function verify(layout: Layout, spacing: Spacing): Violation[] {
   const index = indexOf(layout.nodes);

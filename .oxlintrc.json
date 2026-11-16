@@ -9,8 +9,78 @@
     "typeAware": true,
     "reportUnusedDisableDirectives": "error"
   },
-  "rules": {},
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["../*/*", "./../**", "../../**"],
+            "message": "Import another module through its index, as \"../<module>\", not a file inside it or a longer way round."
+          }
+        ]
+      }
+    ]
+  },
   "env": {
     "builtin": true
-  }
+  },
+  "overrides": [
+    {
+      "files": ["packages/catena/src/verify/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*/*", "./../**", "../../**"],
+                "message": "Import another module through its index, as \"../<module>\", not a file inside it or a longer way round."
+              },
+              {
+                "group": ["**/place", "**/place/**"],
+                "message": "verify shares no code with the placement it checks."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/catena/src/place/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*/*", "./../**", "../../**"],
+                "message": "Import another module through its index, as \"../<module>\", not a file inside it or a longer way round."
+              },
+              {
+                "group": ["**/verify", "**/verify/**"],
+                "message": "Placement shares no code with verify, which checks it. Only its tests call verify."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/catena/src/place/**/*.test.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*/*", "./../**", "../../**"],
+                "message": "Import another module through its index, as \"../<module>\", not a file inside it or a longer way round."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

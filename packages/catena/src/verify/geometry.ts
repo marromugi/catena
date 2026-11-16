@@ -15,12 +15,20 @@ export function segmentsOf(points: readonly Point[]): Segment[] {
   return points.slice(1).map((to, index) => ({ from: points[index] ?? to, to }));
 }
 
-export function isHorizontal(segment: Segment): boolean {
-  return Math.abs(segment.from.y - segment.to.y) <= TOLERANCE;
+function near(a: number, b: number): boolean {
+  return Math.abs(a - b) <= TOLERANCE;
 }
 
-export function isVertical(segment: Segment): boolean {
-  return Math.abs(segment.from.x - segment.to.x) <= TOLERANCE;
+function isHorizontal(segment: Segment): boolean {
+  return near(segment.from.y, segment.to.y);
+}
+
+function isVertical(segment: Segment): boolean {
+  return near(segment.from.x, segment.to.x);
+}
+
+export function isOrthogonal(segment: Segment): boolean {
+  return isHorizontal(segment) || isVertical(segment);
 }
 
 export function lengthOf(segment: Segment): number {
@@ -54,10 +62,6 @@ export function contains(outer: Rect, inner: Rect): boolean {
 
 export function containsPoint(rect: Rect, point: Point): boolean {
   return contains(rect, { ...point, width: 0, height: 0 });
-}
-
-function near(a: number, b: number): boolean {
-  return Math.abs(a - b) <= TOLERANCE;
 }
 
 function isStrictlyBetween(value: number, low: number, high: number): boolean {
@@ -120,10 +124,7 @@ export function sidesAlong(segment: Segment, rect: Rect): Side[] {
   let within: Side = "inside";
   if (level < across.low - TOLERANCE || level > across.high + TOLERANCE) {
     within = "outside";
-  } else if (
-    Math.abs(level - across.low) <= TOLERANCE ||
-    Math.abs(level - across.high) <= TOLERANCE
-  ) {
+  } else if (near(level, across.low) || near(level, across.high)) {
     within = "border";
   }
 
@@ -163,7 +164,6 @@ function sharedRun(a: Segment, b: Segment): number {
   return Math.max(0, Math.min(first.high, second.high) - Math.max(first.low, second.low));
 }
 
-/** The distance between the lines two parallel segments lie on. */
 function distanceBetweenParallels(a: Segment, b: Segment): number {
   return isHorizontal(a) ? Math.abs(a.from.y - b.from.y) : Math.abs(a.from.x - b.from.x);
 }
@@ -229,7 +229,6 @@ function crossCleanly(a: Segment, b: Segment, gap: number): boolean {
   );
 }
 
-/** Whether two horizontal or vertical segments lie on top of each other, or come within `gap` without crossing cleanly. */
 export function areTooClose(a: Segment, b: Segment, gap: number): boolean {
   if (doubleBack(a, b)) {
     return true;
