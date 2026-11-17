@@ -20,8 +20,30 @@ import {
 } from "../node";
 import type { Cell, Direction } from "../place";
 
-/** The node kinds a diagram file can name, by the name catena exports each under. */
-export const NODE_KINDS: Readonly<Record<string, Part>> = {
+/** The names of the node kinds a diagram file can name: those catena exports each kind under. */
+export const NODE_KIND_NAMES = [
+  "activeRoundButton",
+  "badge",
+  "iconTile",
+  "iconTitleBodyCard",
+  "iconTitleCard",
+  "iconTitleCardPair",
+  "imageTitleBodyCard",
+  "itemCard",
+  "redBadge",
+  "roundButton",
+  "selectedIconTile",
+  "statusTitleCard",
+  "titleBadgeCard",
+  "titleBodyBadgeCard",
+  "titleBodyCard",
+  "titleBodyItemsSectionCard",
+] as const;
+
+export type NodeKind = (typeof NODE_KIND_NAMES)[number];
+
+/** Each node kind a diagram file can name, by its name. */
+export const NODE_KINDS: Readonly<Record<NodeKind, Part>> = {
   activeRoundButton,
   badge,
   iconTile,
@@ -43,7 +65,7 @@ export const NODE_KINDS: Readonly<Record<string, Part>> = {
 /** A node of one kind, its content as yet unchecked: the kind checks it. */
 export interface LeafEntry {
   readonly id: string;
-  readonly kind: string;
+  readonly kind: NodeKind;
   readonly content: unknown;
   readonly cell?: Cell;
 }
@@ -85,7 +107,7 @@ const CELL = v.strictObject({ row: v.number(), column: v.number() });
 
 const LEAF = v.strictObject({
   id: v.string(),
-  kind: v.picklist(Object.keys(NODE_KINDS)),
+  kind: v.picklist(NODE_KIND_NAMES),
   content: v.unknown(),
   cell: v.optional(CELL),
 });
@@ -119,8 +141,8 @@ const DIAGRAM_FILE = v.strictObject({
     v.strictObject({
       canvas: v.optional(v.string()),
       dot: v.optional(v.string()),
-      dotRadius: v.optional(v.number()),
-      spacing: v.optional(v.number()),
+      dotRadius: v.optional(v.pipe(v.number(), v.minValue(0))),
+      spacing: v.optional(v.pipe(v.number(), v.gtValue(0))),
     }),
   ),
 });

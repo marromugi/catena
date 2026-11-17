@@ -24,19 +24,31 @@ function defaultTheme(): Theme {
   });
 }
 
-/** An error the user can fix in what they gave the command, as opposed to a fault of catena's own. */
-function isUsersError(error: unknown): error is Error {
+/** A refusal of the diagram file's, as opposed to a fault of catena's own. */
+function isRefusal(error: unknown): error is Error {
   return (
     error instanceof InvalidDiagramFileError ||
     error instanceof InvalidNodeContentError ||
-    error instanceof InvalidGraphError ||
-    error instanceof RangeError
+    error instanceof InvalidGraphError
   );
 }
 
-/** An error the system gave reading or writing a file, whose message names the file. */
-function isFileError(error: unknown): error is Error {
-  return error instanceof Error && "code" in error && "path" in error;
+/** An error the system gave for a file, such as one missing, a directory, or not allowed. */
+function isSystemError(error: unknown): error is Error {
+  return error instanceof Error && "code" in error && typeof error.code === "string";
+}
+
+/**
+ * What `action` gives, or the line saying why the system refused it on `path`.
+ * @throws what `action` throws that the system did not give.
+ */
+function onFile<T>(path: string, action: () => T): { value: T } | { refusal: string } {
+  try {
+    return { value: action() };
+  } catch (error) {
+    if (!isSystemError(error)) throw error;
+    return { refusal: `catena: ${path}: ${error.message}\n` };
+  }
 }
 
 /**
@@ -60,22 +72,28 @@ export function run(args: readonly string[], stdout: Output, stderr: Output): nu
     stderr.write(`${USAGE}\n`);
     return 2;
   }
+  const text = onFile(path, () => readFileSync(path, "utf8"));
+  if ("refusal" in text) {
+    stderr.write(text.refusal);
+    return 1;
+  }
+  let svg;
   try {
-    const svg = drawDiagramFile(readDiagramFile(readFileSync(path, "utf8")), defaultTheme());
-    const out = parsed.values.output;
-    if (out === undefined) {
-      stdout.write(`${svg}\n`);
-    } else {
-      writeFileSync(out, `${svg}\n`);
-    }
-    return 0;
+    svg = drawDiagramFile(readDiagramFile(text.value), defaultTheme());
   } catch (error) {
-    if (isFileError(error)) {
-      stderr.write(`catena: ${error.message}\n`);
-      return 1;
-    }
-    if (!isUsersError(error)) throw error;
+    if (!isRefusal(error)) throw error;
     stderr.write(`catena: ${path}: ${error.message}\n`);
     return 1;
   }
+  const out = parsed.values.output;
+  if (out === undefined) {
+    stdout.write(`${svg}\n`);
+    return 0;
+  }
+  const written = onFile(out, () => writeFileSync(out, `${svg}\n`));
+  if ("refusal" in written) {
+    stderr.write(written.refusal);
+    return 1;
+  }
+  return 0;
 }
