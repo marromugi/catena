@@ -215,7 +215,7 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
   return {
     schema: ICON,
     layout(content, theme) {
-      const { size, strokeWidth, fill, color, colors } = lookOf(theme);
+      const { size, strokeWidth, color, colors } = lookOf(theme);
       const { pathData, viewBox, paint }: OwnIcon =
         typeof content === "string"
           ? { pathData: iconPathData[content], viewBox: BUILT_IN_VIEW_BOX, paint: "stroke" }
@@ -233,7 +233,7 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
             transform: `translate(${box.x + left} ${box.y + top}) scale(${scale})`,
             ...(paint === "fill"
               ? { fill: ink }
-              : { ...iconStroke, fill, stroke: ink, "stroke-width": strokeWidth / scale }),
+              : { ...iconStroke, stroke: ink, "stroke-width": strokeWidth / scale }),
           }),
         ],
       };

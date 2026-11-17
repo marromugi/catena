@@ -304,3 +304,55 @@ describe("every node kind in the picture on #20, drawn through placeGraph", () =
     expect(document).toContain(`href="${IMAGE_HREF}"`);
   });
 });
+
+describe("the default looks, matched to the picture on #20", () => {
+  const nodes = pictureNodes();
+  const svgOf = (id: string) => {
+    const node = nodes.get(id);
+    if (node === undefined) throw new Error(`No node "${id}".`);
+    return node.draw({ x: 0, y: 0, ...node.leaf.size });
+  };
+  const sizeOf = (id: string) => nodes.get(id)?.leaf.size;
+
+  test("a badge is about 68 × 22.5", () => {
+    for (const id of ["plain-badge", "red-badge"]) {
+      expect(sizeOf(id)?.width).toBeCloseTo(68.1, 1);
+      expect(sizeOf(id)?.height).toBe(22.5);
+    }
+  });
+
+  test("the status dot is 18 across, in the picture's red", () => {
+    expect(svgOf("status-card")).toMatch(/<circle [^>]* r="9" fill="#e93e33"\/>/);
+  });
+
+  test("the round buttons are 34 across, and the active one is a blue ring around a blue disc holding a white icon", () => {
+    expect(sizeOf("plus-button")).toEqual({ width: 34, height: 34 });
+    expect(sizeOf("info-button")).toEqual({ width: 34, height: 34 });
+    const info = svgOf("info-button");
+    expect(info).toContain(`fill="#dce6fd" stroke="#4666f6"`);
+    expect(info).toContain(`rx="7.5" fill="#3254f6"`);
+    expect(info).toContain(`stroke="#ffffff"/>`);
+  });
+
+  test("the pair is 696 × 106, its panel and both its cards each casting a shadow", () => {
+    expect(sizeOf("pair")).toEqual({ width: 696, height: 106 });
+    expect(shadowRegions(svgOf("pair"))).toHaveLength(3);
+  });
+
+  test("the body beside an icon sits 2 under the title", () => {
+    const apart = buildNode(iconTitleBodyCard, defineTheme(fonts, { iconTextGap: 12 }), "c", {
+      icon: "spark",
+      text: { title: TITLE, body: BODY },
+    });
+    expect(apart.leaf.size.height - (sizeOf("icon-body-card")?.height ?? 0)).toBeCloseTo(10, 6);
+  });
+
+  test("a card is 12 round, and an item card 46 high, 14 around its line of text", () => {
+    expect(svgOf("image-card")).toMatch(/^<g><filter [^>]*>.*?<\/filter><rect [^>]* rx="12"/);
+    expect(svgOf("section-card").match(/ height="46" rx="10"/g)).toHaveLength(4);
+  });
+
+  test("the card with items and a section shadows the card, each item card and the panel", () => {
+    expect(shadowRegions(svgOf("section-card"))).toHaveLength(6);
+  });
+});

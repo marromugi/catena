@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as v from "valibot";
 import { describe, expect, test } from "vitest";
-import { iconPathData } from "../icon";
+import { iconNames, iconPathData } from "../icon";
 import { layoutText, textPathData, Typeface } from "../text";
 import {
   activeRoundButton,
@@ -46,6 +46,7 @@ import {
   titleBodyItemsSectionCard,
   NO_SHADOW,
   type Part,
+  type Shadow,
   type ThemeOverrides,
   writeSvg,
 } from "./index";
@@ -103,8 +104,6 @@ const TESTED_LOOKS: ThemeOverrides = {
   tileIcon: { strokeWidth: 2, colors: { spark: "#d97757" } },
   button: { padding: 8, stroke: "#e6e6e6", strokeWidth: 1 },
   buttonIcon: { size: 14, strokeWidth: 1.5, colors: { spark: "#d97757" } },
-  activeButton: { padding: 8, fill: "#edf1fe", stroke: "#3e63dd", strokeWidth: 2 },
-  activeButtonIcon: { size: 14, strokeWidth: 1.5, fill: "none", color: "#3e63dd" },
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -1269,22 +1268,43 @@ describe("icons and the kinds that carry one", () => {
         `</g>`,
     );
 
+    // 12 + 2 × 1.5 for the disc, + 2 × 9.5 for the button
     const info = buildNode(activeRoundButton, theme, "b", "info");
-    expect(info.leaf.size).toEqual({ width: 30, height: 30 });
-    expect(info.draw({ x: 0, y: 0, width: 30, height: 30 })).toBe(
-      `<g><rect x="1" y="1" width="28" height="28" rx="15" fill="#edf1fe" stroke="#3e63dd" stroke-width="2"/>` +
-        iconSvg(iconPathData.info, 24, 8, 8, 14, "#3e63dd", 1.5) +
+    expect(info.leaf.size).toEqual({ width: 34, height: 34 });
+    expect(info.draw({ x: 0, y: 0, width: 34, height: 34 })).toBe(
+      `<g><rect x="0.75" y="0.75" width="32.5" height="32.5" rx="17" fill="#dce6fd" stroke="#4666f6" stroke-width="1.5"/>` +
+        `<rect x="9.5" y="9.5" width="15" height="15" rx="7.5" fill="#3254f6" stroke="none" stroke-width="0"/>` +
+        iconSvg(iconPathData.info, 24, 11, 11, 12, "#ffffff", 1.75) +
         `</g>`,
     );
   });
 
-  test("the spark keeps its colour on the plain round button, and is blue on the active one", () => {
+  test("the spark keeps its colour on the plain round button, and is white on the active one's disc", () => {
     expect(
       buildNode(roundButton, theme, "b", "spark").draw({ x: 0, y: 0, width: 30, height: 30 }),
     ).toContain(iconSvg(iconPathData.spark, 24, 8, 8, 14, "#d97757", 1.5));
     expect(
-      buildNode(activeRoundButton, theme, "b", "spark").draw({ x: 0, y: 0, width: 30, height: 30 }),
-    ).toContain(iconSvg(iconPathData.spark, 24, 8, 8, 14, "#3e63dd", 1.5));
+      buildNode(activeRoundButton, theme, "b", "spark").draw({ x: 0, y: 0, width: 34, height: 34 }),
+    ).toContain(iconSvg(iconPathData.spark, 24, 11, 11, 12, "#ffffff", 1.75));
+  });
+
+  test("every built-in icon on the active button is stroked white on the blue disc, and none is filled", () => {
+    for (const name of iconNames) {
+      const elements = activeRoundButton
+        .layout(name, theme, 100)
+        .draw({ x: 0, y: 0, width: 34, height: 34 }, noId)
+        .map(writeSvg);
+
+      expect({ name, elements: elements.length }).toEqual({ name, elements: 3 });
+      expect({ name, under: elements[1] }).toEqual({
+        name,
+        under: expect.stringContaining(`fill="#3254f6"`),
+      });
+      expect({ name, icon: elements[2] }).toEqual({
+        name,
+        icon: expect.stringMatching(/fill="none".* stroke="#ffffff"\/>$/),
+      });
+    }
   });
 
   test("a round button stays round when its looks change its size", () => {
@@ -1294,8 +1314,8 @@ describe("icons and the kinds that carry one", () => {
     expect(plus.leaf.size).toEqual({ width: 40, height: 40 });
     expect(plus.draw({ x: 0, y: 0, width: 40, height: 40 })).toContain(`rx="20"`);
     const info = buildNode(activeRoundButton, larger, "b", "info");
-    expect(info.leaf.size).toEqual({ width: 22, height: 22 });
-    expect(info.draw({ x: 0, y: 0, width: 22, height: 22 })).toContain(`rx="11"`);
+    expect(info.leaf.size).toEqual({ width: 23, height: 23 });
+    expect(info.draw({ x: 0, y: 0, width: 23, height: 23 })).toContain(`rx="11.5"`);
   });
 
   test("a fitted card draws at its own size at the top-left of a larger box", () => {
@@ -1412,7 +1432,7 @@ describe("icons and the kinds that carry one", () => {
       height: 30,
     });
     expect(info).toContain(`stroke="navy"`);
-    expect(info).toContain(`stroke-width="${3 / (14 / 24)}"`);
+    expect(info).toContain(`stroke-width="${3 / (12 / 24)}"`);
   });
 
   test("an icon look given as undefined keeps its default", () => {
@@ -1423,17 +1443,18 @@ describe("icons and the kinds that carry one", () => {
   });
 });
 
-describe("shadows, filled icons, the pair's panel and the gap beside an icon", () => {
-  test("a look with a shadow draws its rectangle through a filter reaching past the box by the offset and three blurs", () => {
-    const shadowed = themeWith({
-      card: { shadow: { dx: 1, dy: -2, blur: 4, color: "#000000", opacity: 0.1 } },
-    });
-    const block = frame(fixed(10, 10)).layout(null, shadowed, 100);
-    let count = 0;
+/** A 100 × 50 card at (10, 20) around a fixed part, with `shadow`, as SVG elements. */
+function shadowedCard(shadow: Shadow) {
+  let count = 0;
+  return frame(fixed(10, 10))
+    .layout(null, themeWith({ card: { shadow } }), 100)
+    .draw({ x: 10, y: 20, width: 100, height: 50 }, () => `s-${++count}`)
+    .map(writeSvg);
+}
 
-    expect(
-      block.draw({ x: 10, y: 20, width: 100, height: 50 }, () => `s-${++count}`).map(writeSvg),
-    ).toEqual([
+describe("shadows, the pair's panel and the gap beside an icon", () => {
+  test("a look with a shadow draws its rectangle through a filter reaching past the box by the offset and three blurs", () => {
+    expect(shadowedCard({ dx: 1, dy: -2, blur: 4, color: "#000000", opacity: 0.1 })).toEqual([
       `<filter id="s-1" filterUnits="userSpaceOnUse" x="-2" y="6" width="125" height="76">` +
         `<feDropShadow dx="1" dy="-2" stdDeviation="4" flood-color="#000000" flood-opacity="0.1"/></filter>`,
       `<rect x="10.5" y="20.5" width="99" height="49" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1" filter="url(#s-1)"/>`,
@@ -1441,28 +1462,32 @@ describe("shadows, filled icons, the pair's panel and the gap beside an icon", (
     ]);
   });
 
-  test("a look whose shadow is at opacity 0 draws no filter and takes no id", () => {
+  test("a shadow moved left and down reaches that far past the box's left and bottom", () => {
+    // x: 10 - 3 - 12, y: 20 - 12; width: 100 + 3 + 24, height: 50 + 5 + 24
+    expect(shadowedCard({ dx: -3, dy: 5, blur: 4, color: "#000000", opacity: 0.1 })[0]).toContain(
+      `x="-5" y="8" width="127" height="79"`,
+    );
+  });
+
+  test("a shadow at opacity 0 draws no filter, however blurred", () => {
+    const elements = shadowedCard({ dx: 2, dy: 2, blur: 4, color: "#000000", opacity: 0 });
+
+    expect(elements[0]).toMatch(/^<rect /);
+    expect(elements.join("")).not.toContain("filter");
+  });
+
+  test("a shadow that is not blurred is still drawn when it is seen", () => {
+    expect(shadowedCard({ dx: 2, dy: 2, blur: 0, color: "#000000", opacity: 0.5 })[0]).toMatch(
+      /^<filter id="s-1" filterUnits="userSpaceOnUse" x="10" y="20" width="102" height="52">/,
+    );
+  });
+
+  test("a look whose shadow is at opacity 0 takes no id", () => {
     const block = badge.layout("Badge", themeWith(), 100);
 
     expect(block.draw({ x: 0, y: 0, width: 100, height: 20 }, noId).map(writeSvg)[0]).toMatch(
       /^<rect /,
     );
-  });
-
-  test("a stroked icon's shapes are filled with the look's fill; a user's own filled icon keeps its ink", () => {
-    const filled = themeWith({ icon: { fill: "blue", color: "white" } });
-    const info = icon.layout("info", filled, 100).draw({ x: 0, y: 0, width: 20, height: 20 }, noId);
-    const own = icon
-      .layout(
-        { pathData: "M0 0 L1 1 Z", viewBox: { x: 0, y: 0, width: 1, height: 1 }, paint: "fill" },
-        filled,
-        100,
-      )
-      .draw({ x: 0, y: 0, width: 20, height: 20 }, noId);
-
-    expect(info.map(writeSvg)[0]).toContain(`fill="blue"`);
-    expect(info.map(writeSvg)[0]).toContain(`stroke="white"`);
-    expect(own.map(writeSvg)[0]).toContain(`fill="white"`);
   });
 
   test("the pair is drawn in the pair panel's look, apart from a section's panel", () => {
@@ -1496,5 +1521,9 @@ describe("shadows, filled icons, the pair's panel and the gap beside an icon", (
     expect(node.draw({ x: 10, y: 20, ...node.leaf.size })).toContain(
       `<path d="${bodyData}" fill="#8c8c8c"/>`,
     );
+  });
+
+  test("an icon text gap of 0 is kept, not taken for its default", () => {
+    expect(defineTheme(fonts, { iconTextGap: 0 }).iconTextGap).toBe(0);
   });
 });

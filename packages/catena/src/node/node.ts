@@ -143,9 +143,15 @@ export const roundButton = pill(
   (theme) => theme.button,
 );
 
-/** A small round button in its active look. Its content is the same as {@link roundButton}'s. */
+/**
+ * A small round button in its active look, its icon on a disc inside it. Its content is the same as
+ * {@link roundButton}'s.
+ */
 export const activeRoundButton = pill(
-  iconPart((theme) => theme.activeButtonIcon),
+  pill(
+    iconPart((theme) => theme.activeButtonIcon),
+    (theme) => theme.activeButtonDisc,
+  ),
   (theme) => theme.activeButton,
 );
 

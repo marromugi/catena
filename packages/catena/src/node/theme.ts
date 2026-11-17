@@ -49,11 +49,6 @@ export interface DividerLook {
 export interface IconLook {
   readonly size: number;
   readonly strokeWidth: number;
-  /**
-   * What fills a stroked icon's shapes, such as the info icon's circle, `"none"` or a colour. As in SVG,
-   * an open line is filled as if closed straight back to its start.
-   */
-  readonly fill: string;
   readonly color: string;
   /** The colour of a built-in icon drawn in another colour than `color`. */
   readonly colors: Readonly<Partial<Record<IconName, string>>>;
@@ -109,6 +104,8 @@ export interface Theme {
   readonly buttonIcon: IconLook;
   /** A round button in its active look. */
   readonly activeButton: ButtonLook;
+  /** The disc inside an active round button, around its icon. */
+  readonly activeButtonDisc: ButtonLook;
   readonly activeButtonIcon: IconLook;
 }
 
@@ -139,6 +136,7 @@ export interface ThemeOverrides {
   readonly button?: Partial<ButtonLook>;
   readonly buttonIcon?: Partial<IconLook>;
   readonly activeButton?: Partial<ButtonLook>;
+  readonly activeButtonDisc?: Partial<ButtonLook>;
   readonly activeButtonIcon?: Partial<IconLook>;
 }
 
@@ -211,14 +209,12 @@ const ICON_COLORS = { spark: "#cc7c5e" } as const;
 const DEFAULT_ICON: IconLook = {
   size: 22,
   strokeWidth: 1.75,
-  fill: "none",
   color: "#1f1f1f",
   colors: ICON_COLORS,
 };
 const DEFAULT_TILE_ICON: IconLook = {
   size: 32,
   strokeWidth: 2.5,
-  fill: "none",
   color: "#1f1f1f",
   colors: ICON_COLORS,
 };
@@ -238,23 +234,29 @@ const DEFAULT_BUTTON: ButtonLook = {
 const DEFAULT_BUTTON_ICON: IconLook = {
   size: 16,
   strokeWidth: 1.75,
-  fill: "none",
   color: "#1f1f1f",
   colors: ICON_COLORS,
 };
 const DEFAULT_ACTIVE_BUTTON: ButtonLook = {
   ...DEFAULT_BUTTON,
-  padding: 7.5,
+  padding: 9.5,
   fill: "#dce6fd",
   stroke: "#4666f6",
 };
+const DEFAULT_ACTIVE_BUTTON_DISC: ButtonLook = {
+  padding: 1.5,
+  fill: "#3254f6",
+  stroke: "none",
+  strokeWidth: 0,
+  shadow: NO_SHADOW,
+};
 const DEFAULT_ACTIVE_BUTTON_ICON: IconLook = {
   ...DEFAULT_BUTTON_ICON,
-  size: 19,
-  fill: "#3254f6",
+  size: 12,
   color: "#ffffff",
   colors: {},
 };
+
 function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T {
   const given = Object.entries(overrides).filter(([, value]) => value !== undefined);
   return { ...defaults, ...Object.fromEntries(given) };
@@ -292,6 +294,7 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
     button: laidOver(DEFAULT_BUTTON, overrides.button),
     buttonIcon: laidOver(DEFAULT_BUTTON_ICON, overrides.buttonIcon),
     activeButton: laidOver(DEFAULT_ACTIVE_BUTTON, overrides.activeButton),
+    activeButtonDisc: laidOver(DEFAULT_ACTIVE_BUTTON_DISC, overrides.activeButtonDisc),
     activeButtonIcon: laidOver(DEFAULT_ACTIVE_BUTTON_ICON, overrides.activeButtonIcon),
   };
 }
