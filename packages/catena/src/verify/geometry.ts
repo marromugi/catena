@@ -125,11 +125,11 @@ export function sidesAlong(segment: Segment, rect: Rect): Side[] {
     ? { low: rect.y, high: rect.y + rect.height }
     : { low: rect.x, high: rect.x + rect.width };
 
-  let within: Side = "inside";
-  if (level < across.low - TOLERANCE || level > across.high + TOLERANCE) {
-    within = "outside";
-  } else if (near(level, across.low) || near(level, across.high)) {
+  let within: Side = "outside";
+  if (near(level, across.low) || near(level, across.high)) {
     within = "border";
+  } else if (level > across.low && level < across.high) {
+    within = "inside";
   }
 
   const low = Math.min(start, end);

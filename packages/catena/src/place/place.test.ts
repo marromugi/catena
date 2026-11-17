@@ -713,6 +713,18 @@ describe("placeGraph: an edge that goes around", () => {
     });
   });
 
+  test("leaves a node and comes back to it beside a group an edge gap a hair more than the clearance away", () => {
+    const fine = { nodeGap: 0, padding: 0, edgeToNode: 0.5, edgeGap: 0.500001, minSegment: 0.5 };
+    const placement = place(
+      "down",
+      [group("n0", "down", [leaf("n1", 2, 2), group("n2", "down", [leaf("n3", 2, 2)])])],
+      ["n1>n1"],
+      fine,
+    );
+
+    expect(verify(placement, fine)).toEqual([]);
+  });
+
   test("leaves a node and comes back to it when the flow is to the right", () => {
     const loop = place("right", [leaf("A", 50, 30)], ["A>A"]);
 
