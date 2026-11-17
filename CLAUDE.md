@@ -31,4 +31,10 @@ node <is-it-right>/scripts/break-changed.mts --rules break-rules origin/main -- 
 
 # Running the software
 
-catena is a library: nothing here starts as a program, so there is no run skill. Its behaviour is checked by its tests.
+catena is used as the `catena` command, the `bin` of `packages/catena`. From a checkout, after `pnpm install`:
+
+```sh
+node packages/catena/bin/catena.js draw <diagram.json> [-o <out.svg>]
+```
+
+`pnpm link --global` in `packages/catena` puts `catena` on the PATH. The diagram file's shape is `src/cli/diagram-file.ts`. There is no run skill; the command's behaviour is checked by its tests (`src/cli/cli.test.ts`).
