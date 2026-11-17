@@ -148,30 +148,25 @@ export function sidesAlong(segment: Segment, rect: Rect): Side[] {
   return start <= end ? sides : sides.toReversed();
 }
 
+function spanOf(segment: Segment, horizontal: boolean): Span {
+  const from = horizontal ? segment.from.x : segment.from.y;
+  const to = horizontal ? segment.to.x : segment.to.y;
+  return { low: Math.min(from, to), high: Math.max(from, to) };
+}
+
 /** How long two parallel segments run side by side, or zero when they are not parallel. */
 function sharedRun(a: Segment, b: Segment): number {
   const horizontal = isHorizontal(a) && isHorizontal(b);
   if (!horizontal && !(isVertical(a) && isVertical(b))) {
     return 0;
   }
-  const span = (segment: Segment): Span => {
-    const from = horizontal ? segment.from.x : segment.from.y;
-    const to = horizontal ? segment.to.x : segment.to.y;
-    return { low: Math.min(from, to), high: Math.max(from, to) };
-  };
-  const first = span(a);
-  const second = span(b);
+  const first = spanOf(a, horizontal);
+  const second = spanOf(b, horizontal);
   return Math.max(0, Math.min(first.high, second.high) - Math.max(first.low, second.low));
 }
 
 function distanceBetweenParallels(a: Segment, b: Segment): number {
   return isHorizontal(a) ? Math.abs(a.from.y - b.from.y) : Math.abs(a.from.x - b.from.x);
-}
-
-function spanOf(segment: Segment, horizontal: boolean): Span {
-  const from = horizontal ? segment.from.x : segment.from.y;
-  const to = horizontal ? segment.to.x : segment.to.y;
-  return { low: Math.min(from, to), high: Math.max(from, to) };
 }
 
 /**
@@ -239,4 +234,101 @@ export function areTooClose(a: Segment, b: Segment, gap: number): boolean {
 /** Whether two parallel segments lie on the same line and share a stretch of it. */
 export function doubleBack(a: Segment, b: Segment): boolean {
   return sharedRun(a, b) > TOLERANCE && distanceBetweenParallels(a, b) <= TOLERANCE;
+}
+
+function isSamePoint(a: Point, b: Point): boolean {
+  return near(a.x, b.x) && near(a.y, b.y);
+}
+
+function pointAlong(segment: Segment, distance: number): Point {
+  const share = distance / lengthOf(segment);
+  return {
+    x: segment.from.x + (segment.to.x - segment.from.x) * share,
+    y: segment.from.y + (segment.to.y - segment.from.y) * share,
+  };
+}
+
+/** How far two paths run as one from their first points. */
+export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
+  const [start] = a;
+  if (start === undefined || b[0] === undefined || !isSamePoint(start, b[0])) {
+    return 0;
+  }
+  let at: Point = start;
+  let lead = 0;
+  let nextOfA = 1;
+  let nextOfB = 1;
+  for (;;) {
+    const toA = a[nextOfA];
+    const toB = b[nextOfB];
+    if (toA === undefined || toB === undefined) {
+      return lead;
+    }
+    const restOfA = { from: at, to: toA };
+    const restOfB = { from: at, to: toB };
+    const reach = Math.min(lengthOf(restOfA), lengthOf(restOfB));
+    if (reach > TOLERANCE) {
+      if (!isSamePoint(pointAlong(restOfA, reach), pointAlong(restOfB, reach))) {
+        return lead;
+      }
+      lead += reach;
+    }
+    const endsA = lengthOf(restOfA) <= reach + TOLERANCE;
+    const endsB = lengthOf(restOfB) <= reach + TOLERANCE;
+    at = endsA ? toA : toB;
+    nextOfA += endsA ? 1 : 0;
+    nextOfB += endsB ? 1 : 0;
+  }
+}
+
+/** Whether `next`, which starts where `segment` ends, goes straight on from it, level or upright. */
+function continues(segment: Segment, next: Segment): boolean {
+  const level = isHorizontal(segment) && isHorizontal(next);
+  if (!level && !(isVertical(segment) && isVertical(next))) {
+    return false;
+  }
+  const along = (each: Segment) => (level ? each.to.x - each.from.x : each.to.y - each.from.y);
+  return along(segment) * along(next) > 0;
+}
+
+/** The stretches of a path, with each run of them that goes straight on made one stretch. */
+export function straightened(segments: readonly Segment[]): Segment[] {
+  const runs: Segment[] = [];
+  for (const segment of segments) {
+    const last = runs.at(-1);
+    if (last !== undefined && continues(last, segment)) {
+      runs[runs.length - 1] = { from: last.from, to: segment.to };
+    } else {
+      runs.push(segment);
+    }
+  }
+  return runs;
+}
+
+/**
+ * The stretches left of a path once `lead` is cut from its start and `tail` from its end.
+ * A stretch that is not cut is left as it is, whatever its length.
+ */
+export function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
+  const segments = segmentsOf(points);
+  const cutsAtEnd: number[] = [];
+  let behind = 0;
+  for (const segment of segments.toReversed()) {
+    cutsAtEnd.unshift(Math.max(tail - behind, 0));
+    behind += lengthOf(segment);
+  }
+  const kept: Segment[] = [];
+  let passed = 0;
+  segments.forEach((segment, index) => {
+    const from = Math.max(lead - passed, 0);
+    const cut = cutsAtEnd[index] ?? 0;
+    const to = lengthOf(segment) - cut;
+    if (from === 0 && cut === 0) {
+      kept.push(segment);
+    } else if (to - from > TOLERANCE) {
+      kept.push({ from: pointAlong(segment, from), to: pointAlong(segment, to) });
+    }
+    passed += lengthOf(segment);
+  });
+  return kept;
 }

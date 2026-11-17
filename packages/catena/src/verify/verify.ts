@@ -9,9 +9,12 @@ import {
   isOrthogonal,
   lengthOf,
   runsAlongside,
+  segmentsBetween,
   segmentsOf,
   separation,
+  sharedLead,
   sidesAlong,
+  straightened,
   TOLERANCE,
   type Segment,
   type Side,
@@ -32,7 +35,10 @@ export type Violation =
   | { readonly kind: "edge-not-orthogonal"; readonly edge: string; readonly segment: number }
   /** A stretch of the edge is shorter than `minSegment`. */
   | { readonly kind: "edge-segment-too-short"; readonly edge: string; readonly segment: number }
-  /** The edge touches or comes within `edgeToNode` of a node it does not connect, or runs into, along, or closer than that beside one it does. */
+  /**
+   * The edge touches or comes within `edgeToNode` of a node it does not connect, or runs into, along, or closer than that beside one it does.
+   * A node inside a group the edge connects is not checked: the group's border lies between them.
+   */
   | { readonly kind: "edge-through-node"; readonly edge: string; readonly node: string }
   /** Both ends of the edge are inside the group, and the edge is not. */
   | { readonly kind: "edge-leaves-group"; readonly edge: string; readonly group: string }
@@ -44,6 +50,8 @@ export type Violation =
    * Two stretches, of two edges or of one, come closer than `edgeGap`.
    * Crossing at a right angle is allowed where each stretch reaches `edgeGap` past the other on both sides.
    * Two stretches that meet at a bend of one edge count only when the edge turns straight back.
+   * Two edges that leave the same node may run as one from their start, and two that enter the same node
+   * to their end; the two stretches that meet where they part, or where they join, do not count.
    */
   | { readonly kind: "edges-too-close"; readonly edges: readonly [string, string] }
   /** Two labels cover part of each other. Labels that only touch do not. */
@@ -196,9 +204,10 @@ function routeViolations(edge: PlacedEdge, index: Index, spacing: Spacing): Viol
     segments.some((segment) => runsAlongside(segment, rect, spacing.edgeToNode));
 
   const violations: Violation[] = [];
-  for (const { node } of index.values()) {
+  for (const { node, groups } of index.values()) {
     const aroundFrom = groupsOfFrom.includes(node.id);
     const aroundTo = groupsOfTo.includes(node.id);
+    const behindAnEnd = groups.includes(edge.from) || groups.includes(edge.to);
     const passed = sidesPassed(segments, node.box);
     if (node.id === edge.from || node.id === edge.to) {
       if (!sameSides(passed, ["outside"]) || hugs(node.box)) {
@@ -216,8 +225,9 @@ function routeViolations(edge: PlacedEdge, index: Index, spacing: Spacing): Viol
         violations.push({ kind: "edge-hugs-group", edge: edge.id, group: node.id });
       }
     } else if (
-      !sameSides(passed, ["outside"]) ||
-      sidesPassed(segments, inflate(node.box, spacing.edgeToNode)).includes("inside")
+      !behindAnEnd &&
+      (!sameSides(passed, ["outside"]) ||
+        sidesPassed(segments, inflate(node.box, spacing.edgeToNode)).includes("inside"))
     ) {
       violations.push({ kind: "edge-through-node", edge: edge.id, node: node.id });
     }
@@ -225,26 +235,49 @@ function routeViolations(edge: PlacedEdge, index: Index, spacing: Spacing): Viol
   return violations;
 }
 
-function closenessViolations(edges: readonly PlacedEdge[], spacing: Spacing): Violation[] {
-  const stretches = edges.flatMap((edge) =>
-    segmentsOf(edge.points)
-      .map((segment, at) => ({ edge: edge.id, at, segment }))
-      .filter(({ segment }) => isOrthogonal(segment)),
-  );
-  const reported = new Set<string>();
-  const violations: Violation[] = [];
-  for (const [a, b] of pairsOf(stretches)) {
-    const meetAtBend = a.edge === b.edge && b.at - a.at === 1;
-    const tooClose = meetAtBend
+function isTooCloseToItself(edge: PlacedEdge, spacing: Spacing): boolean {
+  const stretches = segmentsOf(edge.points)
+    .map((segment, at) => ({ at, segment }))
+    .filter(({ segment }) => isOrthogonal(segment));
+  return pairsOf(stretches).some(([a, b]) =>
+    b.at - a.at === 1
       ? doubleBack(a.segment, b.segment)
-      : areTooClose(a.segment, b.segment, spacing.edgeGap);
-    const key = JSON.stringify([a.edge, b.edge]);
-    if (tooClose && !reported.has(key)) {
-      reported.add(key);
-      violations.push({ kind: "edges-too-close", edges: [a.edge, b.edge] });
-    }
-  }
-  return violations;
+      : areTooClose(a.segment, b.segment, spacing.edgeGap),
+  );
+}
+
+function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, spacing: Spacing): boolean {
+  const lead = a.from === b.from ? sharedLead(a.points, b.points) : 0;
+  const tail = a.to === b.to ? sharedLead(a.points.toReversed(), b.points.toReversed()) : 0;
+  const shared = lead > TOLERANCE || tail > TOLERANCE;
+  const rest = (edge: PlacedEdge) => {
+    const segments = segmentsBetween(edge.points, lead, tail);
+    return shared ? straightened(segments) : segments;
+  };
+  const restOfA = rest(a);
+  const restOfB = rest(b);
+  return restOfA.some((first, atA) =>
+    restOfB.some((second, atB) => {
+      if (!isOrthogonal(first) || !isOrthogonal(second)) {
+        return false;
+      }
+      const part = lead > TOLERANCE && atA === 0 && atB === 0;
+      const join = tail > TOLERANCE && atA === restOfA.length - 1 && atB === restOfB.length - 1;
+      return !part && !join && areTooClose(first, second, spacing.edgeGap);
+    }),
+  );
+}
+
+function closenessViolations(edges: readonly PlacedEdge[], spacing: Spacing): Violation[] {
+  return edges.flatMap((edge, at): Violation[] => [
+    ...(isTooCloseToItself(edge, spacing)
+      ? [{ kind: "edges-too-close" as const, edges: [edge.id, edge.id] as const }]
+      : []),
+    ...edges
+      .slice(at + 1)
+      .filter((other) => areEdgesTooClose(edge, other, spacing))
+      .map((other): Violation => ({ kind: "edges-too-close", edges: [edge.id, other.id] })),
+  ]);
 }
 
 function overlaps(a: Rect, b: Rect): boolean {

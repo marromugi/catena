@@ -581,6 +581,26 @@ describe("verify: edges side by side", () => {
     expect(verify(chain, spacing)).toEqual([]);
   });
 
+  test("reports an edge that runs beside itself closer than the edge gap", () => {
+    const hairpin = layout(
+      [nodes[0]!, nodes[2]!],
+      [
+        edge("A-C", "A", "C", [
+          [50, 15],
+          [120, 15],
+          [120, 60],
+          [124, 60],
+          [124, 15],
+          [250, 15],
+        ]),
+      ],
+    );
+
+    expect(verify(hairpin, { ...spacing, minSegment: 2 })).toEqual([
+      { kind: "edges-too-close", edges: ["A-C", "A-C"] },
+    ]);
+  });
+
   test("reports an edge that doubles back on itself", () => {
     const back = layout(
       [nodes[0]!, nodes[2]!],
@@ -1455,8 +1475,43 @@ describe("verify: an edge that ends by turning straight back", () => {
   });
 });
 
+describe("verify: an edge that ends by turning straight back up", () => {
+  test("is reported, though no other stretch comes near", () => {
+    const back = layout(
+      [node("A", 0, 0, 50, 30)],
+      [
+        edge("A-A", "A", "A", [
+          [25, 30],
+          [25, 80],
+          [25, 30],
+        ]),
+      ],
+    );
+
+    expect(verify(back, spacing)).toEqual([{ kind: "edges-too-close", edges: ["A-A", "A-A"] }]);
+  });
+});
+
 describe("verify: a difference of exactly a millionth", () => {
   const exactly = 1e-6;
+
+  test("leaves a stretch along the near side of a node on that side", () => {
+    const grazing = layout(
+      [node("L", 0, 0, 50, 30), node("M", 100, 0, 50, 30), node("R", 250, 0, 50, 30)],
+      [
+        edge("L-R", "L", "R", [
+          [50, -exactly],
+          [250, -exactly],
+        ]),
+      ],
+    );
+
+    expect(verify(grazing, { ...spacing, edgeToNode: 0 })).toContainEqual({
+      kind: "edge-through-node",
+      edge: "L-R",
+      node: "M",
+    });
+  });
 
   test("leaves a stretch level", () => {
     const climbing = layout(
@@ -1603,5 +1658,401 @@ describe("verify: a difference of exactly a millionth", () => {
       { kind: "edge-segment-too-short", edge: "E", segment: 2 },
       { kind: "edge-through-node", edge: "E", node: "B" },
     ]);
+  });
+});
+
+const backwards = (forwards: PlacedEdge): PlacedEdge => {
+  const [first, second, ...rest] = forwards.points.toReversed();
+  if (first === undefined || second === undefined) {
+    throw new Error("An edge in a test needs two points.");
+  }
+  return { ...forwards, from: forwards.to, to: forwards.from, points: [first, second, ...rest] };
+};
+
+/** An edge from A to C that dips to `y` on its way. */
+const dipping = (id: string, y: number) =>
+  edge(id, "A", "C", [
+    [50, 15],
+    [100, 15],
+    [100, y],
+    [200, y],
+    [200, 15],
+    [250, 15],
+  ]);
+
+describe.each([
+  { what: "edges that leave one node", drawn: (forwards: PlacedEdge) => forwards },
+  { what: "edges that enter one node", drawn: backwards },
+])("verify: $what", ({ drawn }) => {
+  const hub = node("S", 100, 0, 100, 30);
+  const left = node("T1", 0, 100, 50, 30);
+  const middle = node("T3", 125, 100, 50, 30);
+  const right = node("T2", 250, 100, 50, 30);
+  const toLeft = edge("S-T1", "S", "T1", [
+    [150, 30],
+    [150, 60],
+    [25, 60],
+    [25, 100],
+  ]);
+  const toRight = edge("S-T2", "S", "T2", [
+    [150, 30],
+    [150, 60],
+    [275, 60],
+    [275, 100],
+  ]);
+  const toMiddle = edge("S-T3", "S", "T3", [
+    [150, 30],
+    [150, 100],
+  ]);
+  const drawnLayout = (nodes: PlacedNode[], edges: PlacedEdge[]) => layout(nodes, edges.map(drawn));
+
+  test("may share a stretch at that node, then go three ways", () => {
+    const fork = drawnLayout([hub, left, middle, right], [toLeft, toRight, toMiddle]);
+
+    expect(verify(fork, spacing)).toEqual([]);
+  });
+
+  test("may bend together along the stretch they share", () => {
+    const near = edge("S-U1", "S", "U1", [
+      [25, 30],
+      [25, 60],
+      [125, 60],
+      [125, 100],
+    ]);
+    const far = edge("S-U2", "S", "U2", [
+      [25, 30],
+      [25, 60],
+      [225, 60],
+      [225, 100],
+    ]);
+    const bus = drawnLayout(
+      [node("S", 0, 0, 50, 30), node("U1", 100, 100, 50, 30), node("U2", 200, 100, 50, 30)],
+      [near, far],
+    );
+
+    expect(verify(bus, spacing)).toEqual([]);
+  });
+
+  test("are reported when they come too close beyond the stretch they share", () => {
+    const justBelow = edge("S-X", "S", "X", [
+      [150, 30],
+      [150, 62],
+      [80, 62],
+      [80, 150],
+    ]);
+    const crowded = drawnLayout([hub, left, node("X", 60, 150, 40, 30)], [toLeft, justBelow]);
+
+    expect(verify(crowded, spacing)).toEqual([{ kind: "edges-too-close", edges: ["S-T1", "S-X"] }]);
+  });
+
+  test.each([
+    { order: "listed first", turnsFirst: true },
+    { order: "listed second", turnsFirst: false },
+  ])(
+    "are reported when the one $order turns to run beside the other, right after the stretch they share",
+    ({ turnsFirst }) => {
+      const beside = edge("beside", "S", "T3", [
+        [150, 30],
+        [150, 60],
+        [147, 60],
+        [147, 100],
+      ]);
+      const straight = { ...toMiddle, id: "straight" };
+      const edges = turnsFirst ? [beside, straight] : [straight, beside];
+      const crowded = drawnLayout([hub, middle], edges);
+
+      const itself = { kind: "edges-too-close", edges: ["beside", "beside"] };
+      const both = { kind: "edges-too-close", edges: edges.map(({ id }) => id) };
+
+      expect(verify(crowded, { ...spacing, minSegment: 2 })).toEqual(
+        turnsFirst ? [itself, both] : [both, itself],
+      );
+    },
+  );
+
+  test.each([
+    { order: "first", twiceFirst: true },
+    { order: "second", twiceFirst: false },
+  ])("share a stretch that the one listed $order gives a point twice on", ({ twiceFirst }) => {
+    const twice = edge("S-T1", "S", "T1", [
+      [150, 30],
+      [150, 45],
+      [150, 45],
+      [150, 60],
+      [25, 60],
+      [25, 100],
+    ]);
+    const fork = drawnLayout([hub, left, right], twiceFirst ? [twice, toRight] : [toRight, twice]);
+
+    expect(verify(fork, spacing).filter(({ kind }) => kind === "edges-too-close")).toEqual([
+      { kind: "edges-too-close", edges: ["S-T1", "S-T1"] },
+    ]);
+  });
+
+  test("are reported when they part to the left and the right and one turns too close to the other", () => {
+    const turning = edge("S-T3", "S", "T3", [
+      [150, 30],
+      [150, 60],
+      [153, 60],
+      [153, 100],
+    ]);
+    const crowded = drawnLayout([hub, left, middle], [toLeft, turning]);
+
+    expect(verify(crowded, { ...spacing, minSegment: 2 })).toContainEqual({
+      kind: "edges-too-close",
+      edges: ["S-T1", "S-T3"],
+    });
+  });
+
+  test("are reported when they part up and down and one turns too close to the other", () => {
+    const up = edge("H-P", "H", "P", [
+      [50, 100],
+      [100, 100],
+      [100, 40],
+      [150, 40],
+    ]);
+    const down = edge("H-Q", "H", "Q", [
+      [50, 100],
+      [100, 100],
+      [100, 103],
+      [150, 103],
+    ]);
+    const crowded = drawnLayout(
+      [node("H", 0, 85, 50, 30), node("P", 150, 25, 50, 30), node("Q", 150, 88, 50, 30)],
+      [up, down],
+    );
+
+    expect(verify(crowded, { ...spacing, minSegment: 2 })).toContainEqual({
+      kind: "edges-too-close",
+      edges: ["H-P", "H-Q"],
+    });
+  });
+
+  test("are reported on one stretch when they meet the node at different points", () => {
+    const fromTheSide = edge("S-T2", "S", "T2", [
+      [200, 15],
+      [230, 15],
+      [230, 60],
+      [275, 60],
+      [275, 100],
+    ]);
+    const slanting = edge("S-C", "S", "C", [
+      [180, 30],
+      [230, 15],
+      [230, 60],
+    ]);
+    const shared = drawnLayout([hub, right, node("C", 205, 60, 50, 30)], [fromTheSide, slanting]);
+
+    expect(verify(shared, spacing)).toContainEqual({
+      kind: "edges-too-close",
+      edges: ["S-T2", "S-C"],
+    });
+  });
+
+  test("may part just before a point on the one that goes straight on", () => {
+    const straightOn = edge("S-T3", "S", "T3", [
+      [150, 30],
+      [150, 63],
+      [150, 100],
+    ]);
+    const fork = drawnLayout([hub, left, middle], [toLeft, straightOn]);
+
+    expect(verify(fork, spacing)).toEqual([]);
+  });
+
+  test("are reported when one comes back beside the other, past a point on its straight stretch", () => {
+    const straightOn = edge("S-T3", "S", "T3", [
+      [150, 30],
+      [150, 63],
+      [150, 100],
+    ]);
+    const back = edge("back", "S", "T3", [
+      [150, 30],
+      [150, 60],
+      [100, 60],
+      [100, 80],
+      [147, 80],
+      [147, 100],
+    ]);
+    const crowded = drawnLayout([hub, middle], [straightOn, back]);
+
+    expect(verify(crowded, spacing)).toContainEqual({
+      kind: "edges-too-close",
+      edges: ["S-T3", "back"],
+    });
+  });
+
+  test("are not reported for one of them coming back beside the stretch they share", () => {
+    const far = edge("S-U2", "S", "U2", [
+      [25, 30],
+      [25, 60],
+      [225, 60],
+      [225, 100],
+    ]);
+    const back = edge("back", "S", "U1", [
+      [25, 30],
+      [25, 60],
+      [125, 60],
+      [125, 75],
+      [110, 75],
+      [110, 63],
+      [40, 63],
+    ]);
+    const looping = drawnLayout(
+      [node("S", 0, 0, 50, 30), node("U1", 0, 48, 40, 30), node("U2", 200, 100, 50, 30)],
+      [far, back],
+    );
+
+    expect(verify(looping, spacing).filter(({ kind }) => kind === "edges-too-close")).toEqual([
+      { kind: "edges-too-close", edges: ["back", "back"] },
+    ]);
+  });
+
+  test.each([
+    { order: "first", stopsFirst: true },
+    { order: "second", stopsFirst: false },
+  ])(
+    "may lie one on the other when the one listed $order stops at a group and the other goes on to a node inside",
+    ({ stopsFirst }) => {
+      const inside = node("K", 125, 120, 50, 30);
+      const around = node("G", 100, 100, 100, 70, [inside]);
+      const stopping = edge("S-G", "S", "G", [
+        [150, 30],
+        [150, 100],
+      ]);
+      const goingOn = edge("S-K", "S", "K", [
+        [150, 30],
+        [150, 120],
+      ]);
+      const stacked = drawnLayout(
+        [hub, around],
+        stopsFirst ? [stopping, goingOn] : [goingOn, stopping],
+      );
+
+      expect(verify(stacked, spacing)).toEqual([]);
+    },
+  );
+
+  test("may share a stretch at both their nodes and keep apart between", () => {
+    const ends = [node("A", 0, 0, 50, 30), node("C", 250, 0, 50, 30)];
+    expect(verify(drawnLayout(ends, [dipping("near", 60), dipping("far", 80)]), spacing)).toEqual(
+      [],
+    );
+  });
+
+  test("are reported on one stretch when two nodes that touch hold it", () => {
+    const touching = [node("A", 50, 0, 50, 30), node("B", 100, 0, 50, 30), left, right];
+    const fromA = edge("A-T1", "A", "T1", [
+      [100, 30],
+      [100, 60],
+      [25, 60],
+      [25, 100],
+    ]);
+    const fromB = edge("B-T2", "B", "T2", [
+      [100, 30],
+      [100, 60],
+      [275, 60],
+      [275, 100],
+    ]);
+    const shared = drawnLayout(touching, [fromA, fromB]);
+
+    expect(verify(shared, { ...spacing, nodeGap: 0 })).toContainEqual({
+      kind: "edges-too-close",
+      edges: ["A-T1", "B-T2"],
+    });
+  });
+});
+
+describe("verify: an edge that ends at a group", () => {
+  const inner = node("K", 20, 20, 80, 80);
+  const outer = node("G", 10, 10, 100, 100, [inner]);
+  const beside = node("R", 200, 45, 50, 30);
+  const wide = { ...spacing, edgeToNode: 15 };
+
+  test("may come closer to a node inside the group than to any other node", () => {
+    const into = layout(
+      [outer, beside],
+      [
+        edge("R-G", "R", "G", [
+          [200, 60],
+          [110, 60],
+        ]),
+      ],
+    );
+
+    expect(verify(into, wide)).toEqual([]);
+  });
+
+  test("may start closer to a node inside the group than to any other node", () => {
+    const outOf = layout(
+      [outer, beside],
+      [
+        edge("G-R", "G", "R", [
+          [110, 60],
+          [200, 60],
+        ]),
+      ],
+    );
+
+    expect(verify(outOf, wide)).toEqual([]);
+  });
+});
+
+describe("verify: two edges that share no node", () => {
+  const corners = [
+    node("f0", 1000, 1000, 10, 10),
+    node("t0", 1000, 2000, 10, 10),
+    node("f1", 1100, 1000, 10, 10),
+    node("t1", 1100, 2000, 10, 10),
+  ];
+  const closeness = (edges: PlacedEdge[], kept = spacing) =>
+    verify({ width: 5000, height: 5000, nodes: corners, edges }, kept).filter(
+      ({ kind }) => kind === "edges-too-close",
+    );
+
+  test("are compared at the points they are given, so a millionth short of the edge gap passes", () => {
+    const turning = edge("e1", "f0", "t0", [
+      [155, 5.000002],
+      [79.999999, 5.000002],
+      [79.999999, 139.999999],
+    ]);
+    const stopping = edge("e3", "f1", "t1", [
+      [29.999999, 60.333333333333336],
+      [29.999999, 85.3],
+      [109.999999, 85.3],
+      [109.999999, 65.000002],
+      [75, 65.000002],
+    ]);
+
+    expect(closeness([turning, stopping])).toEqual([]);
+  });
+
+  test("are too close where one crosses the other at a point given on its straight stretch", () => {
+    const level = edge("level", "f0", "t0", [
+      [100, 150],
+      [150, 150],
+      [200, 150],
+    ]);
+    const crossing = edge("crossing", "f1", "t1", [
+      [150, 100],
+      [150, 200],
+    ]);
+
+    expect(closeness([level, crossing])).toEqual([
+      { kind: "edges-too-close", edges: ["level", "crossing"] },
+    ]);
+  });
+
+  test("are compared even when one of them has no length", () => {
+    const dot = edge("dot", "f0", "t0", [
+      [185, 150],
+      [185, 150],
+    ]);
+    const line = edge("line", "f1", "t1", [
+      [200, 150],
+      [160, 150],
+    ]);
+
+    expect(closeness([dot, line])).toEqual([{ kind: "edges-too-close", edges: ["dot", "line"] }]);
   });
 });
