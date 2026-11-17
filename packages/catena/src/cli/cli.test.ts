@@ -445,11 +445,10 @@ describe("run", () => {
   });
 
   test("throws a fault of catena's own rather than saying the file is wrong", () => {
-    let deep: unknown = { id: "leaf", kind: "badge", content: "x" };
-    for (let depth = 0; depth < 6000; depth += 1) {
-      deep = { id: `g${depth}`, direction: "down", children: [deep] };
-    }
-    const path = fileOf(text({ direction: "down", nodes: [deep], edges: [] }));
+    const depth = 6000;
+    const group = '{"id":"g","direction":"down","children":[';
+    const deep = `${group.repeat(depth)}{"id":"leaf","kind":"badge","content":"x"}${"]}".repeat(depth)}`;
+    const path = fileOf(`{"direction":"down","edges":[],"nodes":[${deep}]}`);
     expect(() => runWith(["draw", path])).toThrow(RangeError);
   });
 
