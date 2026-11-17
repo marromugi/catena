@@ -22,6 +22,54 @@ export function frame<TSchema extends v.GenericSchema>(
   };
 }
 
+/**
+ * A card in the look `lookOf` picks from the theme, fitted around `child` inside its padding rather than
+ * filling the width it is given. It draws at the top-left of its box.
+ */
+export function fitted<TSchema extends v.GenericSchema>(
+  child: Part<TSchema>,
+  lookOf: (theme: Theme) => CardLook,
+): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout(content, theme, maxWidth) {
+      const look = lookOf(theme);
+      const card = cardAround(child.layout(content, theme, maxWidth - 2 * look.padding), look, 0);
+      return {
+        size: card.size,
+        draw: (box, newId) => card.draw({ x: box.x, y: box.y, ...card.size }, newId),
+      };
+    },
+  };
+}
+
+/** `child` drawn at its own size, centred across the box it is given. */
+export function centered<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout(content, theme, maxWidth) {
+      const inner = child.layout(content, theme, maxWidth);
+      const { width, height } = inner.size;
+      return {
+        size: inner.size,
+        draw: (box, newId) =>
+          inner.draw({ x: box.x + (box.width - width) / 2, y: box.y, width, height }, newId),
+      };
+    },
+  };
+}
+
+/** `child` laid out at the width `widthOf` picks from the theme, whatever width it is given. */
+export function atWidth<TSchema extends v.GenericSchema>(
+  child: Part<TSchema>,
+  widthOf: (theme: Theme) => number,
+): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout: (content, theme) => child.layout(content, theme, widthOf(theme)),
+  };
+}
+
 /** A card in the theme's panel look around `child`, such as the list of a section. Around a child that takes no room, it takes none either. */
 export function panel<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
   return {
@@ -101,20 +149,22 @@ function keyedParts<TParts extends Record<string, Part>>(container: string, part
 }
 
 /**
- * Parts set one over the next, the theme's gap apart, in the order of `parts`' keys. Its content is an
- * object holding each part's content under the part's key.
+ * Parts set one over the next, in the order of `parts`' keys, the gap `gap` picks from the theme apart,
+ * the theme's gap by default. Its content is an object holding each part's content under the part's key.
  * @throws Error when a key looks like an integer or is `__proto__`, since its place in the order is lost.
  */
 export function stack<const TParts extends Record<string, Part>>(
   parts: TParts,
+  options: { readonly gap?: (theme: Theme) => number } = {},
 ): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
   const { entries, schema } = keyedParts("stack", parts);
+  const { gap = (theme: Theme) => theme.gap } = options;
   return {
     schema,
     layout: (content, theme, maxWidth) =>
       stacked(
         entries.map(([key, part]) => part.layout(content[key], theme, maxWidth)),
-        theme.gap,
+        gap(theme),
       ),
   };
 }
@@ -171,7 +221,7 @@ function stacked(blocks: readonly Block[], gap: number): Block {
 
 /**
  * Parts set side by side, the theme's gap apart, in the order of `parts`' keys, each centred in the
- * row's height. Its content is an object holding each part's content under the part's key.
+ * row's height, or set at its top when `align` is `"start"`. Its content is an object holding each part's content under the part's key.
  *
  * Every part but `grow` is laid out first, each at the width the parts before it leave, and together
  * within half the row's width when it has a `grow` part. The `grow` part then takes all the width that is
@@ -182,10 +232,10 @@ function stacked(blocks: readonly Block[], gap: number): Block {
  */
 export function row<const TParts extends Record<string, Part>>(
   parts: TParts,
-  options: { readonly grow?: keyof TParts & string } = {},
+  options: { readonly grow?: keyof TParts & string; readonly align?: "center" | "start" } = {},
 ): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
   const { entries, schema } = keyedParts("row", parts);
-  const { grow } = options;
+  const { grow, align = "center" } = options;
   return {
     schema,
     layout(content, theme, maxWidth) {
@@ -223,7 +273,12 @@ export function row<const TParts extends Record<string, Part>>(
             const width = key === grow ? growWidth(box.width) : block.size.width;
             const { height } = block.size;
             const drawn = block.draw(
-              { x, y: box.y + (box.height - height) / 2, width, height },
+              {
+                x,
+                y: align === "start" ? box.y : box.y + (box.height - height) / 2,
+                width,
+                height,
+              },
               newId,
             );
             x += width + theme.gap;

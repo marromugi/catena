@@ -3,15 +3,25 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as v from "valibot";
 import { describe, expect, test } from "vitest";
+import { iconPathData } from "../icon";
 import { layoutText, textPathData, Typeface } from "../text";
 import {
+  activeRoundButton,
+  atWidth,
   badge,
   bodyText,
   buildNode,
+  centered,
   defineTheme,
   divider,
   element,
+  fitted,
   frame,
+  icon,
+  iconTile,
+  iconTitleBodyCard,
+  iconTitleCard,
+  iconTitleCardPair,
   image,
   imageTitleBodyCard,
   itemCard,
@@ -19,8 +29,10 @@ import {
   optional,
   panel,
   redBadge,
+  roundButton,
   row,
   section,
+  selectedIconTile,
   stack,
   statusDot,
   statusTitleCard,
@@ -896,5 +908,288 @@ describe("lists, the divider and sections", () => {
 
     expect(divider.layout(undefined, thick, 100).size).toEqual({ width: 100, height: 3 });
     expect(divider.layout(undefined, theme, -10).size).toEqual({ width: 0, height: 1 });
+  });
+});
+
+// An icon's path data on a grid `grid` wide, drawn at (x, y) `size` across, in `color` with lines `strokeWidth` wide as drawn.
+const iconSvg = (
+  pathData: string,
+  grid: number,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  strokeWidth: number,
+) =>
+  `<path d="${pathData}" transform="translate(${x} ${y}) scale(${size / grid})" fill="none" ` +
+  `stroke-width="${strokeWidth / (size / grid)}" stroke-linecap="round" stroke-linejoin="round" stroke="${color}"/>`;
+
+describe("icons and the kinds that carry one", () => {
+  test("a built-in icon is drawn by name, scaled from its grid to the look's size, in its colour", () => {
+    const block = icon.layout("spark", theme, 100);
+
+    expect(block.size).toEqual({ width: 20, height: 20 });
+    expect(block.draw({ x: 10, y: 20, width: 100, height: 100 }, noId).map(writeSvg)).toEqual([
+      `<path d="${iconPathData.spark}" transform="translate(10 20) scale(0.8333333333333334)" fill="none" ` +
+        `stroke-width="1.7999999999999998" stroke-linecap="round" stroke-linejoin="round" stroke="#d97757"/>`,
+    ]);
+  });
+
+  test("a built-in icon with no colour of its own is drawn in the look's colour", () => {
+    const block = icon.layout("plus", theme, 100);
+
+    expect(block.draw({ x: 0, y: 0, width: 20, height: 20 }, noId).map(writeSvg)).toEqual([
+      iconSvg(iconPathData.plus, 24, 0, 0, 20, "#1f1f1f", 1.5),
+    ]);
+  });
+
+  test("a user's own icon is its path data on its grid, drawn in the look's colour", () => {
+    const block = icon.layout({ pathData: "M 4 4 L 44 44", grid: 48 }, theme, 100);
+
+    expect(block.draw({ x: 0, y: 0, width: 20, height: 20 }, noId).map(writeSvg)).toEqual([
+      `<path d="M 4 4 L 44 44" transform="translate(0 0) scale(0.4166666666666667)" fill="none" ` +
+        `stroke-width="3.5999999999999996" stroke-linecap="round" stroke-linejoin="round" stroke="#1f1f1f"/>`,
+    ]);
+  });
+
+  test("an icon is a built-in name or a user's own icon on a grid wider than 0, and nothing else", () => {
+    const kind = frame(icon);
+    const notIcons: unknown[] = [
+      "sparks",
+      { pathData: "M 0 0", grid: 0 },
+      { pathData: "M 0 0", grid: Number.POSITIVE_INFINITY },
+      { pathData: "M 0 0" },
+      { pathData: "M 0 0", grid: 24, color: "red" },
+    ];
+    for (const content of notIcons) {
+      // @ts-expect-error not an icon
+      expect(() => buildNode(kind, theme, "i", content)).toThrow(
+        expect.objectContaining({ name: "InvalidNodeContentError" }),
+      );
+    }
+  });
+
+  test("the icon-and-title card sets the icon centred on the title's line, the title a gap after it", () => {
+    const node = buildNode(iconTitleCard, theme, "c", { icon: "spark", title: "ここで" });
+    expect(node.leaf.size).toEqual({ width: 320, height: 61 });
+
+    const titleData = textPathData(
+      layoutText("ここで", { fonts: fonts.bold, size: 14, lineHeight: 1.5, maxWidth: 248 }),
+      62,
+      40,
+    );
+    expect(node.draw({ x: 10, y: 20, width: 320, height: 61 })).toBe(
+      `<g><rect x="10.5" y="20.5" width="319" height="60" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
+        iconSvg(iconPathData.spark, 24, 30, 40.5, 20, "#d97757", 1.5) +
+        `<path d="${titleData}" fill="#1f1f1f"/></g>`,
+    );
+  });
+
+  test("the icon, title and body card sets the icon at the title's top, and the body under the title", () => {
+    // 25 characters of 11 fit a line of 280, and wrap to two in the 248 left beside the icon.
+    const body = "あ".repeat(25);
+    const node = buildNode(iconTitleBodyCard, theme, "c", {
+      icon: "spark",
+      text: { title: "ここで", body },
+    });
+    expect(node.leaf.size.width).toBe(320);
+    // 20 + 21 + 12 + 35.2 + 20
+    expect(node.leaf.size.height).toBeCloseTo(108.2, 6);
+
+    const bodyData = textPathData(
+      layoutText(body, { fonts: fonts.regular, size: 11, lineHeight: 1.6, maxWidth: 248 }),
+      62,
+      73,
+    );
+    const svg = node.draw({ x: 10, y: 20, ...node.leaf.size });
+    expect(svg).toContain(iconSvg(iconPathData.spark, 24, 30, 40, 20, "#d97757", 1.5));
+    expect(svg).toContain(`<path d="${bodyData}" fill="#8c8c8c"/>`);
+  });
+
+  test("the panel of two icon-and-title cards sets them side by side, each as wide as a node", () => {
+    const node = buildNode(iconTitleCardPair, theme, "p", {
+      first: { icon: "spark", title: "ここで" },
+      second: { icon: "plus", title: "ここで" },
+    });
+    // 12 + 320 + 12 + 320 + 12 across, 12 + 61 + 12 down
+    expect(node.leaf.size).toEqual({ width: 676, height: 85 });
+
+    const svg = node.draw({ x: 0, y: 0, width: 676, height: 85 });
+    expect([...svg.matchAll(/<rect [^>]*>/g)].map(([rect]) => rect)).toEqual([
+      `<rect x="0.5" y="0.5" width="675" height="84" rx="10" fill="#ffffff" stroke="#ebebeb" stroke-width="1"/>`,
+      `<rect x="12.5" y="12.5" width="319" height="60" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
+      `<rect x="344.5" y="12.5" width="319" height="60" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
+    ]);
+    expect(svg).toContain(iconSvg(iconPathData.plus, 24, 364, 32.5, 20, "#1f1f1f", 1.5));
+  });
+
+  test("the icon tile is a square card around its icon, with the caption and sub-caption centred under it", () => {
+    // Eight characters of 14 make a caption 112 wide, wider than the 72 of the tile.
+    const caption = "あ".repeat(8);
+    const node = buildNode(iconTile, theme, "t", {
+      icon: "service",
+      label: { caption, subcaption: "あい" },
+    });
+    expect(node.leaf.size.width).toBe(112);
+    // 72 + 12 + 21 + 2 + 17.6
+    expect(node.leaf.size.height).toBeCloseTo(124.6, 6);
+
+    const captionData = textPathData(
+      layoutText(caption, { fonts: fonts.regular, size: 14, lineHeight: 1.5, maxWidth: 320 }),
+      10,
+      104,
+    );
+    const subcaptionData = textPathData(
+      layoutText("あい", { fonts: fonts.regular, size: 11, lineHeight: 1.6, maxWidth: 320 }),
+      55,
+      127,
+    );
+    expect(node.draw({ x: 10, y: 20, ...node.leaf.size })).toBe(
+      `<g><rect x="30.5" y="20.5" width="71" height="71" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
+        iconSvg(iconPathData.service, 24, 50, 40, 32, "#1f1f1f", 2) +
+        `<path d="${captionData}" fill="#1f1f1f"/>` +
+        `<path d="${subcaptionData}" fill="#8c8c8c"/></g>`,
+    );
+  });
+
+  test("an icon tile without a sub-caption, or without a label, leaves no room for it", () => {
+    expect(
+      buildNode(iconTile, theme, "t", { icon: "spark", label: { caption: "あ" } }).leaf.size,
+    ).toEqual({ width: 72, height: 105 });
+    expect(buildNode(iconTile, theme, "t", { icon: "spark" }).leaf.size).toEqual({
+      width: 72,
+      height: 72,
+    });
+    expect(buildNode(iconTile, theme, "t", { icon: "spark", label: {} }).leaf.size).toEqual({
+      width: 72,
+      height: 72,
+    });
+  });
+
+  test("the selected icon tile is the icon tile in the selected card's look", () => {
+    const node = buildNode(selectedIconTile, theme, "t", { icon: "spark" });
+
+    expect(node.leaf.size).toEqual({ width: 72, height: 72 });
+    expect(node.draw({ x: 0, y: 0, width: 72, height: 72 })).toBe(
+      `<g><rect x="0.5" y="0.5" width="71" height="71" rx="8" fill="#fdeee2" stroke="#eda866" stroke-width="1"/>` +
+        iconSvg(iconPathData.spark, 24, 20, 20, 32, "#d97757", 2) +
+        `</g>`,
+    );
+  });
+
+  test("the round buttons are a circle around a small icon, the active one in blue", () => {
+    const plus = buildNode(roundButton, theme, "b", "plus");
+    expect(plus.leaf.size).toEqual({ width: 30, height: 30 });
+    expect(plus.draw({ x: 0, y: 0, width: 30, height: 30 })).toBe(
+      `<g><rect x="0.5" y="0.5" width="29" height="29" rx="15" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
+        iconSvg(iconPathData.plus, 24, 8, 8, 14, "#1f1f1f", 1.5) +
+        `</g>`,
+    );
+
+    const info = buildNode(activeRoundButton, theme, "b", "info");
+    expect(info.leaf.size).toEqual({ width: 30, height: 30 });
+    expect(info.draw({ x: 0, y: 0, width: 30, height: 30 })).toBe(
+      `<g><rect x="1" y="1" width="28" height="28" rx="15" fill="#edf1fe" stroke="#3e63dd" stroke-width="2"/>` +
+        iconSvg(iconPathData.info, 24, 8, 8, 14, "#3e63dd", 1.5) +
+        `</g>`,
+    );
+  });
+
+  test("a fitted card draws at its own size at the top-left of a larger box", () => {
+    const block = fitted(fixed(10, 6), (t) => t.card).layout(null, theme, 300);
+
+    expect(block.size).toEqual({ width: 50, height: 46 });
+    expect(block.draw({ x: 5, y: 7, width: 300, height: 300 }, noId).map(writeSvg)).toEqual([
+      `<rect x="5.5" y="7.5" width="49" height="45" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
+      `<rect x="25" y="27" width="10" height="6"/>`,
+    ]);
+  });
+
+  test("a centred part draws at its own size across the middle of its box", () => {
+    const block = centered(fixed(10, 6)).layout(null, theme, 300);
+
+    expect(block.size).toEqual({ width: 10, height: 6 });
+    expect(block.draw({ x: 5, y: 7, width: 100, height: 50 }, noId).map(writeSvg)).toEqual([
+      `<rect x="50" y="7" width="10" height="6"/>`,
+    ]);
+  });
+
+  test("a part at a width is laid out at that width, whatever width it is given", () => {
+    // 20 characters of 11 fit one line of 220.
+    const block = atWidth(bodyText, () => 220).layout("あ".repeat(20), theme, 50);
+
+    expect(block.size.width).toBe(220);
+    expect(block.size.height).toBeCloseTo(17.6, 6);
+  });
+
+  test("a stack sets its parts the gap it is given apart", () => {
+    const kind = stack({ a: fixed(10, 10), b: fixed(10, 10) }, { gap: () => 3 });
+
+    expect(kind.layout({ a: null, b: null }, theme, 100).size.height).toBe(23);
+  });
+
+  test("a row aligned at the start sets each part at its top", () => {
+    const block = row({ a: fixed(10, 4), b: fixed(10, 20) }, { align: "start" }).layout(
+      { a: null, b: null },
+      theme,
+      100,
+    );
+
+    expect(block.draw({ x: 0, y: 5, width: 100, height: 20 }, noId).map(writeSvg)).toEqual([
+      `<rect x="0" y="5" width="10" height="4"/>`,
+      `<rect x="22" y="5" width="10" height="20"/>`,
+    ]);
+  });
+
+  test("overrides of the icon, tile, caption and button looks reach what is drawn with them", () => {
+    const custom = defineTheme(fonts, {
+      icon: { size: 24, colors: {} },
+      tileIcon: { size: 40 },
+      selectedCard: { fill: "orange" },
+      caption: { size: 20 },
+      captionGap: 10,
+      button: { padding: 4 },
+      buttonIcon: { color: "green" },
+      activeButton: { stroke: "navy" },
+      activeButtonIcon: { strokeWidth: 3 },
+    });
+
+    const spark = icon.layout("spark", custom, 100);
+    expect(spark.size.width).toBe(24);
+    expect(spark.draw({ x: 0, y: 0, width: 24, height: 24 }, noId).map(writeSvg)[0]).toContain(
+      `stroke="#1f1f1f"`,
+    );
+    const tile = buildNode(iconTile, custom, "t", {
+      icon: "spark",
+      label: { caption: "あ", subcaption: "あ" },
+    });
+    // 80 + 12 + 30 + 10 + 17.6
+    expect(tile.leaf.size.height).toBeCloseTo(149.6, 6);
+    expect(
+      buildNode(selectedIconTile, custom, "t", { icon: "spark" }).draw({
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 80,
+      }),
+    ).toContain(`fill="orange"`);
+    const plus = buildNode(roundButton, custom, "b", "plus");
+    expect(plus.leaf.size).toEqual({ width: 22, height: 22 });
+    expect(plus.draw({ x: 0, y: 0, width: 22, height: 22 })).toContain(`stroke="green"`);
+    const info = buildNode(activeRoundButton, custom, "b", "info").draw({
+      x: 0,
+      y: 0,
+      width: 30,
+      height: 30,
+    });
+    expect(info).toContain(`stroke="navy"`);
+    expect(info).toContain(`stroke-width="${3 / (14 / 24)}"`);
+  });
+
+  test("an icon look given as undefined keeps its default", () => {
+    const custom = defineTheme(fonts, { icon: { size: undefined }, captionGap: undefined });
+
+    expect(custom.icon.size).toBe(20);
+    expect(custom.captionGap).toBe(2);
   });
 });

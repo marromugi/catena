@@ -1,8 +1,16 @@
 import * as v from "valibot";
+import { iconGrid, iconNames, iconPathData, iconStroke } from "../icon";
 import { layoutText, textPathData, type TextLayout } from "../text";
 import type { Part } from "./part";
 import { element, outlinedRect } from "./svg";
-import { TONES, type BadgeLook, type ImageLook, type TextLook, type Theme } from "./theme";
+import {
+  TONES,
+  type BadgeLook,
+  type IconLook,
+  type ImageLook,
+  type TextLook,
+  type Theme,
+} from "./theme";
 
 const TEXT = v.string();
 
@@ -152,3 +160,43 @@ export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF
 }
 
 export const image = imagePart((theme) => theme.image);
+
+/** A user's own icon: path data drawn on a square grid `grid` units wide, stroked as the built-in icons are. */
+const OWN_ICON = v.strictObject({
+  pathData: v.string(),
+  grid: v.pipe(v.number(), v.finite(), v.gtValue(0)),
+});
+export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
+
+const ICON = v.union([v.picklist(iconNames), OWN_ICON]);
+
+/**
+ * An icon in the look `lookOf` picks from the theme. Its content is a built-in icon's name, or the
+ * user's own icon. It is the look's size across, and draws at the top-left of its box.
+ */
+export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> {
+  return {
+    schema: ICON,
+    layout(content, theme) {
+      const { size, strokeWidth, color, colors } = lookOf(theme);
+      const { pathData, grid } =
+        typeof content === "string" ? { pathData: iconPathData[content], grid: iconGrid } : content;
+      const scale = size / grid;
+      return {
+        size: { width: size, height: size },
+        draw: (box) => [
+          element("path", {
+            d: pathData,
+            transform: `translate(${box.x} ${box.y}) scale(${scale})`,
+            ...iconStroke,
+            stroke: (typeof content === "string" ? colors[content] : undefined) ?? color,
+            "stroke-width": strokeWidth / scale,
+          }),
+        ],
+      };
+    },
+  };
+}
+
+/** The icon set before a title. */
+export const icon = iconPart((theme) => theme.icon);
