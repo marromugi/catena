@@ -1,6 +1,7 @@
 import { drawEdge } from "../edge";
 import type { Layout, PlacedNode } from "../layout";
 import { element, writeSvg, type Node, type SvgElement } from "../node";
+import { drawHeader, HEADER_HEIGHT, type DiagramHeader } from "./header";
 
 /** A canvas of one colour under a grid of round dots. */
 export interface DotGrid {
@@ -17,10 +18,11 @@ export interface EdgePaint {
   readonly strokeWidth: number;
 }
 
-/** How a diagram is drawn. What is left out is taken from the defaults. */
+/** How a diagram is drawn. What is left out is taken from the defaults; with no header, none is drawn. */
 export interface DiagramOptions {
   readonly background?: Partial<DotGrid>;
   readonly edgePaint?: Partial<EdgePaint>;
+  readonly header?: DiagramHeader;
 }
 
 /** The background a diagram gets when none is given. */
@@ -41,7 +43,8 @@ const DOT_PATTERN_ID = "catena-dots";
  * The layout as one SVG document of its size: the background over the whole canvas, then every edge,
  * then every placed node, group or child, whose id is in `nodes`, drawn at its box. A placed node with
  * no `Node` is not drawn, though its children are. Every document names its dot pattern `catena-dots`, so
- * documents inlined in one HTML page show the first one's dot grid.
+ * documents inlined in one HTML page show the first one's dot grid. Given a header, the document is 72
+ * higher, the header is drawn over the background at its top, and the edges and nodes 72 lower, below it.
  * @throws RangeError when the dot radius or the edges' stroke width is below 0, the spacing is not above
  * 0, or any of them is not finite.
  */
@@ -57,22 +60,33 @@ export function drawDiagram(
       `An edge's stroke width must be a finite number 0 or more, not ${paint.strokeWidth}.`,
     );
   }
-  const { width, height } = layout;
-  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+  const { width } = layout;
   const edges = element(
     "g",
     { fill: "none", stroke: paint.stroke, "stroke-width": paint.strokeWidth },
     layout.edges.map((edge) => drawEdge(edge)),
   );
-  const drawn = placedNodes(layout.nodes).flatMap((placed) => {
-    const node = nodes.get(placed.id);
-    return node === undefined ? [] : [node.draw(placed.box)];
-  });
+  const drawn = [
+    writeSvg(edges),
+    ...placedNodes(layout.nodes).flatMap((placed) => {
+      const node = nodes.get(placed.id);
+      return node === undefined ? [] : [node.draw(placed.box)];
+    }),
+  ];
+  const { header } = options;
+  const height = layout.height + (header === undefined ? 0 : HEADER_HEIGHT);
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
   return [
     open,
     ...dotGrid(width, height, grid).map(writeSvg),
-    writeSvg(edges),
-    ...drawn,
+    ...(header === undefined
+      ? drawn
+      : [
+          ...drawHeader(width, header).map(writeSvg),
+          `<g transform="translate(0 ${HEADER_HEIGHT})">`,
+          ...drawn,
+          "</g>",
+        ]),
     "</svg>",
   ].join("");
 }
