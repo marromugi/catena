@@ -587,12 +587,11 @@ describe("drawDiagram with a header: any texts at any width", () => {
         }
         expect(apart(spans)).toBe(true);
         expect(titles(svg)).toEqual(titleAlone(width)(given.title ?? ""));
-        if (repository !== undefined && time !== undefined) {
-          const timeAlone = drawDiagram(empty(width), new Map(), {
-            header: { fonts, capturedAt: given.capturedAt },
-          });
-          expect(details(svg)[0]).toBe(details(timeAlone)[0]);
-        }
+        const bothDrawn = repository !== undefined && time !== undefined;
+        const timeAlone = drawDiagram(empty(width), new Map(), {
+          header: { fonts, capturedAt: given.capturedAt },
+        });
+        expect(bothDrawn ? details(svg)[0] : null).toBe(bothDrawn ? details(timeAlone)[0] : null);
       }),
       { numRuns: 300 },
     );
