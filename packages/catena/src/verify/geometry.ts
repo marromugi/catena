@@ -281,6 +281,15 @@ export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
   }
 }
 
+/**
+ * Where a stretch of a path lies: its end is `lead` from the path's start, and its start `tail` from the path's end.
+ * A stretch said to start at the path's start, whatever the path's length, has an infinite `tail`; one said to end at its end, an infinite `lead`.
+ */
+export interface Stretch {
+  readonly lead: number;
+  readonly tail: number;
+}
+
 /** Whether `next`, which starts where `segment` ends, goes straight on from it, level or upright. */
 function continues(segment: Segment, next: Segment): boolean {
   const level = isHorizontal(segment) && isHorizontal(next);
@@ -309,7 +318,7 @@ export function straightened(segments: readonly Segment[]): Segment[] {
  * The stretches left of a path once `lead` is cut from its start and `tail` from its end.
  * A stretch that is not cut is left as it is, whatever its length.
  */
-export function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
+function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
   const segments = segmentsOf(points);
   const cutsAtEnd: number[] = [];
   let behind = 0;
@@ -331,4 +340,33 @@ export function segmentsBetween(points: readonly Point[], lead: number, tail: nu
     passed += lengthOf(segment);
   });
   return kept;
+}
+
+/** A piece of a path that lies in none of a set of its stretches. */
+export interface Rest {
+  readonly segments: readonly Segment[];
+  /** The stretches that end where the piece starts, each by its place among those given. */
+  readonly after: readonly number[];
+  /** The stretches that start where the piece ends. */
+  readonly before: readonly number[];
+}
+
+/**
+ * What is left of a path outside the given stretches, piece by piece along it: one piece before each
+ * stretch and one after them all. A piece is empty where stretches meet or lie one on another.
+ */
+export function restsBetween(points: readonly Point[], stretches: readonly Stretch[]): Rest[] {
+  const inOrder = stretches
+    .map((stretch, at) => ({ ...stretch, at }))
+    .toSorted((one, other) => other.tail - one.tail);
+  return [...inOrder, undefined].map((next, passed) => {
+    const earlier = inOrder.slice(0, passed);
+    const from = Math.max(0, ...earlier.map(({ lead }) => lead));
+    const to = next === undefined ? 0 : next.tail;
+    return {
+      segments: segmentsBetween(points, from, to),
+      after: earlier.filter(({ lead }) => lead >= from - TOLERANCE).map(({ at }) => at),
+      before: inOrder.filter(({ tail }) => Math.abs(tail - to) <= TOLERANCE).map(({ at }) => at),
+    };
+  });
 }
