@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import { configFile, InvalidConfigError, readCustomIcons } from "../config";
@@ -10,7 +10,13 @@ import { InvalidDiagramFileError, readDiagramFile } from "./diagram-file";
 import { diagramJsonSchema } from "./diagram-schema";
 import { drawDiagramFile } from "./draw";
 
-export const USAGE = "Usage: catena draw <diagram.json> [-o <out.svg>]\n       catena schema";
+export const USAGE = [
+  "Usage: catena draw <diagram.json> [-o <out.svg>]",
+  "       catena schema",
+  "",
+  'catena schema writes the diagram file\'s JSON Schema beside the config and prints the "$schema" line that',
+  "points a diagram file at it. Keep the path in full: editors don't expand ~ or $HOME in it.",
+].join("\n");
 
 /** Where the command writes what it says. */
 export interface Output {
@@ -71,9 +77,9 @@ function onFile<T>(path: string, action: () => T): { value: T } | { refusal: str
   }
 }
 
-/** Where the diagram file's JSON Schema is written: beside the user's config file. */
+/** Where the diagram file's JSON Schema is written, as an absolute path: beside the user's config file. */
 function schemaFile(): string {
-  return join(dirname(configFile()), "diagram.schema.json");
+  return resolve(dirname(configFile()), "diagram.schema.json");
 }
 
 /**
@@ -108,7 +114,8 @@ function textIn(file: string): string | undefined {
  * of the config's. Once the config is read, it brings the diagram file's JSON Schema beside the config up
  * to date; when that can't be written it says so on stderr and draws all the same.
  *
- * `catena schema` writes that JSON Schema and prints where, or exits 1 when the config can't be read or
+ * `catena schema` writes that JSON Schema and prints the `"$schema"` line a diagram file points at it
+ * with, its absolute path; or exits 1 when the config can't be read or
  * the schema written.
  *
  * Words that are not a command exit 2.
@@ -149,7 +156,7 @@ function schemaCommand(stdout: Output, stderr: Output): number {
     stderr.write(`catena: ${written.refusal}\n`);
     return 1;
   }
-  stdout.write(`${file}\n`);
+  stdout.write(`"$schema": ${JSON.stringify(file)}\n`);
   return 0;
 }
 

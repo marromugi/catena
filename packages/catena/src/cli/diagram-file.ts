@@ -104,7 +104,9 @@ export class InvalidDiagramFileError extends Error {
 }
 
 const DIRECTION = v.picklist(["down", "right"]);
-const CELL = v.strictObject({ row: v.number(), column: v.number() });
+/** A finite number: JSON such as `1e999` parses to Infinity. */
+const FINITE = v.pipe(v.number(), v.finite());
+const CELL = v.strictObject({ row: FINITE, column: FINITE });
 
 /** A group of nodes, each child read by `node`. */
 function groupOf<TNode extends v.GenericSchema>(node: TNode) {
@@ -134,8 +136,8 @@ function diagramFileOf<TNode extends v.GenericSchema>(node: TNode) {
       v.strictObject({
         canvas: v.optional(v.string()),
         dot: v.optional(v.string()),
-        dotRadius: v.optional(v.pipe(v.number(), v.minValue(0))),
-        spacing: v.optional(v.pipe(v.number(), v.gtValue(0))),
+        dotRadius: v.optional(v.pipe(FINITE, v.minValue(0))),
+        spacing: v.optional(v.pipe(FINITE, v.gtValue(0))),
       }),
     ),
   });

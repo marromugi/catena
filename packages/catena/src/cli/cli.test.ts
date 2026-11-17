@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   utimesSync,
@@ -652,6 +653,9 @@ describe("the catena command", () => {
   });
 });
 
+/** The line `catena schema` prints for the schema at `path`. */
+const schemaLine = (path: string) => `"$schema": ${JSON.stringify(path)}\n`;
+
 /** What the diagram file's JSON Schema file holds for the custom icons `names`. */
 const expectedFor = (names: readonly string[]) =>
   `${JSON.stringify(diagramJsonSchema(names), null, 2)}\n`;
@@ -674,9 +678,9 @@ describe("the diagram file's JSON Schema", () => {
 
   const written = () => readFileSync(schemaPath, "utf8");
 
-  test("catena schema writes it beside the config, naming the config's icons, and prints where", () => {
+  test('catena schema writes it beside the config, naming the config\'s icons, and prints the "$schema" line pointing at it', () => {
     writeConfig(["mine"]);
-    expect(runWith(["schema"])).toEqual({ code: 0, stdout: `${schemaPath}\n`, stderr: "" });
+    expect(runWith(["schema"])).toEqual({ code: 0, stdout: schemaLine(schemaPath), stderr: "" });
     expect(written()).toBe(expectedFor(["mine"]));
   });
 
@@ -685,7 +689,7 @@ describe("the diagram file's JSON Schema", () => {
     vi.stubEnv("CATENA_CONFIG_DIR", missing);
     try {
       const path = join(missing, "diagram.schema.json");
-      expect(runWith(["schema"])).toEqual({ code: 0, stdout: `${path}\n`, stderr: "" });
+      expect(runWith(["schema"])).toEqual({ code: 0, stdout: schemaLine(path), stderr: "" });
       expect(readFileSync(path, "utf8")).toBe(expectedFor([]));
     } finally {
       vi.stubEnv("CATENA_CONFIG_DIR", configDirectory);
@@ -720,6 +724,15 @@ describe("the diagram file's JSON Schema", () => {
     expect(written()).toBe(expectedFor(["ours"]));
   });
 
+  test.each([
+    ["isn't there", () => join(directory, "missing.json")],
+    ["is refused", () => fileOf(text(naming("nope")))],
+  ])("catena draw writes it before reading the diagram file, so also when that %s", (_, path) => {
+    writeConfig(["mine"]);
+    expect(runWith(["draw", path()]).code).toBe(1);
+    expect(written()).toBe(expectedFor(["mine"]));
+  });
+
   test("catena draw leaves it alone when it holds what would be written", () => {
     writeConfig(["mine"]);
     writeFileSync(schemaPath, expectedFor(["mine"]));
@@ -747,19 +760,24 @@ describe("the diagram file's JSON Schema", () => {
     });
   });
 
-  test("from outside the repo, catena schema writes a schema a diagram file points at to check its icon names", () => {
-    writeConfig(["mine"]);
+  test("from outside the repo, catena schema prints the line a diagram file checks its icon names with", () => {
     const bin = fileURLToPath(new URL("../../bin/catena.js", import.meta.url));
-    const elsewhere = mkdtempSync(join(tmpdir(), "catena-elsewhere-"));
+    const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "catena-elsewhere-")));
     try {
+      mkdirSync(join(elsewhere, "config"));
+      writeFileSync(join(elsewhere, "config", "config.json"), text({ icons: { mine: ownIcon } }));
       const printed = execFileSync(bin, ["schema"], {
         cwd: elsewhere,
-        env: { ...process.env, CATENA_CONFIG_DIR: configDirectory },
+        env: { ...process.env, CATENA_CONFIG_DIR: "config" },
         encoding: "utf8",
       });
-      expect(printed).toBe(`${schemaPath}\n`);
-      const validate = new Ajv().compile(JSON.parse(readFileSync(printed.trim(), "utf8")));
-      const pointing = (icon: string) => ({ $schema: printed.trim(), ...naming(icon) });
+      const absolute = join(elsewhere, "config", "diagram.schema.json");
+      expect(printed).toBe(schemaLine(absolute));
+      const { $schema } = v.parse(v.object({ $schema: v.string() }), JSON.parse(`{${printed}}`));
+      const validate = new Ajv({ strictTuples: false }).compile(
+        JSON.parse(readFileSync($schema, "utf8")),
+      );
+      const pointing = (icon: string) => ({ $schema, ...naming(icon) });
       expect([validate(pointing("spark")), validate(pointing("mine"))]).toEqual([true, true]);
       expect(validate(pointing("sprak"))).toBe(false);
     } finally {
