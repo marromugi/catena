@@ -3,7 +3,7 @@ import { iconGrid, iconNames, iconPathData, iconStroke } from "../icon";
 import type { Rect } from "../layout";
 import { layoutText, textPathData, type TextLayout } from "../text";
 import type { Part } from "./part";
-import { element, outlinedRect } from "./svg";
+import { element, outlinedRect, type SvgElement } from "./svg";
 import {
   TONES,
   type BadgeLook,
@@ -190,55 +190,146 @@ export const image = imagePart((theme) => theme.image);
 
 const FINITE = v.pipe(v.number(), v.finite());
 const BREADTH = v.pipe(v.number(), v.finite(), v.gtValue(0));
+const VIEW_BOX = v.strictObject({ x: FINITE, y: FINITE, width: BREADTH, height: BREADTH });
+const COLOR = v.pipe(v.string(), v.nonEmpty());
 
 /**
  * A user's own icon: path data in the area `viewBox` names, as an SVG `viewBox` does, either stroked as
- * the built-in icons are or filled.
+ * the built-in icons are or filled, in the look's colour.
  */
 const OWN_ICON = v.strictObject({
   pathData: v.string(),
-  viewBox: v.strictObject({ x: FINITE, y: FINITE, width: BREADTH, height: BREADTH }),
+  viewBox: VIEW_BOX,
   paint: v.picklist(["stroke", "fill"]),
 });
 export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
 
-const ICON = v.union([v.picklist(iconNames), OWN_ICON]);
+/**
+ * One shape of a logo, in its own colour: filled, or stroked `width` across in its view box's units with
+ * the built-in icons' round caps and joins.
+ */
+const LOGO_SHAPE = v.variant("paint", [
+  v.strictObject({ pathData: v.string(), paint: v.literal("fill"), color: COLOR }),
+  v.strictObject({
+    pathData: v.string(),
+    paint: v.literal("stroke"),
+    color: COLOR,
+    width: BREADTH,
+  }),
+]);
+export type LogoShape = v.InferOutput<typeof LOGO_SHAPE>;
+
+/** A user's own logo: shapes in the area `viewBox` names, drawn in order, each in its own colour. */
+const OWN_LOGO = v.strictObject({
+  viewBox: VIEW_BOX,
+  shapes: v.pipe(v.array(LOGO_SHAPE), v.nonEmpty()),
+});
+export type OwnLogo = v.InferOutput<typeof OWN_LOGO>;
+
+/** A user's own image, by its href, written into the SVG as given: catena never fetches it. */
+const OWN_IMAGE = v.strictObject({ href: v.string() });
+export type OwnImage = v.InferOutput<typeof OWN_IMAGE>;
+
+const ICON = v.union([v.picklist(iconNames), OWN_ICON, OWN_LOGO, OWN_IMAGE]);
 
 const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
 
 /**
- * An icon in the look `lookOf` picks from the theme. Its content is a built-in icon's name, or the
- * user's own icon. It is the look's size across, its area scaled to fit that square and centred in it,
- * and draws at the top-left of its box.
+ * An icon in the look `lookOf` picks from the theme. It is the look's size across and draws at the
+ * top-left of its box. Its content is one of:
+ * - a built-in icon's name;
+ * - the user's own icon ({@link OwnIcon}), in the look's colour;
+ * - the user's own logo of shapes ({@link OwnLogo}), each in the colour it gives;
+ * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square.
+ * An icon or logo has its view box scaled to fit the square and centred in it.
+ *
+ * catena ships no logos: a logo or image is one the caller passes.
  */
 export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> {
   return {
     schema: ICON,
     layout(content, theme) {
-      const { size, strokeWidth, color, colors } = lookOf(theme);
-      const { pathData, viewBox, paint }: OwnIcon =
-        typeof content === "string"
-          ? { pathData: iconPathData[content], viewBox: BUILT_IN_VIEW_BOX, paint: "stroke" }
-          : content;
-      const ink = (typeof content === "string" ? colors[content] : undefined) ?? color;
-      const longest = Math.max(viewBox.width, viewBox.height);
-      const scale = size / longest;
-      const left = (size * (1 - viewBox.width / longest)) / 2 - viewBox.x * scale;
-      const top = (size * (1 - viewBox.height / longest)) / 2 - viewBox.y * scale;
+      const look = lookOf(theme);
+      const { size } = look;
       return {
         size: { width: size, height: size },
-        draw: (box) => [
-          element("path", {
-            d: pathData,
-            transform: `translate(${box.x + left} ${box.y + top}) scale(${scale})`,
-            ...(paint === "fill"
-              ? { fill: ink }
-              : { ...iconStroke, stroke: ink, "stroke-width": strokeWidth / scale }),
-          }),
-        ],
+        draw: (box) => {
+          if (typeof content === "string") {
+            const ink = look.colors[content] ?? look.color;
+            return [
+              oneColourIcon(iconPathData[content], BUILT_IN_VIEW_BOX, "stroke", ink, look, box),
+            ];
+          }
+          if ("href" in content) {
+            const { href } = content;
+            return [
+              element("image", {
+                x: box.x,
+                y: box.y,
+                width: size,
+                height: size,
+                href,
+                preserveAspectRatio: "xMidYMid meet",
+              }),
+            ];
+          }
+          if ("shapes" in content) {
+            const { transform } = fitViewBox(content.viewBox, size, box);
+            return [
+              element(
+                "g",
+                { transform },
+                content.shapes.map((shape) =>
+                  shape.paint === "fill"
+                    ? element("path", { d: shape.pathData, fill: shape.color })
+                    : element("path", {
+                        d: shape.pathData,
+                        ...iconStroke,
+                        stroke: shape.color,
+                        "stroke-width": shape.width,
+                      }),
+                ),
+              ),
+            ];
+          }
+          return [
+            oneColourIcon(content.pathData, content.viewBox, content.paint, look.color, look, box),
+          ];
+        },
       };
     },
   };
+}
+
+/** The transform that scales `viewBox` to fit a square `size` across at the top-left of `box`, centred in it. */
+function fitViewBox(
+  viewBox: OwnIcon["viewBox"],
+  size: number,
+  box: Rect,
+): { transform: string; scale: number } {
+  const longest = Math.max(viewBox.width, viewBox.height);
+  const scale = size / longest;
+  const left = (size * (1 - viewBox.width / longest)) / 2 - viewBox.x * scale;
+  const top = (size * (1 - viewBox.height / longest)) / 2 - viewBox.y * scale;
+  return { transform: `translate(${box.x + left} ${box.y + top}) scale(${scale})`, scale };
+}
+
+function oneColourIcon(
+  pathData: string,
+  viewBox: OwnIcon["viewBox"],
+  paint: OwnIcon["paint"],
+  ink: string,
+  { size, strokeWidth }: IconLook,
+  box: Rect,
+): SvgElement {
+  const { transform, scale } = fitViewBox(viewBox, size, box);
+  return element("path", {
+    d: pathData,
+    transform,
+    ...(paint === "fill"
+      ? { fill: ink }
+      : { ...iconStroke, stroke: ink, "stroke-width": strokeWidth / scale }),
+  });
 }
 
 /** The icon set before a title. */

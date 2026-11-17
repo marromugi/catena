@@ -50,6 +50,7 @@ import {
   type ThemeOverrides,
   writeSvg,
 } from "./index";
+import type { OwnLogo } from "./index";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -1104,6 +1105,95 @@ describe("icons and the kinds that carry one", () => {
       { pathData: "M 0 0", viewBox: { ...box, unit: "px" }, paint: "fill" },
       { pathData: 1, viewBox: box, paint: "fill" },
       { pathData: "M 0 0", viewBox: box, paint: "fill", color: "red" },
+    ];
+    for (const content of notIcons) {
+      // @ts-expect-error not an icon
+      expect(() => buildNode(kind, theme, "i", content)).toThrow(
+        expect.objectContaining({ name: "InvalidNodeContentError" }),
+      );
+    }
+  });
+
+  // Made-up marks: catena's tests carry no real company's logo or colours.
+  const ring = "M 24 4 A 20 20 0 1 1 23.9 4 Z";
+  const bar = "M 8 40 L 40 8";
+  const twoColourLogo: OwnLogo = {
+    viewBox: { x: 0, y: 0, width: 48, height: 48 },
+    shapes: [
+      { pathData: ring, paint: "fill", color: "#3a6ea5" },
+      { pathData: bar, paint: "stroke", color: "#e0a030", width: 4 },
+    ],
+  };
+  const madeUpImage =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 1'%3E" +
+    "%3Crect width='2' height='1' fill='%237a4fd0'/%3E%3C/svg%3E";
+
+  test("a user's own logo is its shapes in its view box, each in the colour it gives, scaled and centred in the icon's square", () => {
+    const node = buildNode(iconTitleCard, theme, "c", { icon: twoColourLogo, title: "ここで" });
+
+    expect(node.draw({ x: 10, y: 20, width: 320, height: 61 })).toContain(
+      `<g transform="translate(30 40.5) scale(0.4166666666666667)">` +
+        `<path d="${ring}" fill="#3a6ea5"/>` +
+        `<path d="${bar}" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke="#e0a030"/>` +
+        `</g>`,
+    );
+  });
+
+  test("a logo keeps its own colours where the look would paint a built-in icon white, and is fitted on a view box wider than tall", () => {
+    const wide: OwnLogo = {
+      viewBox: { x: 0, y: 0, width: 32, height: 16 },
+      shapes: [{ pathData: "M 0 0 H 32 V 16 H 0 Z", paint: "fill", color: "#2f8f6a" }],
+    };
+    const drawn = buildNode(activeRoundButton, theme, "b", wide).draw({
+      x: 0,
+      y: 0,
+      width: 34,
+      height: 34,
+    });
+
+    // The icon's square is (11, 11), 12 across; 32 by 16 scaled by 12 / 32 is 12 by 6, set 3 down.
+    expect(drawn).toContain(
+      `<g transform="translate(11 14) scale(0.375)"><path d="M 0 0 H 32 V 16 H 0 Z" fill="#2f8f6a"/></g>`,
+    );
+    expect(drawn).not.toContain("#ffffff");
+  });
+
+  test("a user's own image is drawn whole, fitted and centred in the icon's square, its href as given", () => {
+    const tile = buildNode(iconTile, theme, "t", { icon: { href: madeUpImage } });
+    expect(tile.draw({ x: 10, y: 20, ...tile.leaf.size })).toContain(
+      `<image x="30" y="40" width="32" height="32" href="${madeUpImage}" preserveAspectRatio="xMidYMid meet"/>`,
+    );
+
+    const button = buildNode(roundButton, theme, "b", { href: "logo.png" });
+    expect(button.draw({ x: 0, y: 0, width: 30, height: 30 })).toContain(
+      `<image x="8" y="8" width="14" height="14" href="logo.png" preserveAspectRatio="xMidYMid meet"/>`,
+    );
+  });
+
+  test("a logo has a view box and at least one shape, each with path data, a paint, a colour and, stroked, a width; an image has only an href", () => {
+    const kind = frame(icon);
+    const box = { x: 0, y: 0, width: 24, height: 24 };
+    const fill = { pathData: "M 0 0", paint: "fill", color: "#3a6ea5" };
+    const stroke = { pathData: "M 0 0", paint: "stroke", color: "#3a6ea5", width: 2 };
+    const notIcons: unknown[] = [
+      { viewBox: box, shapes: [] },
+      { viewBox: box },
+      { shapes: [fill] },
+      { viewBox: { ...box, width: 0 }, shapes: [fill] },
+      { viewBox: box, shapes: [fill], paint: "fill" },
+      { viewBox: box, shapes: [fill], href: "logo.png" },
+      { viewBox: box, shapes: [{ ...fill, color: "" }] },
+      { viewBox: box, shapes: [{ pathData: "M 0 0", paint: "fill" }] },
+      { viewBox: box, shapes: [{ ...fill, paint: "both" }] },
+      { viewBox: box, shapes: [{ ...fill, width: 2 }] },
+      { viewBox: box, shapes: [{ ...stroke, width: undefined }] },
+      { viewBox: box, shapes: [{ ...stroke, width: 0 }] },
+      { viewBox: box, shapes: [{ ...stroke, width: Number.POSITIVE_INFINITY }] },
+      { viewBox: box, shapes: [{ ...fill, pathData: 1 }] },
+      { viewBox: box, shapes: [fill, "spark"] },
+      { href: 1 },
+      { href: "logo.png", viewBox: box },
+      {},
     ];
     for (const content of notIcons) {
       // @ts-expect-error not an icon
