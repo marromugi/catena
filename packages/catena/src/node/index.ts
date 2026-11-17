@@ -47,7 +47,7 @@ export {
   title,
 } from "./parts";
 export { UnknownLogoError } from "./logo";
-export type { LogoShape, OwnImage, OwnLogo, RegisteredLogo } from "./logo";
+export type { LogoShape, OwnImage, OwnLogo, RegisteredLogo, RegistrableLogo } from "./logo";
 export type { OwnIcon } from "./parts";
 export { element, NO_SHADOW, writeSvg } from "./svg";
 export type { NewId, Outline, Shadow, SvgElement } from "./svg";
