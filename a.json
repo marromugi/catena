@@ -1,0 +1,6 @@
+{ "$schema": "/private/tmp/whole67/home/.config/catena/diagram.schema.json", "direction": "right",
+  "nodes": [
+    { "id": "u", "kind": "iconTile", "content": { "icon": "user", "label": { "caption": "User" } } },
+    { "id": "r", "kind": "iconTitleCard", "content": { "icon": "rocket", "title": "Launch (config SVG)" } },
+    { "id": "b", "kind": "iconTitleCard", "content": { "icon": "bolt", "title": "Fast (config path)" } } ],
+  "edges": [ { "id": "u>r", "from": "u", "to": "r" }, { "id": "r>b", "from": "r", "to": "b" } ] }

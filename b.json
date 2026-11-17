@@ -1,0 +1,2 @@
+{ "$schema": "/private/tmp/whole67/home/.config/catena/diagram.schema.json", "direction": "down",
+  "nodes": [ { "id": "x", "kind": "iconTile", "content": { "icon": "rocket", "label": { "caption": "Project B" } } } ], "edges": [] }
