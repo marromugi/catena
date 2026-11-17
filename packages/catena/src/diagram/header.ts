@@ -80,34 +80,55 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** The header across a document `width` wide, flush with its top, its bottom corners round. */
 export function drawHeader(width: number, header: DiagramHeader): SvgElement[] {
-  const { height, paddingX, clock, iconGap, itemGap } = LOOK;
-  const middle = (size: number) => (height - size) / 2;
-  const text = (set: TextLayout, x: number, look: TextLook) =>
-    element("path", { d: textPathData(set, x, middle(set.height)), fill: look.color });
-
+  const { paddingX, itemGap } = LOOK;
   const drawn = [...band(width)];
   let end = width - paddingX;
-  const time = fitted(
-    header.capturedAt,
-    LOOK.detail,
-    header,
-    end - paddingX - clock.size - iconGap,
-  );
+  const time = endingAt(end, header.capturedAt, LOOK.detail, header, CLOCK);
   if (time !== undefined) {
-    const x = end - time.width;
-    const iconX = x - iconGap - clock.size;
-    drawn.push(clockIcon(iconX, middle(clock.size)), text(time, x, LOOK.detail));
-    end = iconX - itemGap;
+    drawn.push(...time.drawn);
+    end = time.left - itemGap;
   }
-  const repository = fitted(header.repository?.name, LOOK.detail, header, end - paddingX);
+  const repository = endingAt(end, header.repository?.name, LOOK.detail, header);
   if (repository !== undefined) {
-    const x = end - repository.width;
-    drawn.push(text(repository, x, LOOK.detail));
-    end = x - itemGap;
+    drawn.push(...repository.drawn);
+    end = repository.left - itemGap;
   }
   const title = fitted(header.title, LOOK.title, header, end - paddingX);
-  if (title !== undefined) drawn.push(text(title, paddingX, LOOK.title));
+  if (title !== undefined) drawn.push(drawnText(title, paddingX, LOOK.title));
   return drawn;
+}
+
+/** Where `size` starts for it to sit in the middle of the band. */
+const middle = (size: number) => (LOOK.height - size) / 2;
+
+const drawnText = (set: TextLayout, x: number, look: TextLook) =>
+  element("path", { d: textPathData(set, x, middle(set.height)), fill: look.color });
+
+/** An icon drawn `gap` before the text it goes with, in a box `size` across. */
+interface LeadingIcon {
+  readonly size: number;
+  readonly gap: number;
+  draw(x: number, y: number): SvgElement;
+}
+
+/**
+ * `content` set to end at `end`, after `icon` when there is one: what is drawn and where its left end is,
+ * or nothing when the text is not drawn, and then no icon either.
+ */
+function endingAt(
+  end: number,
+  content: string | undefined,
+  look: TextLook,
+  header: DiagramHeader,
+  icon?: LeadingIcon,
+): { drawn: SvgElement[]; left: number } | undefined {
+  const iconWidth = icon === undefined ? 0 : icon.size + icon.gap;
+  const set = fitted(content, look, header, end - LOOK.paddingX - iconWidth);
+  if (set === undefined) return undefined;
+  const x = end - set.width;
+  if (icon === undefined) return { drawn: [drawnText(set, x, look)], left: x };
+  const iconX = x - icon.gap - icon.size;
+  return { drawn: [icon.draw(iconX, middle(icon.size)), drawnText(set, x, look)], left: iconX };
 }
 
 /** The white band and its shadow; its stroke lies inside the band and stops at the document's top. */
@@ -133,17 +154,21 @@ function band(width: number): SvgElement[] {
   ];
 }
 
-function clockIcon(x: number, y: number): SvgElement {
-  const { size, strokeWidth, color } = LOOK.clock;
-  const scale = size / iconGrid;
-  return element("path", {
-    d: iconPathData.clock,
-    transform: `translate(${x} ${y}) scale(${scale})`,
-    ...iconStroke,
-    stroke: color,
-    "stroke-width": strokeWidth / scale,
-  });
-}
+const CLOCK: LeadingIcon = {
+  size: LOOK.clock.size,
+  gap: LOOK.iconGap,
+  draw(x, y) {
+    const { size, strokeWidth, color } = LOOK.clock;
+    const scale = size / iconGrid;
+    return element("path", {
+      d: iconPathData.clock,
+      transform: `translate(${x} ${y}) scale(${scale})`,
+      ...iconStroke,
+      stroke: color,
+      "stroke-width": strokeWidth / scale,
+    });
+  },
+};
 
 const drawsNothing = (text: TextLayout) => textPathData(text, 0, 0) === "";
 
