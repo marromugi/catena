@@ -379,7 +379,7 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * middle of the group's side, and on inside the group to the node that is its end or holds it, as far in
  * as that end lies; it enters or leaves that end along the flow of the grid it is in. A group is made
  * longer at one end of that side where that keeps such an edge sound. An edge between a group and a node
- * inside it orders the nodes but is left out of the layout.
+ * inside it is left out of the layout and orders no nodes.
  *
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of
  * `graph.edges`, in canvas coordinates.
