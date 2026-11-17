@@ -17,7 +17,7 @@ export interface Node {
   readonly leaf: Leaf;
   /**
    * The node as SVG elements, in a `<g>`. The ids its elements carry are unique among the nodes of one
-   * graph; the same node drawn twice into one document repeats them.
+   * graph; nodes of two graphs, or the same node drawn twice, in one document can repeat them.
    */
   draw(box: Rect): string;
 }

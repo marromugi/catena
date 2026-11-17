@@ -631,13 +631,50 @@ describe("the image and the card with an image", () => {
     expect(clipRefs(drawn)).toEqual(["catena-n-1", "catena-n-2"]);
   });
 
-  test("gives nodes with different ids different element ids, each a valid SVG id", () => {
-    const drawnIds = ["a b", "a_20_b", "a-1", "a", `ノード "1"`].flatMap((id) => {
-      const node = buildNode(imageTitleBodyCard, theme, id, { image: SUNSET, title: "", body: "" });
-      return ids(node.draw({ x: 0, y: 0, ...node.leaf.size }));
+  const firstId = (nodeId: string) => {
+    const node = buildNode(imageTitleBodyCard, theme, nodeId, {
+      image: SUNSET,
+      title: "",
+      body: "",
     });
+    return ids(node.draw({ x: 0, y: 0, ...node.leaf.size }))[0];
+  };
 
-    expect(new Set(drawnIds).size).toBe(5);
+  test("writes the node id into its element ids, each character but a letter or digit as its code point", () => {
+    expect(firstId("aZ9")).toBe("catena-aZ9-1");
+    expect(firstId(`ノード "1"`)).toBe("catena-_30ce__30fc__30c9__20__22_1_22_-1");
+    expect(firstId(" b")).toBe("catena-_20_b-1");
+    expect(firstId("ȋ")).toBe("catena-_20b_-1");
+    expect(firstId("😀")).toBe("catena-_1f600_-1");
+  });
+
+  test("gives nodes with different ids different element ids, each a valid SVG id", () => {
+    const nodeIds = ["a b", "a-b", "ab", "a_b", "a_20_b", "a-1", "a", " b", "ȋ", "😀", "😁"];
+    const drawnIds = nodeIds.map(firstId);
+
+    expect(new Set(drawnIds).size).toBe(nodeIds.length);
     for (const id of drawnIds) expect(id).toMatch(/^[A-Za-z][\w-]*$/);
+  });
+
+  test("gives the same ids each time a node is drawn", () => {
+    const node = buildNode(imageTitleBodyCard, theme, "card", {
+      image: SUNSET,
+      title: "",
+      body: "",
+    });
+    const box = { x: 0, y: 0, ...node.leaf.size };
+
+    expect(node.draw(box)).toBe(node.draw(box));
+  });
+
+  test("draws at its own size at the top-left of a larger box", () => {
+    const square = defineTheme(fonts, { image: { aspectRatio: 1, radius: 0 } });
+    const block = image.layout(SUNSET, square, 100);
+    const drawn = block.draw({ x: 10, y: 20, width: 300, height: 300 }, () => "i").map(writeSvg);
+
+    expect(drawn[0]).toBe(
+      `<clipPath id="i"><rect x="10" y="20" width="100" height="100" rx="0"/></clipPath>`,
+    );
+    expect(drawn[1]).toMatch(/^<image x="10" y="20" width="100" height="100" /);
   });
 });

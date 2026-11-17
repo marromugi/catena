@@ -16,8 +16,9 @@ export function element(
 }
 
 /**
- * Gives an id no other element in the SVG document has, for an element another refers to, such as a
- * `<clipPath>`. A container passes the one it is given on to the parts it holds.
+ * Gives an id for an element another refers to, such as a `<clipPath>`. The ids are unique among the
+ * nodes of one graph drawn once into a document; two graphs, or one node drawn twice, can repeat them. A
+ * container passes the one it is given on to the parts it holds.
  */
 export type NewId = () => string;
 
