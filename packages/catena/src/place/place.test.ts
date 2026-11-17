@@ -4395,12 +4395,22 @@ describe("placeGraph: an edge whose end lies in a group inside a group", () => {
     });
   });
 
-  test("is left out between a group and a node inside a group inside it, however small that node is", () => {
-    const placement = checked(
-      place("down", [group("G", "down", [group("H", "right", [leaf("N", 1, 1)])])], ["G>N", "N>G"]),
+  test("is refused when the node inside is too short between an edge in and an edge out", () => {
+    expect(() =>
+      place(
+        "down",
+        [
+          leaf("B", 50, 30),
+          group("G", "right", [group("H", "down", [leaf("N", 50, 4)])]),
+          leaf("C", 50, 30),
+        ],
+        ["B>N", "N>C"],
+      ),
+    ).toThrow(
+      new InvalidGraphError(
+        'Node "N" is 4 long between the edges that enter it and the edges that leave it, less than the gap of 5 between edges.',
+      ),
     );
-
-    expect(paths(placement)).toEqual({});
   });
 
   test("is refused when the node inside is too narrow for it", () => {
