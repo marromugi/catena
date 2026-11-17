@@ -1327,7 +1327,11 @@ describe("icons and the kinds that carry one", () => {
         );
       }
       expect(() => icon.layout({ logo: "marks" }, registered, 100)).toThrow(
-        expect.objectContaining({ name: "UnknownLogoError", logo: "marks" }),
+        expect.objectContaining({
+          name: "UnknownLogoError",
+          logo: "marks",
+          message: `The theme holds no logo named "marks".`,
+        }),
       );
       expect(() => buildNode(iconTile, theme, "t", { icon: { logo: "mark" } })).toThrow(
         expect.objectContaining({ name: "InvalidNodeContentError" }),
@@ -1365,7 +1369,7 @@ describe("icons and the kinds that carry one", () => {
         expect(() => defineTheme(fonts, { logos: { mark: madeUpLogo, odd: bad } })).toThrow(
           expect.objectContaining({
             name: "InvalidThemeError",
-            message: expect.stringMatching(/^The logo "odd" is neither a logo nor an image: /),
+            message: expect.stringMatching(/^The logo "odd" is neither a logo nor an image: × \S/),
             cause: expect.objectContaining({ name: "ValiError" }),
           }),
         );
@@ -1422,13 +1426,31 @@ describe("icons and the kinds that carry one", () => {
       expect(defineTheme(fonts, { logos: undefined }).logos).toEqual({});
     });
 
-    test("any logo, registered, draws as it does inline", () => {
+    const names = fc.oneof(
+      fc.string(),
+      fc.constantFrom("__proto__", "toString", "constructor", "hasOwnProperty", "logo", "spark"),
+    );
+    const images = fc.record({ href: fc.string() });
+
+    test("any logo or image, registered under any name, draws as it does inline", () => {
       fc.assert(
-        fc.property(logos, offsets, offsets, (logo, x, y) => {
-          const withLogo = defineTheme(fonts, { logos: { it: logo } });
+        fc.property(names, fc.oneof(logos, images), offsets, offsets, (name, logo, x, y) => {
+          const withLogo = defineTheme(fonts, { logos: Object.fromEntries([[name, logo]]) });
           const at = { x, y, width: 20, height: 20 };
-          expect(icon.layout({ logo: "it" }, withLogo, 100).draw(at, noId)).toEqual(
+          expect(icon.layout({ logo: name }, withLogo, 100).draw(at, noId)).toEqual(
             icon.layout(logo, withLogo, 100).draw(at, noId),
+          );
+        }),
+      );
+    });
+
+    test("any name the theme does not hold is refused, carrying the name", () => {
+      fc.assert(
+        fc.property(names, names, (held, asked) => {
+          fc.pre(held !== asked);
+          const withLogo = defineTheme(fonts, { logos: Object.fromEntries([[held, madeUpLogo]]) });
+          expect(() => icon.layout({ logo: asked }, withLogo, 100)).toThrow(
+            expect.objectContaining({ name: "UnknownLogoError", logo: asked }),
           );
         }),
       );
