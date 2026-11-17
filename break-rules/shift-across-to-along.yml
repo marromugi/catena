@@ -1,0 +1,5 @@
+id: shift-across-to-along
+language: TypeScript
+rule:
+  pattern: shift.across
+fix: shift.along
