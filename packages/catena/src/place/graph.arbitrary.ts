@@ -50,7 +50,8 @@ function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
 }
 
 /**
- * Graphs of the kinds `placeGraph` lays out, once their leaves have room for their edges: nested groups,
+ * Graphs of the kinds `placeGraph` lays out when their leaves are large enough for their edges, which
+ * these are not always: nested groups,
  * both directions, sizes from 1 up that are not whole numbers, nodes that name a cell up to row 4 and
  * column 4, and edges between any two nodes, including edges that go back, edges from a node to itself,
  * and edges between a group and a node inside it.
