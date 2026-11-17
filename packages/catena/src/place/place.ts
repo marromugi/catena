@@ -98,8 +98,8 @@ function runsOf(
     }
     return [
       to === edge.to
-        ? { id: edge.id, from: outside, to }
-        : { id: edge.id, from: edge.from, to: outside },
+        ? { id: edge.id, from: outside, to, startsInside: false, endsInside: false }
+        : { id: edge.id, from: edge.from, to: outside, startsInside: false, endsInside: false },
     ];
   });
 }
@@ -108,11 +108,7 @@ function runsOf(
 function crossingInto(id: string, runs: readonly Run[]): Set<string> {
   return new Set(
     runs.flatMap((run) =>
-      run.from !== outside &&
-      run.to !== outside &&
-      ((run.from === id && run.startsInside) || (run.to === id && run.endsInside))
-        ? [run.id]
-        : [],
+      (run.from === id && run.startsInside) || (run.to === id && run.endsInside) ? [run.id] : [],
     ),
   );
 }
@@ -279,12 +275,16 @@ function arrange(
     if (run.from === outside) {
       crossings.set(
         run.id,
-        between.map((point) => movedPoint(point, -first.x, -first.y)),
+        [...between, ...insideOf(run.to, run.id, last)].map((point) =>
+          movedPoint(point, -first.x, -first.y),
+        ),
       );
     } else if (run.to === outside) {
       crossings.set(
         run.id,
-        between.map((point) => movedPoint(point, -last.x, -last.y)),
+        [...insideOf(run.from, run.id, first), ...between].map((point) =>
+          movedPoint(point, -last.x, -last.y),
+        ),
       );
     } else {
       const [start, second, ...rest] = withoutPointsOnRuns([

@@ -23,8 +23,20 @@ export type Run =
       /** Whether the edge ends inside `to`, not at it. */
       readonly endsInside: boolean;
     }
-  | { readonly id: string; readonly from: typeof outside; readonly to: string }
-  | { readonly id: string; readonly from: string; readonly to: typeof outside };
+  | {
+      readonly id: string;
+      readonly from: typeof outside;
+      readonly to: string;
+      readonly startsInside: false;
+      readonly endsInside: boolean;
+    }
+  | {
+      readonly id: string;
+      readonly from: string;
+      readonly to: typeof outside;
+      readonly startsInside: boolean;
+      readonly endsInside: false;
+    };
 
 /**
  * How an edge runs from its source to its target. It leaves a node, and enters one, along the flow:
