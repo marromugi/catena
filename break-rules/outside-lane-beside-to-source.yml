@@ -1,5 +1,0 @@
-id: outside-lane-beside-to-source
-language: TypeScript
-rule:
-  pattern: $F.laneBeside($C, outside)
-fix: $F.laneBeside($C, edge.from)
