@@ -22,6 +22,17 @@ const all = sample.flatMap((graph) => listed(graph.nodes));
 const leaves = all.flatMap(({ node }) => ("children" in node ? [] : [node]));
 const groups = all.flatMap(({ node }) => ("children" in node ? [node] : []));
 
+/** How many groups a chain from `node` inward holds, each flowing the other way than the one around it. */
+const alternating = (node: GraphNode): number =>
+  "children" in node
+    ? 1 +
+      Math.max(
+        ...node.children.map((child) =>
+          "children" in child && child.direction !== node.direction ? alternating(child) : 0,
+        ),
+      )
+    : 0;
+
 /** Every edge of the sample with where its ends are written in its own graph. */
 const edges = sample.flatMap((graph: Graph) => {
   const order = listed(graph.nodes);
@@ -35,6 +46,16 @@ const edges = sample.flatMap((graph: Graph) => {
       intoOwnGroup: order[from]?.around.includes(edge.to) === true,
       outOfOwnGroup: order[to]?.around.includes(edge.from) === true,
       sameGrid: order[from]?.around.join("/") === order[to]?.around.join("/"),
+      /** How many groups deeper than the grid that holds both ends the deeper end lies. */
+      depthBelowShared: (() => {
+        const outOf = order[from]?.around ?? [];
+        const into = order[to]?.around ?? [];
+        let shared = 0;
+        while (shared < outOf.length && outOf[shared] === into[shared]) {
+          shared += 1;
+        }
+        return Math.max(outOf.length, into.length) - shared;
+      })(),
     };
   });
 });
@@ -51,6 +72,10 @@ describe("graphs", () => {
     [
       "a group inside a group inside a group",
       all.some((each) => "children" in each.node && each.depth >= 2),
+    ],
+    [
+      "groups three deep, each flowing the other way than the one around it",
+      groups.some((each) => alternating(each) >= 3),
     ],
     [
       "a width that is not a whole number",
@@ -90,6 +115,10 @@ describe("graphs", () => {
     [
       "an edge between nodes of different grids",
       edges.some((edge) => !edge.sameGrid && !edge.intoOwnGroup && !edge.outOfOwnGroup),
+    ],
+    [
+      "an edge with an end three groups deeper than the grid that holds both ends",
+      edges.some((edge) => !edge.intoOwnGroup && !edge.outOfOwnGroup && edge.depthBelowShared >= 3),
     ],
     ["an edge from a node to a group around it", edges.some((edge) => edge.intoOwnGroup)],
     ["an edge from a group to a node inside it", edges.some((edge) => edge.outOfOwnGroup)],

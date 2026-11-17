@@ -17,15 +17,45 @@ const cell = fc.option(fc.record({ row: fc.nat({ max: 4 }), column: fc.nat({ max
   nil: undefined,
 });
 
-const { node: shape } = fc.letrec<{ node: Shape; leaf: Shape; group: Shape }>((tie) => ({
-  node: fc.oneof(tie("leaf"), tie("group")),
-  leaf: fc.record({ size, cell }),
-  group: fc.record({
-    direction,
-    cell,
-    children: fc.array(tie("node"), { minLength: 1, maxLength: 4 }),
+const turned = (flow: Direction): Direction => (flow === "down" ? "right" : "down");
+
+/** Groups inside groups, each flowing the other way than the one around it, the outermost first `flow`. */
+function nested(
+  flow: Direction,
+  outermostCell: Cell | undefined,
+  inmost: readonly Shape[],
+  besides: readonly (readonly Shape[])[],
+): Shape {
+  const [beside, ...further] = besides;
+  return {
+    direction: flow,
+    cell: outermostCell,
+    children:
+      beside === undefined ? inmost : [nested(turned(flow), undefined, inmost, further), ...beside],
+  };
+}
+
+const { node: shape } = fc.letrec<{ node: Shape; leaf: Shape; group: Shape; nest: Shape }>(
+  (tie) => ({
+    node: fc.oneof(tie("leaf"), tie("group"), tie("nest")),
+    leaf: fc.record({ size, cell }),
+    group: fc.record({
+      direction,
+      cell,
+      children: fc.array(tie("node"), { minLength: 1, maxLength: 4 }),
+    }),
+    nest: fc
+      .record({
+        direction,
+        cell,
+        inmost: fc.array(tie("leaf"), { minLength: 1, maxLength: 3 }),
+        besides: fc.array(fc.array(tie("node"), { maxLength: 2 }), { minLength: 2, maxLength: 4 }),
+      })
+      .map(({ direction: flow, cell: kept, inmost, besides }) =>
+        nested(flow, kept, inmost, besides),
+      ),
   }),
-}));
+);
 
 /** Names the nodes n0, n1, … in the order they are written, and lets only the first of a grid keep a cell two of them name. */
 function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
@@ -51,7 +81,7 @@ function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
 
 /**
  * Graphs of the kinds `placeGraph` lays out when their leaves are large enough for their edges, which
- * these are not always: nested groups,
+ * these are not always: nested groups, among them groups three to five deep whose flows alternate,
  * both directions, sizes from 1 up that are not whole numbers, nodes that name a cell up to row 4 and
  * column 4, and edges between any two nodes, including edges that go back, edges from a node to itself,
  * and edges between a group and a node inside it.
