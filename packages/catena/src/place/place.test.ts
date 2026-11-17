@@ -355,10 +355,10 @@ describe("placeGraph: a group", () => {
   });
 
   test.each([
-    ["out of the group", "A>C"],
-    ["from the group itself", "G>C"],
-    ["out of a group inside it", "B>C"],
-  ])("is put before a node that an edge %s leads to", (_, link) => {
+    ["out of the group", "A>C", [10, 10, 96, 126], [33, 156, 50, 30]],
+    ["from the group itself", "G>C", [10, 10, 90, 120], [30, 150, 50, 30]],
+    ["out of a group inside it", "B>C", [10, 10, 90, 120], [30, 150, 50, 30]],
+  ])("is put before a node that an edge %s leads to", (_, link, groupBox, nodeBox) => {
     const placement = place(
       "down",
       [
@@ -367,8 +367,8 @@ describe("placeGraph: a group", () => {
       ],
       [link],
     );
-    expect(boxes(placement)["G"]).toEqual([10, 10, 90, 120]);
-    expect(boxes(placement)["C"]).toEqual([30, 150, 50, 30]);
+    expect(boxes(placement)["G"]).toEqual(groupBox);
+    expect(boxes(placement)["C"]).toEqual(nodeBox);
   });
 
   test("is put after a node that leads into it", () => {
@@ -411,10 +411,10 @@ describe("placeGraph: a group", () => {
         ),
       ),
     ).toEqual({
-      C: [10, 20, 50, 30],
-      G: [80, 10, 140, 50],
-      A: [90, 20, 50, 30],
-      B: [160, 20, 50, 30],
+      C: [16, 26, 50, 30],
+      G: [86, 10, 152, 62],
+      A: [102, 26, 50, 30],
+      B: [172, 26, 50, 30],
     });
   });
 
@@ -997,24 +997,29 @@ describe("placeGraph: edges and groups", () => {
     const nested = nestedGraph();
 
     expect(boxes(nested)).toEqual({
-      G: [10, 16, 140, 50],
+      G: [10, 16, 140, 56],
       A: [20, 26, 50, 30],
       B: [90, 26, 50, 30],
-      C: [55, 86, 50, 30],
+      C: [55, 92, 50, 30],
     });
     expect(paths(nested)).toEqual({
+      "A>C #0": [
+        [70, 41],
+        [80, 41],
+        [80, 92],
+      ],
       "A>B #1": [
         [70, 41],
         [90, 41],
       ],
       "G>C #2": [
-        [80, 66],
-        [80, 86],
+        [80, 72],
+        [80, 92],
       ],
       "C>G #3": [
-        [80, 116],
-        [80, 124],
-        [158, 124],
+        [80, 122],
+        [80, 130],
+        [158, 130],
         [158, 8],
         [80, 8],
         [80, 16],
@@ -1023,7 +1028,12 @@ describe("placeGraph: edges and groups", () => {
   });
 
   test("lists the edges it draws in the order of the graph, whichever grid each is in", () => {
-    expect(nestedGraph().edges.map(({ id }) => id)).toEqual(["A>B #1", "G>C #2", "C>G #3"]);
+    expect(nestedGraph().edges.map(({ id }) => id)).toEqual([
+      "A>C #0",
+      "A>B #1",
+      "G>C #2",
+      "C>G #3",
+    ]);
   });
 
   test("makes a group larger by the lanes inside it", () => {
@@ -1075,6 +1085,28 @@ const checked = (placement: Layout, kept: Spacing = spacing): Layout => {
   expect(verify(placement, kept)).toEqual([]);
   return placement;
 };
+
+/** A group G that flows in `direction`, of leaves A, B, … one after another along its flow, each as long along the flow as given. */
+const lined = (direction: Direction, ...lengths: number[]): GraphNode => {
+  const [first, ...rest] = lengths.map((length, at) =>
+    direction === "right"
+      ? leaf(String.fromCodePoint(65 + at), length, 30, { row: 0, column: at })
+      : leaf(String.fromCodePoint(65 + at), 50, length, { row: at, column: 0 }),
+  );
+  if (first === undefined) {
+    throw new Error("A group of no leaves cannot be made.");
+  }
+  return group("G", direction, [first, ...rest]);
+};
+
+/** The points of each edge by its ends, written as the link that made it. */
+const pathsByEnds = (placement: Pick<Layout, "edges">): Record<string, number[][]> =>
+  Object.fromEntries(
+    placement.edges.map(({ from, to, points }) => [
+      `${from}>${to}`,
+      points.map(({ x, y }) => [x, y]),
+    ]),
+  );
 
 describe("placeGraph: an edge into or out of a group that flows as the grid around it does", () => {
   test("runs on through the middle of the group's side into a node of its first row", () => {
@@ -1946,6 +1978,2061 @@ describe("placeGraph: a corridor between two groups that an edge runs straight t
   });
 });
 
+describe("placeGraph: an edge into or out of a group that flows right in a grid that flows down", () => {
+  test("comes in at the middle of the side beside the group's nodes, runs along the outside's lane there, and turns along the lane before a node at the start of the group's flow", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), group("G", "right", filling(2, 1))], ["X>A"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [58, 10, 50, 30],
+      G: [10, 60, 146, 56],
+      A: [26, 76, 50, 30],
+      B: [96, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [83, 40],
+        [83, 68],
+        [18, 68],
+        [18, 91],
+        [26, 91],
+      ],
+    });
+  });
+
+  test("runs straight on along the lane before a node further along the group's flow, when that lane lies at the middle of the side", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), group("G", "right", filling(2, 1))], ["X>B"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [55, 10, 50, 30],
+      G: [10, 60, 140, 56],
+      A: [20, 76, 50, 30],
+      B: [90, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [80, 40],
+        [80, 91],
+        [90, 91],
+      ],
+    });
+  });
+
+  test("turns along the outside's lane to the lane before a node further along the group's flow", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 30, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [45, 10, 50, 30],
+      G: [10, 60, 120, 56],
+      A: [20, 76, 30, 30],
+      B: [70, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [70, 40],
+        [70, 68],
+        [60, 68],
+        [60, 91],
+        [70, 91],
+      ],
+    });
+  });
+
+  test("runs back along the outside's lane to the lane before a node that lies before the middle of the side", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), group("G", "right", filling(3, 1))], ["X>B"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [90, 10, 50, 30],
+      G: [10, 60, 210, 56],
+      A: [20, 76, 50, 30],
+      B: [90, 76, 50, 30],
+      C: [160, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [115, 40],
+        [115, 68],
+        [80, 68],
+        [80, 91],
+        [90, 91],
+      ],
+    });
+  });
+
+  test("comes in at the middle of a side of three nodes along the group's flow, and on to the last of them", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), group("G", "right", filling(3, 1))], ["X>C"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [90, 10, 50, 30],
+      G: [10, 60, 210, 56],
+      A: [20, 76, 50, 30],
+      B: [90, 76, 50, 30],
+      C: [160, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>C #0": [
+        [115, 40],
+        [115, 68],
+        [150, 68],
+        [150, 91],
+        [160, 91],
+      ],
+    });
+  });
+
+  test("runs from the lane after a node at the end of the group's flow along the outside's lane beside the group's nodes, and goes out at the middle of the side", () => {
+    const placement = checked(
+      place("down", [group("G", "right", filling(2, 1)), leaf("Y", 50, 30)], ["B>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 146, 56],
+      A: [20, 20, 50, 30],
+      B: [90, 20, 50, 30],
+      Y: [58, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "B>Y #0": [
+        [140, 35],
+        [148, 35],
+        [148, 58],
+        [83, 58],
+        [83, 86],
+      ],
+    });
+  });
+
+  test("goes out straight on from the lane after a node further back, when that lane lies at the middle of the side", () => {
+    const placement = checked(
+      place("down", [group("G", "right", filling(2, 1)), leaf("Y", 50, 30)], ["A>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 140, 56],
+      A: [20, 20, 50, 30],
+      B: [90, 20, 50, 30],
+      Y: [55, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [70, 35],
+        [80, 35],
+        [80, 86],
+      ],
+    });
+  });
+
+  test("turns from the lane after a node further back along the outside's lane", () => {
+    const placement = checked(place("down", [lined("right", 50, 30), leaf("Y", 50, 30)], ["A>Y"]));
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 120, 56],
+      A: [20, 20, 50, 30],
+      B: [90, 20, 30, 30],
+      Y: [45, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [70, 35],
+        [80, 35],
+        [80, 58],
+        [70, 58],
+        [70, 86],
+      ],
+    });
+  });
+
+  test("goes out of a group of three nodes along the group's flow from the first of them", () => {
+    const placement = checked(
+      place("down", [group("G", "right", filling(3, 1)), leaf("Y", 50, 30)], ["A>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 210, 56],
+      A: [20, 20, 50, 30],
+      B: [90, 20, 50, 30],
+      C: [160, 20, 50, 30],
+      Y: [90, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [70, 35],
+        [80, 35],
+        [80, 58],
+        [115, 58],
+        [115, 86],
+      ],
+    });
+  });
+
+  test("passes a group of one node, in beside it on one side and out on the other", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "right", [leaf("A", 50, 30)]), leaf("Y", 50, 30)],
+        ["X>A", "A>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [26, 10, 50, 30],
+      G: [10, 60, 82, 62],
+      A: [26, 76, 50, 30],
+      Y: [26, 142, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [51, 40],
+        [51, 68],
+        [18, 68],
+        [18, 91],
+        [26, 91],
+      ],
+      "A>Y #1": [
+        [76, 91],
+        [84, 91],
+        [84, 114],
+        [51, 114],
+        [51, 142],
+      ],
+    });
+  });
+
+  test("comes in to each node of a group of two nodes across its flow along that node's own lane", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "right", filling(2, 2))],
+        ["X>A", "X>C", "X>B", "X>D"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [66, 10, 50, 30],
+      G: [10, 60, 162, 106],
+      A: [41, 76, 50, 30],
+      B: [112, 76, 50, 30],
+      C: [41, 126, 50, 30],
+      D: [112, 126, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [91, 40],
+        [91, 68],
+        [28, 68],
+        [28, 91],
+        [41, 91],
+      ],
+      "X>C #1": [
+        [91, 40],
+        [91, 68],
+        [33, 68],
+        [33, 141],
+        [41, 141],
+      ],
+      "X>B #2": [
+        [91, 40],
+        [91, 68],
+        [99, 68],
+        [99, 91],
+        [112, 91],
+      ],
+      "X>D #3": [
+        [91, 40],
+        [91, 68],
+        [104, 68],
+        [104, 141],
+        [112, 141],
+      ],
+    });
+  });
+
+  test("goes out from each node of a group of two nodes across its flow along that node's own lane", () => {
+    const placement = checked(
+      place(
+        "down",
+        [group("G", "right", filling(2, 2)), leaf("Y", 50, 30)],
+        ["A>Y", "C>Y", "B>Y", "D>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 162, 106],
+      A: [20, 20, 50, 30],
+      B: [91, 20, 50, 30],
+      C: [20, 70, 50, 30],
+      D: [91, 70, 50, 30],
+      Y: [66, 136, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [70, 35],
+        [78, 35],
+        [78, 108],
+        [91, 108],
+        [91, 136],
+      ],
+      "C>Y #1": [
+        [70, 85],
+        [83, 85],
+        [83, 108],
+        [91, 108],
+        [91, 136],
+      ],
+      "B>Y #2": [
+        [141, 35],
+        [149, 35],
+        [149, 108],
+        [91, 108],
+        [91, 136],
+      ],
+      "D>Y #3": [
+        [141, 85],
+        [154, 85],
+        [154, 108],
+        [91, 108],
+        [91, 136],
+      ],
+    });
+  });
+
+  test("comes in to the nodes further along, and goes out from the nodes further back, of a group of three nodes across its flow", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "right", filling(2, 3)), leaf("Y", 50, 30)],
+        ["X>B", "X>D", "X>F", "A>Y", "C>Y", "E>Y"],
+      ),
+    );
+
+    expect(boxes(placement)["G"]).toEqual([10, 60, 208, 162]);
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [114, 40],
+        [114, 68],
+        [140, 68],
+        [140, 91],
+        [158, 91],
+      ],
+      "X>D #1": [
+        [114, 40],
+        [114, 68],
+        [145, 68],
+        [145, 141],
+        [158, 141],
+      ],
+      "X>F #2": [
+        [114, 40],
+        [114, 68],
+        [150, 68],
+        [150, 191],
+        [158, 191],
+      ],
+      "A>Y #3": [
+        [114, 91],
+        [122, 91],
+        [122, 214],
+        [114, 214],
+        [114, 242],
+      ],
+      "C>Y #4": [
+        [114, 141],
+        [127, 141],
+        [127, 214],
+        [114, 214],
+        [114, 242],
+      ],
+      "E>Y #5": [
+        [114, 191],
+        [132, 191],
+        [132, 214],
+        [114, 214],
+        [114, 242],
+      ],
+    });
+  });
+
+  test("runs between nodes of two such groups, out of one and into the other", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          group("G", "right", filling(2, 1)),
+          group("H", "right", [
+            leaf("C", 50, 30, { row: 0, column: 0 }),
+            leaf("D", 50, 30, { row: 0, column: 1 }),
+          ]),
+        ],
+        ["A>D", "B>C"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 152, 56],
+      A: [26, 20, 50, 30],
+      B: [96, 20, 50, 30],
+      H: [10, 86, 152, 56],
+      C: [26, 102, 50, 30],
+      D: [96, 102, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>D #0": [
+        [76, 35],
+        [86, 35],
+        [86, 117],
+        [96, 117],
+      ],
+      "B>C #1": [
+        [146, 35],
+        [154, 35],
+        [154, 58],
+        [86, 58],
+        [86, 94],
+        [18, 94],
+        [18, 117],
+        [26, 117],
+      ],
+    });
+  });
+
+  test("runs out of the group into a node of a group that flows as the grid does", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          group("G", "right", filling(2, 1)),
+          group("H", "down", [
+            leaf("C", 50, 30, { row: 0, column: 0 }),
+            leaf("D", 50, 30, { row: 1, column: 0 }),
+          ]),
+        ],
+        ["A>D", "B>C"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 152, 56],
+      A: [26, 20, 50, 30],
+      B: [96, 20, 50, 30],
+      H: [45, 86, 82, 106],
+      C: [61, 102, 50, 30],
+      D: [61, 152, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>D #0": [
+        [76, 35],
+        [86, 35],
+        [86, 94],
+        [53, 94],
+        [53, 142],
+        [86, 142],
+        [86, 152],
+      ],
+      "B>C #1": [
+        [146, 35],
+        [154, 35],
+        [154, 58],
+        [86, 58],
+        [86, 102],
+      ],
+    });
+  });
+
+  test("runs into the group out of a node of a group that flows as the grid does", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          group("H", "down", [
+            leaf("C", 50, 30, { row: 0, column: 0 }),
+            leaf("D", 50, 30, { row: 1, column: 0 }),
+          ]),
+          group("G", "right", filling(2, 1)),
+        ],
+        ["C>B", "D>A"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      H: [45, 10, 82, 106],
+      C: [61, 20, 50, 30],
+      D: [61, 70, 50, 30],
+      G: [10, 136, 152, 56],
+      A: [26, 152, 50, 30],
+      B: [96, 152, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "C>B #0": [
+        [86, 50],
+        [86, 60],
+        [53, 60],
+        [53, 108],
+        [86, 108],
+        [86, 167],
+        [96, 167],
+      ],
+      "D>A #1": [
+        [86, 100],
+        [86, 144],
+        [18, 144],
+        [18, 167],
+        [26, 167],
+      ],
+    });
+  });
+
+  test("goes back around the group into a node inside it", () => {
+    const placement = checked(
+      place("down", [group("G", "right", filling(2, 1)), leaf("Y", 50, 30)], ["Y>A"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 16, 146, 56],
+      A: [26, 32, 50, 30],
+      B: [96, 32, 50, 30],
+      Y: [176, 29, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "Y>A #0": [
+        [201, 59],
+        [201, 80],
+        [166, 80],
+        [166, 8],
+        [83, 8],
+        [83, 24],
+        [18, 24],
+        [18, 47],
+        [26, 47],
+      ],
+    });
+  });
+
+  test("goes back out of a node inside the group and around the group", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), group("G", "right", filling(2, 1))], ["B>X"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 29, 50, 30],
+      G: [80, 16, 146, 56],
+      A: [90, 26, 50, 30],
+      B: [160, 26, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "B>X #0": [
+        [210, 41],
+        [218, 41],
+        [218, 64],
+        [153, 64],
+        [153, 80],
+        [70, 80],
+        [70, 8],
+        [35, 8],
+        [35, 29],
+      ],
+    });
+  });
+
+  test("shares the stretch through the border with an edge into another node of the group", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), leaf("Z", 50, 30), group("G", "right", filling(2, 1))],
+        ["X>A", "Z>B"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [61, 10, 50, 30],
+      Z: [182, 10, 50, 30],
+      G: [10, 60, 152, 56],
+      A: [26, 76, 50, 30],
+      B: [96, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [86, 40],
+        [86, 68],
+        [18, 68],
+        [18, 91],
+        [26, 91],
+      ],
+      "Z>B #1": [
+        [207, 40],
+        [207, 50],
+        [86, 50],
+        [86, 91],
+        [96, 91],
+      ],
+    });
+  });
+
+  test("shares the stretch through the border with an edge out of another node of the group", () => {
+    const placement = checked(
+      place(
+        "down",
+        [group("G", "right", filling(2, 1)), leaf("Y", 50, 30), leaf("Z", 50, 30)],
+        ["A>Y", "B>Z"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 152, 56],
+      A: [26, 20, 50, 30],
+      B: [96, 20, 50, 30],
+      Y: [61, 86, 50, 30],
+      Z: [182, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [76, 35],
+        [86, 35],
+        [86, 86],
+      ],
+      "B>Z #1": [
+        [146, 35],
+        [154, 35],
+        [154, 58],
+        [86, 58],
+        [86, 76],
+        [207, 76],
+        [207, 86],
+      ],
+    });
+  });
+
+  test("passes the points where an edge to the group itself ends and an edge from it starts", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "right", filling(2, 1)), leaf("Y", 50, 30)],
+        ["X>A", "B>Y", "X>G", "G>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [61, 10, 50, 30],
+      G: [10, 60, 152, 62],
+      A: [26, 76, 50, 30],
+      B: [96, 76, 50, 30],
+      Y: [61, 142, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [86, 40],
+        [86, 68],
+        [18, 68],
+        [18, 91],
+        [26, 91],
+      ],
+      "B>Y #1": [
+        [146, 91],
+        [154, 91],
+        [154, 114],
+        [86, 114],
+        [86, 142],
+      ],
+      "X>G #2": [
+        [86, 40],
+        [86, 60],
+      ],
+      "G>Y #3": [
+        [86, 122],
+        [86, 142],
+      ],
+    });
+  });
+
+  test("goes out along a lane nearer the border than the lane of a node of the group that goes around beside it", () => {
+    const placement = checked(
+      place("down", [group("G", "right", filling(2, 1)), leaf("Y", 50, 30)], ["B>A", "B>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 152, 61],
+      A: [26, 20, 50, 30],
+      B: [96, 20, 50, 30],
+      Y: [61, 91, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "B>A #0": [
+        [146, 35],
+        [154, 35],
+        [154, 58],
+        [18, 58],
+        [18, 35],
+        [26, 35],
+      ],
+      "B>Y #1": [
+        [146, 35],
+        [154, 35],
+        [154, 63],
+        [86, 63],
+        [86, 91],
+      ],
+    });
+  });
+
+  test("is drawn to a group inside the group as to any node of it", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          leaf("X", 50, 30),
+          group("G", "right", [group("K", "down", [leaf("N", 50, 30)]), leaf("B", 50, 30)]),
+        ],
+        ["X>K"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [33, 10, 50, 30],
+      G: [10, 60, 96, 126],
+      K: [26, 76, 70, 50],
+      N: [36, 86, 50, 30],
+      B: [36, 146, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>K #0": [
+        [58, 40],
+        [58, 68],
+        [18, 68],
+        [18, 101],
+        [26, 101],
+      ],
+    });
+  });
+});
+
+describe("placeGraph: a group that flows the other way than the grid around it", () => {
+  test.each([
+    ["down", "right", "G>A"],
+    ["down", "right", "B>G"],
+    ["right", "down", "G>A"],
+    ["right", "down", "B>G"],
+  ] as const)(
+    "has no edge drawn between it and a node inside it, where the grid flows %s and the group %s, as %s",
+    (outer, inner, link) => {
+      const placement = place(outer, [group("G", inner, pair())], [link]);
+
+      expect(paths(placement)).toEqual({});
+    },
+  );
+
+  test("is made long enough between the edges that enter it and those that leave it by the lane inside it", () => {
+    const kept = { ...spacing, padding: 0, edgeToNode: 1, edgeGap: 12 };
+    const placement = checked(
+      place(
+        "down",
+        [group("G", "down", [group("K", "right", [leaf("N", 50, 3)]), leaf("B", 50, 30)])],
+        ["K>K", "N>B"],
+        kept,
+      ),
+      kept,
+    );
+
+    expect(boxes(placement)["K"]).toEqual([0, 24, 74, 37.5]);
+    expect(paths(placement)["N>B #1"]).toEqual([
+      [50, 36],
+      [62, 36],
+      [62, 49.5],
+      [37, 49.5],
+      [37, 85.5],
+    ]);
+  });
+});
+
+describe("placeGraph: an edge into or out of a group that flows down in a grid that flows right", () => {
+  test("comes in at the middle of the side beside the group's nodes, runs along the outside's lane there, and turns along the lane before a node at the start of the group's flow", () => {
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), group("G", "down", filling(1, 2))], ["X>A"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 48, 50, 30],
+      G: [80, 10, 76, 106],
+      A: [96, 26, 50, 30],
+      B: [96, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [60, 63],
+        [88, 63],
+        [88, 18],
+        [121, 18],
+        [121, 26],
+      ],
+    });
+  });
+
+  test("runs straight on along the lane before a node further along the group's flow, when that lane lies at the middle of the side", () => {
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), group("G", "down", filling(1, 2))], ["X>B"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 45, 50, 30],
+      G: [80, 10, 76, 100],
+      A: [96, 20, 50, 30],
+      B: [96, 70, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 60],
+        [121, 60],
+        [121, 70],
+      ],
+    });
+  });
+
+  test("turns along the outside's lane to the lane before a node further along the group's flow", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 30, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 55, 50, 30],
+      G: [80, 10, 76, 120],
+      A: [96, 20, 50, 30],
+      B: [96, 70, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 70],
+        [88, 70],
+        [88, 60],
+        [121, 60],
+        [121, 70],
+      ],
+    });
+  });
+
+  test("runs back along the outside's lane to the lane before a node that lies before the middle of the side", () => {
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), group("G", "down", filling(1, 3))], ["X>B"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 70, 50, 30],
+      G: [80, 10, 76, 150],
+      A: [96, 20, 50, 30],
+      B: [96, 70, 50, 30],
+      C: [96, 120, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 85],
+        [88, 85],
+        [88, 60],
+        [121, 60],
+        [121, 70],
+      ],
+    });
+  });
+
+  test("comes in at the middle of a side of three nodes along the group's flow, and on to the last of them", () => {
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), group("G", "down", filling(1, 3))], ["X>C"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 70, 50, 30],
+      G: [80, 10, 76, 150],
+      A: [96, 20, 50, 30],
+      B: [96, 70, 50, 30],
+      C: [96, 120, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>C #0": [
+        [60, 85],
+        [88, 85],
+        [88, 110],
+        [121, 110],
+        [121, 120],
+      ],
+    });
+  });
+
+  test("runs from the lane after a node at the end of the group's flow along the outside's lane beside the group's nodes, and goes out at the middle of the side", () => {
+    const placement = checked(
+      place("right", [group("G", "down", filling(1, 2)), leaf("Y", 50, 30)], ["B>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 106],
+      A: [20, 20, 50, 30],
+      B: [20, 70, 50, 30],
+      Y: [106, 48, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "B>Y #0": [
+        [45, 100],
+        [45, 108],
+        [78, 108],
+        [78, 63],
+        [106, 63],
+      ],
+    });
+  });
+
+  test("goes out straight on from the lane after a node further back, when that lane lies at the middle of the side", () => {
+    const placement = checked(
+      place("right", [group("G", "down", filling(1, 2)), leaf("Y", 50, 30)], ["A>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 100],
+      A: [20, 20, 50, 30],
+      B: [20, 70, 50, 30],
+      Y: [106, 45, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 50],
+        [45, 60],
+        [106, 60],
+      ],
+    });
+  });
+
+  test("turns from the lane after a node further back along the outside's lane", () => {
+    const placement = checked(place("right", [lined("down", 50, 30), leaf("Y", 50, 30)], ["A>Y"]));
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 120],
+      A: [20, 20, 50, 50],
+      B: [20, 90, 50, 30],
+      Y: [106, 55, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 70],
+        [45, 80],
+        [78, 80],
+        [78, 70],
+        [106, 70],
+      ],
+    });
+  });
+
+  test("goes out of a group of three nodes along the group's flow from the first of them", () => {
+    const placement = checked(
+      place("right", [group("G", "down", filling(1, 3)), leaf("Y", 50, 30)], ["A>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 150],
+      A: [20, 20, 50, 30],
+      B: [20, 70, 50, 30],
+      C: [20, 120, 50, 30],
+      Y: [106, 70, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 50],
+        [45, 60],
+        [78, 60],
+        [78, 85],
+        [106, 85],
+      ],
+    });
+  });
+
+  test("passes a group of one node, in beside it on one side and out on the other", () => {
+    const placement = checked(
+      place(
+        "right",
+        [leaf("X", 50, 30), group("G", "down", [leaf("A", 50, 30)]), leaf("Y", 50, 30)],
+        ["X>A", "A>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 26, 50, 30],
+      G: [80, 10, 82, 62],
+      A: [96, 26, 50, 30],
+      Y: [182, 26, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [60, 41],
+        [88, 41],
+        [88, 18],
+        [121, 18],
+        [121, 26],
+      ],
+      "A>Y #1": [
+        [121, 56],
+        [121, 64],
+        [154, 64],
+        [154, 41],
+        [182, 41],
+      ],
+    });
+  });
+
+  test("comes in to each node of a group of two nodes across its flow along that node's own lane", () => {
+    const placement = checked(
+      place(
+        "right",
+        [leaf("X", 50, 30), group("G", "down", filling(2, 2))],
+        ["X>A", "X>B", "X>C", "X>D"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 56, 50, 30],
+      G: [80, 10, 146, 122],
+      A: [96, 41, 50, 30],
+      B: [166, 41, 50, 30],
+      C: [96, 92, 50, 30],
+      D: [166, 92, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [60, 71],
+        [88, 71],
+        [88, 28],
+        [121, 28],
+        [121, 41],
+      ],
+      "X>B #1": [
+        [60, 71],
+        [88, 71],
+        [88, 33],
+        [191, 33],
+        [191, 41],
+      ],
+      "X>C #2": [
+        [60, 71],
+        [88, 71],
+        [88, 79],
+        [121, 79],
+        [121, 92],
+      ],
+      "X>D #3": [
+        [60, 71],
+        [88, 71],
+        [88, 84],
+        [191, 84],
+        [191, 92],
+      ],
+    });
+  });
+
+  test("goes out from each node of a group of two nodes across its flow along that node's own lane", () => {
+    const placement = checked(
+      place(
+        "right",
+        [group("G", "down", filling(2, 2)), leaf("Y", 50, 30)],
+        ["A>Y", "B>Y", "C>Y", "D>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 146, 122],
+      A: [20, 20, 50, 30],
+      B: [90, 20, 50, 30],
+      C: [20, 71, 50, 30],
+      D: [90, 71, 50, 30],
+      Y: [176, 56, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 50],
+        [45, 58],
+        [148, 58],
+        [148, 71],
+        [176, 71],
+      ],
+      "B>Y #1": [
+        [115, 50],
+        [115, 63],
+        [148, 63],
+        [148, 71],
+        [176, 71],
+      ],
+      "C>Y #2": [
+        [45, 101],
+        [45, 109],
+        [148, 109],
+        [148, 71],
+        [176, 71],
+      ],
+      "D>Y #3": [
+        [115, 101],
+        [115, 114],
+        [148, 114],
+        [148, 71],
+        [176, 71],
+      ],
+    });
+  });
+
+  test("comes in to the nodes further along, and goes out from the nodes further back, of a group of three nodes across its flow", () => {
+    const placement = checked(
+      place(
+        "right",
+        [leaf("X", 50, 30), group("G", "down", filling(3, 2)), leaf("Y", 50, 30)],
+        ["X>D", "X>E", "X>F", "A>Y", "B>Y", "C>Y"],
+      ),
+    );
+
+    expect(boxes(placement)["G"]).toEqual([80, 10, 222, 168]);
+    expect(paths(placement)).toEqual({
+      "X>D #0": [
+        [60, 94],
+        [88, 94],
+        [88, 120],
+        [121, 120],
+        [121, 138],
+      ],
+      "X>E #1": [
+        [60, 94],
+        [88, 94],
+        [88, 125],
+        [191, 125],
+        [191, 138],
+      ],
+      "X>F #2": [
+        [60, 94],
+        [88, 94],
+        [88, 130],
+        [261, 130],
+        [261, 138],
+      ],
+      "A>Y #3": [
+        [121, 94],
+        [121, 102],
+        [294, 102],
+        [294, 94],
+        [322, 94],
+      ],
+      "B>Y #4": [
+        [191, 94],
+        [191, 107],
+        [294, 107],
+        [294, 94],
+        [322, 94],
+      ],
+      "C>Y #5": [
+        [261, 94],
+        [261, 112],
+        [294, 112],
+        [294, 94],
+        [322, 94],
+      ],
+    });
+  });
+
+  test("runs between nodes of two such groups, out of one and into the other", () => {
+    const placement = checked(
+      place(
+        "right",
+        [
+          group("G", "down", filling(1, 2)),
+          group("H", "down", [
+            leaf("C", 50, 30, { row: 0, column: 0 }),
+            leaf("D", 50, 30, { row: 1, column: 0 }),
+          ]),
+        ],
+        ["A>D", "B>C"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 112],
+      A: [20, 26, 50, 30],
+      B: [20, 76, 50, 30],
+      H: [106, 10, 76, 112],
+      C: [122, 26, 50, 30],
+      D: [122, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>D #0": [
+        [45, 56],
+        [45, 66],
+        [147, 66],
+        [147, 76],
+      ],
+      "B>C #1": [
+        [45, 106],
+        [45, 114],
+        [78, 114],
+        [78, 66],
+        [114, 66],
+        [114, 18],
+        [147, 18],
+        [147, 26],
+      ],
+    });
+  });
+
+  test("runs out of the group into a node of a group that flows as the grid does", () => {
+    const placement = checked(
+      place(
+        "right",
+        [
+          group("G", "down", filling(1, 2)),
+          group("H", "right", [
+            leaf("C", 50, 30, { row: 0, column: 0 }),
+            leaf("D", 50, 30, { row: 0, column: 1 }),
+          ]),
+        ],
+        ["A>D", "B>C"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 112],
+      A: [20, 26, 50, 30],
+      B: [20, 76, 50, 30],
+      H: [106, 35, 146, 62],
+      C: [122, 51, 50, 30],
+      D: [192, 51, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>D #0": [
+        [45, 56],
+        [45, 66],
+        [114, 66],
+        [114, 43],
+        [182, 43],
+        [182, 66],
+        [192, 66],
+      ],
+      "B>C #1": [
+        [45, 106],
+        [45, 114],
+        [78, 114],
+        [78, 66],
+        [122, 66],
+      ],
+    });
+  });
+
+  test("runs into the group out of a node of a group that flows as the grid does", () => {
+    const placement = checked(
+      place(
+        "right",
+        [
+          group("H", "right", [
+            leaf("C", 50, 30, { row: 0, column: 0 }),
+            leaf("D", 50, 30, { row: 0, column: 1 }),
+          ]),
+          group("G", "down", filling(1, 2)),
+        ],
+        ["C>B", "D>A"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      H: [10, 35, 146, 62],
+      C: [20, 51, 50, 30],
+      D: [90, 51, 50, 30],
+      G: [176, 10, 76, 112],
+      A: [192, 26, 50, 30],
+      B: [192, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "C>B #0": [
+        [70, 66],
+        [80, 66],
+        [80, 43],
+        [148, 43],
+        [148, 66],
+        [217, 66],
+        [217, 76],
+      ],
+      "D>A #1": [
+        [140, 66],
+        [184, 66],
+        [184, 18],
+        [217, 18],
+        [217, 26],
+      ],
+    });
+  });
+
+  test("goes back around the group into a node inside it", () => {
+    const placement = checked(
+      place("right", [group("G", "down", filling(1, 2)), leaf("Y", 50, 30)], ["Y>A"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [16, 10, 76, 106],
+      A: [32, 26, 50, 30],
+      B: [32, 76, 50, 30],
+      Y: [29, 136, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "Y>A #0": [
+        [79, 151],
+        [100, 151],
+        [100, 126],
+        [8, 126],
+        [8, 63],
+        [24, 63],
+        [24, 18],
+        [57, 18],
+        [57, 26],
+      ],
+    });
+  });
+
+  test("goes back out of a node inside the group and around the group", () => {
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), group("G", "down", filling(1, 2))], ["B>X"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [29, 10, 50, 30],
+      G: [16, 60, 76, 106],
+      A: [26, 70, 50, 30],
+      B: [26, 120, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "B>X #0": [
+        [51, 150],
+        [51, 158],
+        [84, 158],
+        [84, 113],
+        [100, 113],
+        [100, 50],
+        [8, 50],
+        [8, 25],
+        [29, 25],
+      ],
+    });
+  });
+
+  test("shares the stretch through the border with an edge into another node of the group", () => {
+    const placement = checked(
+      place(
+        "right",
+        [leaf("X", 50, 30), leaf("Z", 50, 30), group("G", "down", filling(1, 2))],
+        ["X>A", "Z>B"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 51, 50, 30],
+      Z: [10, 142, 50, 30],
+      G: [80, 10, 76, 112],
+      A: [96, 26, 50, 30],
+      B: [96, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [60, 66],
+        [88, 66],
+        [88, 18],
+        [121, 18],
+        [121, 26],
+      ],
+      "Z>B #1": [
+        [60, 157],
+        [70, 157],
+        [70, 66],
+        [121, 66],
+        [121, 76],
+      ],
+    });
+  });
+
+  test("shares the stretch through the border with an edge out of another node of the group", () => {
+    const placement = checked(
+      place(
+        "right",
+        [group("G", "down", filling(1, 2)), leaf("Y", 50, 30), leaf("Z", 50, 30)],
+        ["A>Y", "B>Z"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 112],
+      A: [20, 26, 50, 30],
+      B: [20, 76, 50, 30],
+      Y: [106, 51, 50, 30],
+      Z: [106, 142, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 56],
+        [45, 66],
+        [106, 66],
+      ],
+      "B>Z #1": [
+        [45, 106],
+        [45, 114],
+        [78, 114],
+        [78, 66],
+        [96, 66],
+        [96, 157],
+        [106, 157],
+      ],
+    });
+  });
+
+  test("passes the points where an edge to the group itself ends and an edge from it starts", () => {
+    const placement = checked(
+      place(
+        "right",
+        [leaf("X", 50, 30), group("G", "down", filling(1, 2)), leaf("Y", 50, 30)],
+        ["X>A", "B>Y", "X>G", "G>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 51, 50, 30],
+      G: [80, 10, 82, 112],
+      A: [96, 26, 50, 30],
+      B: [96, 76, 50, 30],
+      Y: [182, 51, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [60, 66],
+        [88, 66],
+        [88, 18],
+        [121, 18],
+        [121, 26],
+      ],
+      "B>Y #1": [
+        [121, 106],
+        [121, 114],
+        [154, 114],
+        [154, 66],
+        [182, 66],
+      ],
+      "X>G #2": [
+        [60, 66],
+        [80, 66],
+      ],
+      "G>Y #3": [
+        [162, 66],
+        [182, 66],
+      ],
+    });
+  });
+
+  test("goes out along a lane nearer the border than the lane of a node of the group that goes around beside it", () => {
+    const placement = checked(
+      place("right", [group("G", "down", filling(1, 2)), leaf("Y", 50, 30)], ["B>A", "B>Y"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 81, 112],
+      A: [20, 26, 50, 30],
+      B: [20, 76, 50, 30],
+      Y: [111, 51, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "B>A #0": [
+        [45, 106],
+        [45, 114],
+        [78, 114],
+        [78, 18],
+        [45, 18],
+        [45, 26],
+      ],
+      "B>Y #1": [
+        [45, 106],
+        [45, 114],
+        [83, 114],
+        [83, 66],
+        [111, 66],
+      ],
+    });
+  });
+
+  test("is drawn to a group inside the group as to any node of it", () => {
+    const placement = checked(
+      place(
+        "right",
+        [
+          leaf("X", 50, 30),
+          group("G", "down", [group("K", "right", [leaf("N", 50, 30)]), leaf("B", 50, 30)]),
+        ],
+        ["X>K"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 33, 50, 30],
+      G: [80, 10, 166, 76],
+      K: [96, 26, 70, 50],
+      N: [106, 36, 50, 30],
+      B: [186, 36, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>K #0": [
+        [60, 48],
+        [88, 48],
+        [88, 18],
+        [131, 18],
+        [131, 26],
+      ],
+    });
+  });
+});
+
+describe("placeGraph: the middle of the side of a group that flows right in a grid that flows down, where edges cross it", () => {
+  test("is left where it is when it is the gap between edges and the shortest stretch from the lane an edge turns onto", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 34, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [47, 10, 50, 30],
+      G: [10, 60, 124, 56],
+      A: [20, 76, 34, 30],
+      B: [74, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [72, 40],
+        [72, 68],
+        [64, 68],
+        [64, 91],
+        [74, 91],
+      ],
+    });
+  });
+
+  test("is moved that far past the lane when that is the least move, by room after the last node along the flow", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 40, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [53, 10, 50, 30],
+      G: [10, 60, 136, 56],
+      A: [20, 76, 40, 30],
+      B: [80, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [78, 40],
+        [78, 68],
+        [70, 68],
+        [70, 91],
+        [80, 91],
+      ],
+    });
+  });
+
+  test("is moved onto the lane when that is the least move, by room before the first node along the flow", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 44, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [55, 10, 50, 30],
+      G: [10, 60, 140, 56],
+      A: [26, 76, 44, 30],
+      B: [90, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [80, 40],
+        [80, 91],
+        [90, 91],
+      ],
+    });
+  });
+
+  test("is moved onto the lane by room after the last node when the lane lies past it", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 50, 44)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [55, 10, 50, 30],
+      G: [10, 60, 140, 56],
+      A: [20, 76, 50, 30],
+      B: [90, 76, 44, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [80, 40],
+        [80, 91],
+        [90, 91],
+      ],
+    });
+  });
+
+  test("is moved that far short of the lane when that is the least move, by room before the first node", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 50, 40)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [53, 10, 50, 30],
+      G: [10, 60, 136, 56],
+      A: [26, 76, 50, 30],
+      B: [96, 76, 40, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [78, 40],
+        [78, 68],
+        [86, 68],
+        [86, 91],
+        [96, 91],
+      ],
+    });
+  });
+
+  test("is moved onto the lane when that is no further than moving it clear", () => {
+    const placement = checked(place("down", [leaf("X", 50, 30), lined("right", 42, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [55, 10, 50, 30],
+      G: [10, 60, 140, 56],
+      A: [28, 76, 42, 30],
+      B: [90, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [80, 40],
+        [80, 91],
+        [90, 91],
+      ],
+    });
+  });
+
+  test("is moved clear of the lane after its source for an edge that goes out", () => {
+    const placement = checked(place("down", [lined("right", 40, 50), leaf("Y", 50, 30)], ["A>Y"]));
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 136, 56],
+      A: [20, 20, 40, 30],
+      B: [80, 20, 50, 30],
+      Y: [53, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [60, 35],
+        [70, 35],
+        [70, 58],
+        [78, 58],
+        [78, 86],
+      ],
+    });
+  });
+
+  test("is moved onto the lane after its source for an edge that goes out, by room before the first node", () => {
+    const placement = checked(place("down", [lined("right", 44, 50), leaf("Y", 50, 30)], ["A>Y"]));
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 140, 56],
+      A: [26, 20, 44, 30],
+      B: [90, 20, 50, 30],
+      Y: [55, 86, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [70, 35],
+        [80, 35],
+        [80, 86],
+      ],
+    });
+  });
+
+  test("moves the lanes before and after the nodes with them, and leaves the lanes beside them where they are", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), lined("right", 44, 50)], ["X>B", "B>A"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [61, 10, 50, 30],
+      G: [10, 60, 152, 62],
+      A: [32, 76, 44, 30],
+      B: [96, 76, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [86, 40],
+        [86, 91],
+        [96, 91],
+      ],
+      "B>A #1": [
+        [146, 91],
+        [154, 91],
+        [154, 114],
+        [24, 114],
+        [24, 91],
+        [32, 91],
+      ],
+    });
+  });
+
+  test("is kept from the lane by the gap between edges and the shortest stretch, not by the room an edge keeps from a node", () => {
+    const kept = { ...spacing, edgeToNode: 12 };
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), lined("right", 34, 50)], ["X>B"], kept),
+      kept,
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [49, 10, 50, 30],
+      G: [10, 60, 128, 64],
+      A: [20, 84, 34, 30],
+      B: [78, 84, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [74, 40],
+        [74, 72],
+        [66, 72],
+        [66, 99],
+        [78, 99],
+      ],
+    });
+  });
+
+  test("is kept the larger of the gap between edges and the shortest stretch from the lane", () => {
+    const kept = { ...spacing, edgeGap: 12 };
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), lined("right", 30, 50)], ["X>B"], kept),
+      kept,
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [49, 10, 50, 30],
+      G: [10, 60, 128, 64],
+      A: [20, 84, 30, 30],
+      B: [74, 84, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [74, 40],
+        [74, 72],
+        [62, 72],
+        [62, 99],
+        [74, 99],
+      ],
+    });
+  });
+
+  test.each([[["X>B", "A>Y"]], [["A>Y", "X>B"]]])(
+    "is moved onto the earlier of two lanes as near, whichever edge is listed first: %j",
+    (links) => {
+      const placement = checked(
+        place("down", [leaf("X", 50, 30), lined("right", 50, 50), leaf("Y", 50, 30)], [...links]),
+      );
+
+      expect(boxes(placement)).toEqual({
+        X: [61, 10, 50, 30],
+        G: [10, 60, 152, 62],
+        A: [28, 76, 50, 30],
+        B: [102, 76, 50, 30],
+        Y: [61, 142, 50, 30],
+      });
+      expect(pathsByEnds(placement)).toEqual({
+        "A>Y": [
+          [78, 91],
+          [86, 91],
+          [86, 142],
+        ],
+        "X>B": [
+          [86, 40],
+          [86, 68],
+          [94, 68],
+          [94, 91],
+          [102, 91],
+        ],
+      });
+    },
+  );
+});
+
+describe("placeGraph: the middle of the side of a group that flows down in a grid that flows right, where edges cross it", () => {
+  test("is left where it is when it is the gap between edges and the shortest stretch from the lane an edge turns onto", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 34, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 57, 50, 30],
+      G: [80, 10, 76, 124],
+      A: [96, 20, 50, 34],
+      B: [96, 74, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 72],
+        [88, 72],
+        [88, 64],
+        [121, 64],
+        [121, 74],
+      ],
+    });
+  });
+
+  test("is moved that far past the lane when that is the least move, by room after the last node along the flow", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 40, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 63, 50, 30],
+      G: [80, 10, 76, 136],
+      A: [96, 20, 50, 40],
+      B: [96, 80, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 78],
+        [88, 78],
+        [88, 70],
+        [121, 70],
+        [121, 80],
+      ],
+    });
+  });
+
+  test("is moved onto the lane when that is the least move, by room before the first node along the flow", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 44, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 65, 50, 30],
+      G: [80, 10, 76, 140],
+      A: [96, 26, 50, 44],
+      B: [96, 90, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 80],
+        [121, 80],
+        [121, 90],
+      ],
+    });
+  });
+
+  test("is moved onto the lane by room after the last node when the lane lies past it", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 50, 44)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 65, 50, 30],
+      G: [80, 10, 76, 140],
+      A: [96, 20, 50, 50],
+      B: [96, 90, 50, 44],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 80],
+        [121, 80],
+        [121, 90],
+      ],
+    });
+  });
+
+  test("is moved that far short of the lane when that is the least move, by room before the first node", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 50, 40)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 63, 50, 30],
+      G: [80, 10, 76, 136],
+      A: [96, 26, 50, 50],
+      B: [96, 96, 50, 40],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 78],
+        [88, 78],
+        [88, 86],
+        [121, 86],
+        [121, 96],
+      ],
+    });
+  });
+
+  test("is moved onto the lane when that is no further than moving it clear", () => {
+    const placement = checked(place("right", [leaf("X", 50, 30), lined("down", 42, 50)], ["X>B"]));
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 65, 50, 30],
+      G: [80, 10, 76, 140],
+      A: [96, 28, 50, 42],
+      B: [96, 90, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 80],
+        [121, 80],
+        [121, 90],
+      ],
+    });
+  });
+
+  test("is moved clear of the lane after its source for an edge that goes out", () => {
+    const placement = checked(place("right", [lined("down", 40, 50), leaf("Y", 50, 30)], ["A>Y"]));
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 136],
+      A: [20, 20, 50, 40],
+      B: [20, 80, 50, 50],
+      Y: [106, 63, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 60],
+        [45, 70],
+        [78, 70],
+        [78, 78],
+        [106, 78],
+      ],
+    });
+  });
+
+  test("is moved onto the lane after its source for an edge that goes out, by room before the first node", () => {
+    const placement = checked(place("right", [lined("down", 44, 50), leaf("Y", 50, 30)], ["A>Y"]));
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 76, 140],
+      A: [20, 26, 50, 44],
+      B: [20, 90, 50, 50],
+      Y: [106, 65, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 70],
+        [45, 80],
+        [106, 80],
+      ],
+    });
+  });
+
+  test("moves the lanes before and after the nodes with them, and leaves the lanes beside them where they are", () => {
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), lined("down", 44, 50)], ["X>B", "B>A"]),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 71, 50, 30],
+      G: [80, 10, 82, 152],
+      A: [96, 32, 50, 44],
+      B: [96, 96, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 86],
+        [121, 86],
+        [121, 96],
+      ],
+      "B>A #1": [
+        [121, 146],
+        [121, 154],
+        [154, 154],
+        [154, 24],
+        [121, 24],
+        [121, 32],
+      ],
+    });
+  });
+
+  test("is kept from the lane by the gap between edges and the shortest stretch, not by the room an edge keeps from a node", () => {
+    const kept = { ...spacing, edgeToNode: 12 };
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), lined("down", 34, 50)], ["X>B"], kept),
+      kept,
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 59, 50, 30],
+      G: [80, 10, 84, 128],
+      A: [104, 20, 50, 34],
+      B: [104, 78, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 74],
+        [92, 74],
+        [92, 66],
+        [129, 66],
+        [129, 78],
+      ],
+    });
+  });
+
+  test("is kept the larger of the gap between edges and the shortest stretch from the lane", () => {
+    const kept = { ...spacing, edgeGap: 12 };
+    const placement = checked(
+      place("right", [leaf("X", 50, 30), lined("down", 30, 50)], ["X>B"], kept),
+      kept,
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 59, 50, 30],
+      G: [80, 10, 84, 128],
+      A: [104, 20, 50, 30],
+      B: [104, 74, 50, 50],
+    });
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [60, 74],
+        [92, 74],
+        [92, 62],
+        [129, 62],
+        [129, 74],
+      ],
+    });
+  });
+
+  test.each([[["X>B", "A>Y"]], [["A>Y", "X>B"]]])(
+    "is moved onto the earlier of two lanes as near, whichever edge is listed first: %j",
+    (links) => {
+      const placement = checked(
+        place("right", [leaf("X", 50, 30), lined("down", 50, 50), leaf("Y", 50, 30)], [...links]),
+      );
+
+      expect(boxes(placement)).toEqual({
+        X: [10, 71, 50, 30],
+        G: [80, 10, 82, 152],
+        A: [96, 28, 50, 50],
+        B: [96, 102, 50, 50],
+        Y: [182, 71, 50, 30],
+      });
+      expect(pathsByEnds(placement)).toEqual({
+        "A>Y": [
+          [121, 78],
+          [121, 86],
+          [182, 86],
+        ],
+        "X>B": [
+          [60, 86],
+          [88, 86],
+          [88, 94],
+          [121, 94],
+          [121, 102],
+        ],
+      });
+    },
+  );
+});
+
+describe("placeGraph: a node too small for an edge that crosses the border of its group, which flows the other way than the grid around it", () => {
+  test.each([
+    ["comes into its group to it", "B>N"],
+    ["goes out of its group from it", "N>B"],
+  ])("is refused when the edge it is too narrow for %s", (_, link) => {
+    expect(() =>
+      place("down", [group("G", "right", [leaf("N", 50, 9)]), leaf("B", 50, 30)], [link]),
+    ).toThrow(
+      new InvalidGraphError(
+        'Node "N" is 9 across where its edges meet it, too narrow for an edge to keep 5 from its corners.',
+      ),
+    );
+  });
+
+  test("is refused when an edge comes into its group to it and another goes out from it, and it is too short between them", () => {
+    expect(() =>
+      place(
+        "down",
+        [leaf("B", 50, 30), group("G", "right", [leaf("N", 4, 30)]), leaf("C", 50, 30)],
+        ["B>N", "N>C"],
+      ),
+    ).toThrow(
+      new InvalidGraphError(
+        'Node "N" is 4 long between the edges that enter it and the edges that leave it, less than the gap of 5 between edges.',
+      ),
+    );
+  });
+});
+
 describe("placeGraph: a graph that cannot be laid out", () => {
   test.each([
     ["two nodes with one id", graph("down", [leaf("A", 50, 30), leaf("A", 50, 30)]), '"A"'],
@@ -2133,7 +4220,7 @@ describe("placeGraph: a node too small for its edges", () => {
   test("is accepted however small when no edge that is drawn meets it", () => {
     const apart = place(
       "down",
-      [group("G", "right", [leaf("N", 1, 1)]), leaf("B", 50, 30)],
+      [group("G", "right", [group("K", "right", [leaf("N", 1, 1)])]), leaf("B", 50, 30)],
       ["N>B", "B>N"],
     );
 
@@ -2261,35 +4348,23 @@ describe("placeGraph: any graph", () => {
     );
   });
 
-  test("draws the edges whose ends are each a node of one grid or a child of a group of that grid that flows as it does, except between a group and its child, and no others, in the order they are listed", () => {
-    interface Where {
-      /** The groups around the node, outermost first. */
-      readonly around: readonly string[];
-      /** The way the grid the node is in flows. */
-      readonly flow: Direction;
-      /** The way the node's own grid flows, when it is a group. */
-      readonly direction: Direction | undefined;
-    }
-    const whereIn = (
+  test("draws the edges whose ends are each a node of one grid or a child of a group of that grid, except between a group and its child, and no others, in the order they are listed", () => {
+    /** Each node with the groups around it, outermost first. */
+    const groupsAround = (
       nodes: readonly GraphNode[],
-      flow: Direction,
       around: readonly string[] = [],
-    ): [string, Where][] =>
-      nodes.flatMap((node): [string, Where][] =>
-        "children" in node
-          ? [
-              [node.id, { around, flow, direction: node.direction }],
-              ...whereIn(node.children, node.direction, [...around, node.id]),
-            ]
-          : [[node.id, { around, flow, direction: undefined }]],
-      );
+    ): [string, readonly string[]][] =>
+      nodes.flatMap((node): [string, readonly string[]][] => [
+        [node.id, around],
+        ...("children" in node ? groupsAround(node.children, [...around, node.id]) : []),
+      ]);
 
     fc.assert(
       fc.property(graphs, (any) => {
-        const where = new Map(whereIn(any.nodes, any.direction));
+        const around = new Map(groupsAround(any.nodes));
         const expected = any.edges.filter((edge) => {
-          const from = where.get(edge.from)?.around ?? [];
-          const to = where.get(edge.to)?.around ?? [];
+          const from = around.get(edge.from) ?? [];
+          const to = around.get(edge.to) ?? [];
           let shared = 0;
           while (shared < from.length && from[shared] === to[shared]) {
             shared += 1;
@@ -2300,8 +4375,7 @@ describe("placeGraph: any graph", () => {
             outOf.length <= 1 &&
             into.length <= 1 &&
             !outOf.includes(edge.to) &&
-            !into.includes(edge.from) &&
-            [...outOf, ...into].every((id) => where.get(id)?.direction === where.get(id)?.flow)
+            !into.includes(edge.from)
           );
         });
         const drawn = placeGraph(roomy(any, spacing), spacing).edges;

@@ -3,7 +3,7 @@ import { assignSpots } from "./cells";
 import { frameOf, type FlowPoint, type Frame, type Item } from "./frame";
 import type { Direction, EdgeEnds, Graph, GraphEdge, GraphNode, Size } from "./graph";
 import { InvalidGraphError } from "./graph";
-import { assignLanes, outside, type Route, type Run } from "./lanes";
+import { assignLanes, outside, type BorderCrossing, type Route, type Run } from "./lanes";
 
 /** A grid laid out on its own, measured from the top-left corner of the box around it. */
 interface Arrangement {
@@ -63,23 +63,21 @@ function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]):
 
 /**
  * The edges one grid draws, in the order they are listed. An end of an edge is drawn to the node of the
- * grid that is that end, or that holds it as a child and flows as the grid does. An edge whose ends are
- * drawn to two nodes runs between them, and so does an edge from a node of the grid to itself; an edge
- * drawn to one node with an end inside it is left out. An edge in `crossing` runs between its end in
- * the grid and the outside.
+ * grid that is that end, or that holds it as a child. An edge whose ends are drawn to two nodes runs
+ * between them, and so does an edge from a node of the grid to itself; an edge drawn to one node with an
+ * end inside it is left out. An edge in `crossing` runs between its end in the grid and the outside.
  *
  * @param crossing The ids of the edges that the grid around this one draws across this grid's border.
  */
 function runsOf(
   nodes: readonly GraphNode[],
-  direction: Direction,
   edges: readonly GraphEdge[],
   crossing: ReadonlySet<string>,
 ): Run[] {
   const nodeAt = new Map<string, string>();
   for (const node of nodes) {
     nodeAt.set(node.id, node.id);
-    if ("children" in node && node.direction === direction) {
+    if ("children" in node) {
       for (const child of node.children) {
         nodeAt.set(child.id, node.id);
       }
@@ -156,6 +154,28 @@ function pathOf(edge: Run, route: Route, frame: Frame): FlowPoint[] {
     const lane = route.kind === "direct" ? frame.laneAfter(edge.from) : frame.laneBefore(edge.to);
     return [start, { ...start, along: lane }, { ...end, along: lane }, end];
   }
+  if (route.kind === "fromBeside") {
+    const beside = frame.laneBeside(route.beside, outside);
+    const back = frame.laneBefore(edge.to);
+    return [
+      start,
+      { across: beside, along: start.along },
+      { across: beside, along: back },
+      { ...end, along: back },
+      end,
+    ];
+  }
+  if (route.kind === "toBeside") {
+    const out = frame.laneAfter(edge.from);
+    const beside = frame.laneBeside(route.beside, outside);
+    return [
+      start,
+      { ...start, along: out },
+      { across: beside, along: out },
+      { across: beside, along: end.along },
+      end,
+    ];
+  }
   const out = frame.laneAfter(edge.from);
   const beside = frame.laneBeside(route.beside, edge.from);
   const back = frame.laneBefore(edge.to);
@@ -193,9 +213,10 @@ function arrange(
   edges: readonly GraphEdge[],
   spacing: Spacing,
   crossing: ReadonlySet<string>,
+  border: BorderCrossing,
 ): Arrangement {
   const spots = assignSpots(nodes, direction, edgesBetween(nodes, edges));
-  const runs = runsOf(nodes, direction, edges, crossing);
+  const runs = runsOf(nodes, edges, crossing);
   const edgesById = new Map(edges.map((edge) => [edge.id, edge]));
   const arranged = nodes.map((node) => {
     const spot = spots.get(node.id);
@@ -204,7 +225,14 @@ function arrange(
     }
     const inner: Arrangement =
       "children" in node
-        ? arrange(node.children, node.direction, edges, spacing, crossingInto(node.id, runs))
+        ? arrange(
+            node.children,
+            node.direction,
+            edges,
+            spacing,
+            crossingInto(node.id, runs),
+            node.direction === direction ? "along" : "across",
+          )
         : { size: node.size, nodes: [], edges: [], crossings: new Map() };
     const item: Item = {
       ...spot,
@@ -216,8 +244,8 @@ function arrange(
   const items = new Map(arranged.map(({ id, item }) => [id, item]));
 
   requireRoomForEdges(items, runs, spacing);
-  const lanes = assignLanes(items, runs);
-  const frame = frameOf(items, runs, lanes, spacing);
+  const lanes = assignLanes(items, runs, border);
+  const frame = frameOf(items, runs, lanes, spacing, border);
 
   const turned = (point: FlowPoint): Point =>
     direction === "down"
@@ -349,11 +377,10 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * edges need the room: for their lanes, to keep clear of the next row or column, or for a straight stretch.
  *
  * An edge with an end that is a child of a group runs to the group as an edge to the group itself does,
- * through the middle of the group's side, and on inside the group to the child, when the group flows the
- * way the grid around it does. A group is made wider, on one side, where that keeps such an edge sound.
- * Any other edge between nodes of different grids orders them but is left out of the layout: one with an
- * end deeper than a child of a group, one through a group that flows the other way, and one between a
- * group and a node inside it.
+ * through the middle of the group's side, and on inside the group to the child, which it enters or leaves
+ * along the group's own flow. A group is made longer at one end of that side where that keeps such an
+ * edge sound. Any other edge between nodes of different grids orders them but is left out of the layout:
+ * one with an end deeper than a child of a group, and one between a group and a node inside it.
  *
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of
  * `graph.edges`, in canvas coordinates.
@@ -375,6 +402,7 @@ export function placeGraph(graph: Graph, spacing: Spacing): Layout {
     graph.edges,
     spacing,
     new Set(),
+    "along",
   );
   const drawn = new Map(edges.map((edge) => [edge.id, edge]));
   return {
