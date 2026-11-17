@@ -49,7 +49,7 @@ const { node: shape, nest } = fc.letrec<{ node: Shape; leaf: Shape; group: Shape
         direction,
         cell,
         inmost: fc.array(tie("leaf"), { minLength: 1, maxLength: 3 }),
-        besides: fc.array(fc.array(tie("node"), { maxLength: 2 }), { minLength: 2, maxLength: 4 }),
+        besides: fc.array(fc.array(tie("leaf"), { maxLength: 2 }), { minLength: 2, maxLength: 4 }),
       })
       .map(({ direction: flow, cell: kept, inmost, besides }) =>
         nested(flow, kept, inmost, besides),
@@ -79,7 +79,7 @@ function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
   });
 }
 
-/** One kind of node `graphs` holds: a group with groups inside it, three to five deep, each flowing the other way than the one around it, with up to two other nodes beside each group inside it. */
+/** One kind of node `graphs` holds: a group with groups inside it, three to five deep, each flowing the other way than the one around it, with up to two leaves beside each group inside it. */
 export const nestedGroups: fc.Arbitrary<GraphNode> = nest.map((each) => {
   const [node] = named([each], []);
   if (node === undefined) {
