@@ -67,8 +67,8 @@ export interface DotLook {
 }
 
 /**
- * The looks parts share, and the logos an icon can name. A part reads the ones it draws with, so a change
- * here reaches every kind.
+ * The looks parts share, and the logos and custom icons an icon can name. A part reads the ones it draws
+ * with, so a change here reaches every kind.
  */
 export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
@@ -302,8 +302,7 @@ function checkedByName<TSchema extends v.GenericSchema>(
   noun: string,
   forms: string,
 ): Readonly<Record<string, v.InferOutput<TSchema>>> {
-  const prototype: unknown =
-    typeof given === "object" && given !== null ? Object.getPrototypeOf(given) : undefined;
+  const prototype: unknown = Object.getPrototypeOf(given);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new InvalidThemeError(
       `The ${noun}s are not an object holding each ${noun} under its name.`,

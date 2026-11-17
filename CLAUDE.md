@@ -37,4 +37,6 @@ catena is used as the `catena` command, the `bin` of `packages/catena`. From a c
 node packages/catena/bin/catena.js draw <diagram.json> [-o <out.svg>]
 ```
 
-`pnpm link --global` in `packages/catena` puts `catena` on the PATH. The diagram file's shape is `src/cli/diagram-file.ts`. There is no run skill; the command's behaviour is checked by its tests (`src/cli/cli.test.ts`).
+`pnpm link --global` in `packages/catena` puts `catena` on the PATH. The diagram file's shape is `src/cli/diagram-file.ts`.
+
+Every run reads the user's config, `config.json` in `$CATENA_CONFIG_DIR`, else in `$XDG_CONFIG_HOME/catena`, else in `~/.config/catena` (`src/config/custom-icons.ts`); its custom icons are what a bare string naming no built-in icon draws. A config that isn't there is no icons; one the reader refuses stops every draw with exit 1. Set `CATENA_CONFIG_DIR` to run against another config, or a directory without one. There is no run skill; the command's behaviour is checked by its tests (`src/cli/cli.test.ts`).

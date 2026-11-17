@@ -7,6 +7,7 @@ import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import * as v from "valibot";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
+import { readCustomIcons } from "../config";
 import { drawDiagram, type DiagramOptions } from "../diagram";
 import * as nodeModule from "../node";
 import {
@@ -33,6 +34,15 @@ import { run, USAGE } from "./main";
 const theme = defineTheme({
   regular: [Typeface.read(readFileSync(sourceHanSansJP.regular))],
   bold: [Typeface.read(readFileSync(sourceHanSansJP.bold))],
+});
+
+// The real reader, watched so one test can make it fail with a fault of catena's own.
+vi.mock(import("../config"), async (original) => {
+  const config = await original();
+  return {
+    ...config,
+    readCustomIcons: vi.fn<typeof config.readCustomIcons>(config.readCustomIcons),
+  };
 });
 
 // `run` reads the user's config on every call: it is read from here, never from the real home.
@@ -561,6 +571,14 @@ describe("icons from the user's config", () => {
       expect(runWith(["draw", join(directory, "missing.json")])).toEqual(expected);
     },
   );
+
+  test("throws a fault of catena's own in reading the config rather than saying the config is wrong", () => {
+    const fault = new TypeError("a fault of catena's own");
+    vi.mocked(readCustomIcons).mockImplementationOnce(() => {
+      throw fault;
+    });
+    expect(() => runWith(["draw", fileOf(text(SAMPLE))])).toThrow(fault);
+  });
 
   test("exits 1 for a config the system can't read, after its path", () => {
     mkdirSync(configPath);
