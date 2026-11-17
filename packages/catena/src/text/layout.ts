@@ -80,6 +80,15 @@ function splitByCharacter(unit: Unit): Unit[] {
 }
 
 function wrapParagraph(paragraph: string, style: TextStyle): string[] {
+  // Measured: re-measuring the line at every unit took seconds on a line of a few hundred characters.
+  // With no width to keep to, every unit fits.
+  if (style.maxWidth === Infinity) {
+    return [
+      unitsOf(paragraph)
+        .map((unit, index) => (index === 0 ? "" : unit.spaces) + unit.text)
+        .join(""),
+    ];
+  }
   const fits = (text: string) => lineWidth(text, style.fonts, style.size) <= style.maxWidth;
   const units = unitsOf(paragraph).flatMap((unit) =>
     fits(unit.text) ? [unit] : splitByCharacter(unit),

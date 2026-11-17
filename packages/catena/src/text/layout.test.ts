@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
+import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import { layoutText, textPathData, Typeface, UnreadableFontError, type FontStack } from "./index";
 
@@ -97,6 +98,32 @@ describe("layoutText: breaking lines", () => {
 
     expect(layout.lines).toEqual([{ text: "", width: 0 }]);
     expect(layout.height).toBe(15);
+  });
+});
+
+describe("layoutText: any text", () => {
+  const pieces = fc.constantFrom(
+    " ",
+    "\n",
+    "a",
+    "W",
+    "語",
+    "。",
+    "（",
+    ".",
+    "!",
+    String.fromCodePoint(0x3000),
+    "e" + String.fromCodePoint(0x301),
+  );
+  const texts = fc.array(pieces, { maxLength: 30 }).map((list) => list.join(""));
+
+  test("sets the same lines with no width to keep to as with a width nothing reaches", () => {
+    fc.assert(
+      fc.property(texts, (text) => {
+        expect(linesOf(text, Infinity)).toEqual(linesOf(text, 1e9));
+      }),
+      { numRuns: 300 },
+    );
   });
 });
 
