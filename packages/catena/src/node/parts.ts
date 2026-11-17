@@ -2,6 +2,16 @@ import * as v from "valibot";
 import { iconGrid, iconNames, iconPathData, iconStroke } from "../icon";
 import type { Rect } from "../layout";
 import { layoutText, textPathData, type TextLayout } from "../text";
+import {
+  OWN_IMAGE,
+  OWN_LOGO,
+  REGISTERED_LOGO,
+  UnknownLogoError,
+  VIEW_BOX,
+  type OwnImage,
+  type OwnLogo,
+  type RegisteredLogo,
+} from "./logo";
 import type { Part } from "./part";
 import { element, outlinedRect, type SvgElement } from "./svg";
 import {
@@ -188,11 +198,6 @@ export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF
 
 export const image = imagePart((theme) => theme.image);
 
-const FINITE = v.pipe(v.number(), v.finite());
-const BREADTH = v.pipe(v.number(), v.finite(), v.gtValue(0));
-const VIEW_BOX = v.strictObject({ x: FINITE, y: FINITE, width: BREADTH, height: BREADTH });
-const COLOR = v.pipe(v.string(), v.nonEmpty());
-
 /**
  * A user's own icon: path data in the area `viewBox` names, as an SVG `viewBox` does, either stroked as
  * the built-in icons are or filled, in the look's colour.
@@ -204,39 +209,7 @@ const OWN_ICON = v.strictObject({
 });
 export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
 
-/**
- * One shape of a logo, in its own colour: filled, or stroked `width` across in its view box's units with
- * the built-in icons' round caps and joins.
- */
-const LOGO_SHAPE = v.variant("paint", [
-  v.strictObject({ pathData: v.string(), paint: v.literal("fill"), color: COLOR }),
-  v.strictObject({
-    pathData: v.string(),
-    paint: v.literal("stroke"),
-    color: COLOR,
-    width: BREADTH,
-  }),
-]);
-export type LogoShape = v.InferOutput<typeof LOGO_SHAPE>;
-
-/**
- * A user's own logo: shapes in the area `viewBox` names, drawn in order, each in its own colour.
- * The logo is the caller's to use, following that brand's own guidelines.
- */
-const OWN_LOGO = v.strictObject({
-  viewBox: VIEW_BOX,
-  shapes: v.pipe(v.array(LOGO_SHAPE), v.nonEmpty()),
-});
-export type OwnLogo = v.InferOutput<typeof OWN_LOGO>;
-
-/**
- * A user's own image, by its href, written into the SVG as given: catena never fetches it.
- * The image is the caller's to use, following that brand's own guidelines when it is a logo.
- */
-const OWN_IMAGE = v.strictObject({ href: v.string() });
-export type OwnImage = v.InferOutput<typeof OWN_IMAGE>;
-
-const ICON = v.union([v.picklist(iconNames), OWN_ICON, OWN_LOGO, OWN_IMAGE]);
+const ICON = v.union([v.picklist(iconNames), OWN_ICON, OWN_LOGO, OWN_IMAGE, REGISTERED_LOGO]);
 
 const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
 
@@ -246,18 +219,22 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - a built-in icon's name;
  * - the user's own icon ({@link OwnIcon}), in the look's colour;
  * - the user's own logo of shapes ({@link OwnLogo}), each in the colour it gives;
- * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square.
+ * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square;
+ * - the name of a logo or image registered on the theme ({@link RegisteredLogo}), drawn as that logo or
+ *   image given here would be.
  * An icon or logo has its view box scaled to fit the square and centred in it.
  *
  * catena ships no logos: a logo or image is one the caller passes, and theirs to use, following that
  * brand's own guidelines.
+ * @throws UnknownLogoError from `layout` when the content names a logo the theme does not hold.
  */
 export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> {
   return {
     schema: ICON,
-    layout(content, theme) {
+    layout(given, theme) {
       const look = lookOf(theme);
       const { size } = look;
+      const content = typeof given === "object" && "logo" in given ? logoOn(theme, given) : given;
       return {
         size: { width: size, height: size },
         draw: (box) => {
@@ -306,6 +283,12 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
       };
     },
   };
+}
+
+function logoOn(theme: Theme, { logo }: RegisteredLogo): OwnLogo | OwnImage {
+  const found = Object.hasOwn(theme.logos, logo) ? theme.logos[logo] : undefined;
+  if (found === undefined) throw new UnknownLogoError(logo);
+  return found;
 }
 
 /** The transform that scales `viewBox` to fit a square `size` across at the top-left of `box`, centred in it. */

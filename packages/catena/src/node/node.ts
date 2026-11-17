@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
+import { UnknownLogoError } from "./logo";
 import type { Part } from "./part";
 import {
   atWidth,
@@ -157,7 +158,8 @@ export const activeRoundButton = pill(
 
 /**
  * Checks `content` against `kind`'s schema and lays the node out at the theme's node width.
- * @throws InvalidNodeContentError when `content` does not match the schema, with the ValiError as its cause.
+ * @throws InvalidNodeContentError when `content` does not match the schema, with the ValiError as its cause,
+ * or names a logo the theme does not hold, with the UnknownLogoError as its cause.
  * @throws UnreadableFontError when a typeface's data turns out to be damaged.
  */
 export function buildNode<TSchema extends v.GenericSchema>(
@@ -173,9 +175,26 @@ export function buildNode<TSchema extends v.GenericSchema>(
       { cause: new v.ValiError(parsed.issues) },
     );
   }
-  const block = kind.layout(parsed.output, theme, theme.nodeWidth);
+  const block = layoutNode(kind, parsed.output, theme, id);
   return {
     leaf: { id, size: block.size },
     draw: (box) => writeSvg(element("g", {}, block.draw(box, idsOfNode(id)))),
   };
+}
+
+function layoutNode<TSchema extends v.GenericSchema>(
+  kind: Part<TSchema>,
+  content: v.InferOutput<TSchema>,
+  theme: Theme,
+  id: string,
+) {
+  try {
+    return kind.layout(content, theme, theme.nodeWidth);
+  } catch (error) {
+    if (!(error instanceof UnknownLogoError)) throw error;
+    throw new InvalidNodeContentError(
+      `The content of node "${id}" names the logo "${error.logo}", which the theme does not hold.`,
+      { cause: error },
+    );
+  }
 }

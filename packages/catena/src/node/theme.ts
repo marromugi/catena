@@ -1,5 +1,7 @@
+import * as v from "valibot";
 import type { IconName } from "../icon";
 import type { FontStack } from "../text";
+import { REGISTRABLE_LOGO, type OwnImage, type OwnLogo } from "./logo";
 import { NO_SHADOW, type Outline, type Shadow } from "./svg";
 
 /** How a piece of text looks. `lineHeight` is a multiple of `size`. */
@@ -108,9 +110,17 @@ export interface Theme {
   /** The disc inside an active round button, around its icon. */
   readonly activeButtonDisc: ButtonLook;
   readonly activeButtonIcon: IconLook;
+  /** The logos and images an icon's content can name, by name. */
+  readonly logos: Logos;
 }
 
-/** Any look of a {@link Theme} but its fonts, each given in part. */
+/**
+ * Logos and images by the names an icon's content gives them as `{ logo: "<name>" }`. catena ships none:
+ * each is the caller's to use, following that brand's own guidelines.
+ */
+export type Logos = Readonly<Record<string, OwnLogo | OwnImage>>;
+
+/** Any look of a {@link Theme} but its fonts, each given in part, and the logos it holds. */
 export interface ThemeOverrides {
   readonly nodeWidth?: number;
   readonly gap?: number;
@@ -139,6 +149,12 @@ export interface ThemeOverrides {
   readonly activeButton?: Partial<ButtonLook>;
   readonly activeButtonDisc?: Partial<ButtonLook>;
   readonly activeButtonIcon?: Partial<IconLook>;
+  readonly logos?: Logos;
+}
+
+/** A theme was given something it can't hold. */
+export class InvalidThemeError extends Error {
+  override readonly name = "InvalidThemeError";
 }
 
 /** The soft shadow around a card. */
@@ -263,7 +279,26 @@ function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T 
   return { ...defaults, ...Object.fromEntries(given) };
 }
 
-/** The default looks with `overrides` laid over them. A look given as `undefined` keeps its default. */
+/** Each logo checked against the schemas an icon's inline content is checked against. */
+function checkedLogos(logos: Logos): Logos {
+  return Object.fromEntries(
+    Object.entries(logos).map(([name, logo]) => {
+      const parsed = v.safeParse(REGISTRABLE_LOGO, logo);
+      if (!parsed.success) {
+        throw new InvalidThemeError(
+          `The logo "${name}" is neither a logo nor an image: ${v.summarize(parsed.issues)}`,
+          { cause: new v.ValiError(parsed.issues) },
+        );
+      }
+      return [name, parsed.output];
+    }),
+  );
+}
+
+/**
+ * The default looks with `overrides` laid over them. A look given as `undefined` keeps its default.
+ * @throws InvalidThemeError when a logo in `overrides.logos` is neither an {@link OwnLogo} nor an {@link OwnImage}.
+ */
 export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {}): Theme {
   return {
     fonts,
@@ -297,5 +332,6 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
     activeButton: laidOver(DEFAULT_ACTIVE_BUTTON, overrides.activeButton),
     activeButtonDisc: laidOver(DEFAULT_ACTIVE_BUTTON_DISC, overrides.activeButtonDisc),
     activeButtonIcon: laidOver(DEFAULT_ACTIVE_BUTTON_ICON, overrides.activeButtonIcon),
+    logos: checkedLogos(overrides.logos ?? {}),
   };
 }

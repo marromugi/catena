@@ -52,7 +52,7 @@ import {
   type ThemeOverrides,
   writeSvg,
 } from "./index";
-import type { LogoShape, OwnLogo } from "./index";
+import type { LogoShape, Node, OwnLogo } from "./index";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -252,6 +252,9 @@ const fixed = (width: number, height: number): Part<v.NullSchema<undefined>> => 
 const noId = () => {
   throw new Error("This part takes no id.");
 };
+
+/** `node` drawn at (10, 20) at its own size. */
+const drawnAtSize = (node: Node) => node.draw({ x: 10, y: 20, ...node.leaf.size });
 
 describe("writeSvg", () => {
   test("writes an element's attributes and then its children inside it", () => {
@@ -1279,6 +1282,109 @@ describe("icons and the kinds that carry one", () => {
         expect(drawn?.attributes.href).toBe(href);
       }),
     );
+  });
+
+  describe("logos registered on the theme", () => {
+    const registered = themeWith({ logos: { mark: madeUpLogo, picture: { href: madeUpImage } } });
+
+    test("a registered logo or image named in an icon draws as the same one given inline does, in every kind with an icon", () => {
+      for (const [name, inline] of [
+        ["mark", madeUpLogo],
+        ["picture", { href: madeUpImage }],
+      ] as const) {
+        const byName = { logo: name };
+        expect(
+          drawnAtSize(buildNode(iconTitleCard, registered, "c", { icon: byName, title: "ここで" })),
+        ).toBe(
+          drawnAtSize(buildNode(iconTitleCard, registered, "c", { icon: inline, title: "ここで" })),
+        );
+        expect(drawnAtSize(buildNode(iconTile, registered, "t", { icon: byName }))).toBe(
+          drawnAtSize(buildNode(iconTile, registered, "t", { icon: inline })),
+        );
+        expect(drawnAtSize(buildNode(activeRoundButton, registered, "b", byName))).toBe(
+          drawnAtSize(buildNode(activeRoundButton, registered, "b", inline)),
+        );
+      }
+    });
+
+    test("one registered logo is drawn by every node that names it", () => {
+      const names = ["a", "b", "c"].map((id) =>
+        drawnAtSize(buildNode(iconTile, registered, id, { icon: { logo: "mark" } })),
+      );
+      for (const svg of names) expect(svg).toContain(`<path d="${ring}" fill="#3a6ea5"/>`);
+    });
+
+    test("a node naming a logo the theme does not hold is refused, naming the node and the logo", () => {
+      for (const name of ["marks", "", "toString", "constructor", "__proto__", "spark"]) {
+        expect(() =>
+          buildNode(iconTitleCard, registered, "card-7", { icon: { logo: name }, title: "ここで" }),
+        ).toThrow(
+          expect.objectContaining({
+            name: "InvalidNodeContentError",
+            message: `The content of node "card-7" names the logo "${name}", which the theme does not hold.`,
+            cause: expect.objectContaining({ name: "UnknownLogoError", logo: name }),
+          }),
+        );
+      }
+      expect(() => buildNode(iconTile, theme, "t", { icon: { logo: "mark" } })).toThrow(
+        expect.objectContaining({ name: "InvalidNodeContentError" }),
+      );
+    });
+
+    test("a logo is named only as { logo: <a string> }, and nothing else beside it", () => {
+      const kind = frame(icon);
+      const notNames: unknown[] = [
+        { logo: 1 },
+        { logo: "mark", href: madeUpImage },
+        { name: "mark" },
+      ];
+      for (const content of notNames) {
+        // @ts-expect-error not an icon
+        expect(() => buildNode(kind, registered, "i", content)).toThrow(
+          expect.objectContaining({ name: "InvalidNodeContentError" }),
+        );
+      }
+    });
+
+    test("a registered logo that is neither a logo nor an image is refused when the theme is made, naming it", () => {
+      const box = { x: 0, y: 0, width: 24, height: 24 };
+      const notLogos: unknown[] = [
+        "spark",
+        { pathData: "M 0 0", viewBox: box, paint: "fill" },
+        { viewBox: box, shapes: [] },
+        { viewBox: box, shapes: [{ pathData: "M 0 0", paint: "fill", color: "" }] },
+        { href: 1 },
+        { logo: "mark" },
+        {},
+      ];
+      for (const bad of notLogos) {
+        // @ts-expect-error not a logo
+        expect(() => defineTheme(fonts, { logos: { mark: madeUpLogo, odd: bad } })).toThrow(
+          expect.objectContaining({
+            name: "InvalidThemeError",
+            message: expect.stringMatching(/^The logo "odd" is neither a logo nor an image: /),
+            cause: expect.objectContaining({ name: "ValiError" }),
+          }),
+        );
+      }
+    });
+
+    test("a theme made with no logos holds none", () => {
+      expect(defineTheme(fonts).logos).toEqual({});
+      expect(defineTheme(fonts, { logos: undefined }).logos).toEqual({});
+    });
+
+    test("any logo, registered, draws as it does inline", () => {
+      fc.assert(
+        fc.property(logos, offsets, offsets, (logo, x, y) => {
+          const withLogo = defineTheme(fonts, { logos: { it: logo } });
+          const at = { x, y, width: 20, height: 20 };
+          expect(icon.layout({ logo: "it" }, withLogo, 100).draw(at, noId)).toEqual(
+            icon.layout(logo, withLogo, 100).draw(at, noId),
+          );
+        }),
+      );
+    });
   });
 
   test("the icon-and-title card sets the icon centred on the title's line, the title a gap after it", () => {
