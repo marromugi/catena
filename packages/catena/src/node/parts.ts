@@ -219,14 +219,20 @@ const LOGO_SHAPE = v.variant("paint", [
 ]);
 export type LogoShape = v.InferOutput<typeof LOGO_SHAPE>;
 
-/** A user's own logo: shapes in the area `viewBox` names, drawn in order, each in its own colour. */
+/**
+ * A user's own logo: shapes in the area `viewBox` names, drawn in order, each in its own colour.
+ * The logo is the caller's to use, following that brand's own guidelines.
+ */
 const OWN_LOGO = v.strictObject({
   viewBox: VIEW_BOX,
   shapes: v.pipe(v.array(LOGO_SHAPE), v.nonEmpty()),
 });
 export type OwnLogo = v.InferOutput<typeof OWN_LOGO>;
 
-/** A user's own image, by its href, written into the SVG as given: catena never fetches it. */
+/**
+ * A user's own image, by its href, written into the SVG as given: catena never fetches it.
+ * The image is the caller's to use, following that brand's own guidelines when it is a logo.
+ */
 const OWN_IMAGE = v.strictObject({ href: v.string() });
 export type OwnImage = v.InferOutput<typeof OWN_IMAGE>;
 
@@ -243,7 +249,8 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square.
  * An icon or logo has its view box scaled to fit the square and centred in it.
  *
- * catena ships no logos: a logo or image is one the caller passes.
+ * catena ships no logos: a logo or image is one the caller passes, and theirs to use, following that
+ * brand's own guidelines.
  */
 export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> {
   return {
