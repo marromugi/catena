@@ -2,10 +2,33 @@ import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
 import type { Part } from "./part";
-import { frame, list, optional, panel, row, section, stack } from "./containers";
-import { bodyText, divider, image, redBadge, statusDot, subtitle, title } from "./parts";
+import {
+  atWidth,
+  centered,
+  fitted,
+  frame,
+  list,
+  optional,
+  panel,
+  pill,
+  row,
+  section,
+  stack,
+} from "./containers";
+import {
+  bodyText,
+  divider,
+  icon,
+  iconPart,
+  image,
+  redBadge,
+  statusDot,
+  subtitle,
+  textPart,
+  title,
+} from "./parts";
 import { element, idsOfNode, writeSvg } from "./svg";
-import type { Theme } from "./theme";
+import type { CardLook, Theme } from "./theme";
 
 /** The content given for a node is not what its kind shows. */
 export class InvalidNodeContentError extends Error {
@@ -56,6 +79,67 @@ export const titleBodyItemsSectionCard = frame(
     divider,
     section: section(panel(list(itemCard))),
   }),
+);
+
+/** A card with an icon before a title. */
+export const iconTitleCard = frame(row({ icon, title }, { grow: "title" }));
+
+/** A card with an icon before a title over wrapping body text, the icon set beside the title. */
+export const iconTitleBodyCard = frame(
+  row({ icon, text: stack({ title, body: bodyText }) }, { grow: "text", align: "start" }),
+);
+
+/** A panel holding two icon-and-title cards side by side, each as wide as a node and both as high. */
+export const iconTitleCardPair = panel(
+  row(
+    {
+      first: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
+      second: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
+    },
+    { align: "stretch" },
+  ),
+);
+
+/**
+ * An icon in a square card in the look `lookOf` picks from the theme, as large as the icon and its
+ * padding, with a caption and a sub-caption under it, each line centred, on the nodes that have them.
+ */
+function iconTileIn(lookOf: (theme: Theme) => CardLook) {
+  return stack({
+    icon: centered(
+      fitted(
+        iconPart((theme) => theme.tileIcon),
+        lookOf,
+      ),
+    ),
+    label: optional(
+      stack(
+        {
+          caption: optional(textPart((theme) => theme.caption, { align: "center" })),
+          subcaption: optional(textPart((theme) => theme.body, { align: "center" })),
+        },
+        { gap: (theme) => theme.captionGap },
+      ),
+    ),
+  });
+}
+
+/** An icon tile, with its caption and sub-caption: `{ icon, label: { caption, subcaption } }`. */
+export const iconTile = iconTileIn((theme) => theme.card);
+
+/** An icon tile drawn as selected. Its content is the same as {@link iconTile}'s. */
+export const selectedIconTile = iconTileIn((theme) => theme.selectedCard);
+
+/** A small round button holding an icon. */
+export const roundButton = pill(
+  iconPart((theme) => theme.buttonIcon),
+  (theme) => theme.button,
+);
+
+/** A small round button in its active look. Its content is the same as {@link roundButton}'s. */
+export const activeRoundButton = pill(
+  iconPart((theme) => theme.activeButtonIcon),
+  (theme) => theme.activeButton,
 );
 
 /**

@@ -1,3 +1,4 @@
+import type { IconName } from "../icon";
 import type { FontStack } from "../text";
 import type { Outline } from "./svg";
 
@@ -13,6 +14,11 @@ export interface TextLook {
 export interface CardLook extends Outline {
   readonly padding: number;
   readonly radius: number;
+}
+
+/** How a round button looks. `padding` lies between the button's edge and what it holds. */
+export interface ButtonLook extends Outline {
+  readonly padding: number;
 }
 
 /** How a pill holding short text looks. Its ends are half its height round. */
@@ -36,6 +42,18 @@ export interface DividerLook {
   readonly dash: readonly number[];
 }
 
+/**
+ * How an icon looks. It is drawn `size` across, in `color`: a stroked icon's lines are `strokeWidth`
+ * wide as drawn, and a filled icon is filled with it.
+ */
+export interface IconLook {
+  readonly size: number;
+  readonly strokeWidth: number;
+  readonly color: string;
+  /** The colour of a built-in icon drawn in another colour than `color`. */
+  readonly colors: Readonly<Partial<Record<IconName, string>>>;
+}
+
 /** The names a badge's or a status dot's colouring is chosen by. */
 export const TONES = ["plain", "red"] as const;
 export type Tone = (typeof TONES)[number];
@@ -50,9 +68,14 @@ export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
   /** How wide a node is laid out. */
   readonly nodeWidth: number;
-  /** The space between parts stacked one over the next, between items of a list, and between parts set side by side in a row. */
+  /**
+   * The space between parts stacked one over the next, unless the stack is given its own gap, between
+   * items of a list, and between parts set side by side in a row.
+   */
   readonly gap: number;
   readonly card: CardLook;
+  /** A card drawn as selected, such as the selected icon tile. */
+  readonly selectedCard: CardLook;
   /** A card held in a list inside another card. */
   readonly itemCard: CardLook;
   /** A card around a section's list. */
@@ -64,6 +87,20 @@ export interface Theme {
   readonly badges: Readonly<Record<Tone, BadgeLook>>;
   readonly dot: DotLook;
   readonly image: ImageLook;
+  /** An icon set before a title. */
+  readonly icon: IconLook;
+  /** The icon an icon tile holds. */
+  readonly tileIcon: IconLook;
+  /** The text under an icon tile; its sub-caption is in the body look. */
+  readonly caption: TextLook;
+  /** The space between a caption and its sub-caption, the gap of the stack holding them. */
+  readonly captionGap: number;
+  /** A round button around an icon. */
+  readonly button: ButtonLook;
+  readonly buttonIcon: IconLook;
+  /** A round button in its active look. */
+  readonly activeButton: ButtonLook;
+  readonly activeButtonIcon: IconLook;
 }
 
 /** Any look of a {@link Theme} but its fonts, each given in part. */
@@ -71,6 +108,7 @@ export interface ThemeOverrides {
   readonly nodeWidth?: number;
   readonly gap?: number;
   readonly card?: Partial<CardLook>;
+  readonly selectedCard?: Partial<CardLook>;
   readonly itemCard?: Partial<CardLook>;
   readonly panel?: Partial<CardLook>;
   readonly title?: Partial<TextLook>;
@@ -83,6 +121,14 @@ export interface ThemeOverrides {
     readonly colors?: Partial<Record<Tone, string>>;
   };
   readonly image?: Partial<ImageLook>;
+  readonly icon?: Partial<IconLook>;
+  readonly tileIcon?: Partial<IconLook>;
+  readonly caption?: Partial<TextLook>;
+  readonly captionGap?: number;
+  readonly button?: Partial<ButtonLook>;
+  readonly buttonIcon?: Partial<IconLook>;
+  readonly activeButton?: Partial<ButtonLook>;
+  readonly activeButtonIcon?: Partial<IconLook>;
 }
 
 const DEFAULT_CARD: CardLook = {
@@ -90,6 +136,13 @@ const DEFAULT_CARD: CardLook = {
   radius: 8,
   fill: "#ffffff",
   stroke: "#e6e6e6",
+  strokeWidth: 1,
+};
+const DEFAULT_SELECTED_CARD: CardLook = {
+  padding: 20,
+  radius: 8,
+  fill: "#fdeee2",
+  stroke: "#eda866",
   strokeWidth: 1,
 };
 const DEFAULT_ITEM_CARD: CardLook = {
@@ -124,6 +177,48 @@ const DEFAULT_BADGES: Record<Tone, BadgeLook> = {
 };
 const DEFAULT_DOT_COLORS: Record<Tone, string> = { plain: "#8c8c8c", red: "#e5484d" };
 const DEFAULT_IMAGE: ImageLook = { aspectRatio: 3 / 2, radius: 6 };
+const ICON_COLORS = { spark: "#d97757" } as const;
+const DEFAULT_ICON: IconLook = {
+  size: 20,
+  strokeWidth: 1.5,
+  color: "#1f1f1f",
+  colors: ICON_COLORS,
+};
+const DEFAULT_TILE_ICON: IconLook = {
+  size: 32,
+  strokeWidth: 2,
+  color: "#1f1f1f",
+  colors: ICON_COLORS,
+};
+const DEFAULT_CAPTION: TextLook = {
+  weight: "regular",
+  size: 14,
+  lineHeight: 1.5,
+  color: "#1f1f1f",
+};
+const DEFAULT_BUTTON: ButtonLook = {
+  padding: 8,
+  fill: "#ffffff",
+  stroke: "#e6e6e6",
+  strokeWidth: 1,
+};
+const DEFAULT_BUTTON_ICON: IconLook = {
+  size: 14,
+  strokeWidth: 1.5,
+  color: "#1f1f1f",
+  colors: ICON_COLORS,
+};
+const DEFAULT_ACTIVE_BUTTON: ButtonLook = {
+  ...DEFAULT_BUTTON,
+  fill: "#edf1fe",
+  stroke: "#3e63dd",
+  strokeWidth: 2,
+};
+const DEFAULT_ACTIVE_BUTTON_ICON: IconLook = {
+  ...DEFAULT_BUTTON_ICON,
+  color: "#3e63dd",
+  colors: {},
+};
 
 function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T {
   const given = Object.entries(overrides).filter(([, value]) => value !== undefined);
@@ -137,6 +232,7 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
     nodeWidth: overrides.nodeWidth ?? 320,
     gap: overrides.gap ?? 12,
     card: laidOver(DEFAULT_CARD, overrides.card),
+    selectedCard: laidOver(DEFAULT_SELECTED_CARD, overrides.selectedCard),
     itemCard: laidOver(DEFAULT_ITEM_CARD, overrides.itemCard),
     panel: laidOver(DEFAULT_PANEL, overrides.panel),
     title: laidOver(DEFAULT_TITLE, overrides.title),
@@ -152,5 +248,13 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
       colors: laidOver(DEFAULT_DOT_COLORS, overrides.dot?.colors),
     },
     image: laidOver(DEFAULT_IMAGE, overrides.image),
+    icon: laidOver(DEFAULT_ICON, overrides.icon),
+    tileIcon: laidOver(DEFAULT_TILE_ICON, overrides.tileIcon),
+    caption: laidOver(DEFAULT_CAPTION, overrides.caption),
+    captionGap: overrides.captionGap ?? 2,
+    button: laidOver(DEFAULT_BUTTON, overrides.button),
+    buttonIcon: laidOver(DEFAULT_BUTTON_ICON, overrides.buttonIcon),
+    activeButton: laidOver(DEFAULT_ACTIVE_BUTTON, overrides.activeButton),
+    activeButtonIcon: laidOver(DEFAULT_ACTIVE_BUTTON_ICON, overrides.activeButtonIcon),
   };
 }

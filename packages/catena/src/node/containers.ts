@@ -2,7 +2,7 @@ import * as v from "valibot";
 import type { Block, Part } from "./part";
 import { subtitle } from "./parts";
 import { outlinedRect } from "./svg";
-import type { CardLook, Theme } from "./theme";
+import type { ButtonLook, CardLook, Theme } from "./theme";
 
 /**
  * A card drawn around `child`, in the look `lookOf` picks from the theme, the theme's card by default.
@@ -17,8 +17,81 @@ export function frame<TSchema extends v.GenericSchema>(
     schema: child.schema,
     layout(content, theme, maxWidth) {
       const look = lookOf(theme);
-      return cardAround(child.layout(content, theme, maxWidth - 2 * look.padding), look, maxWidth);
+      const inner = child.layout(content, theme, maxWidth - 2 * look.padding);
+      return cardAround(inner, look, look.radius, maxWidth);
     },
+  };
+}
+
+/**
+ * A card in the look `lookOf` picks from the theme, fitted around `child` inside its padding rather than
+ * filling the width it is given. It draws at the top-left of its box.
+ */
+export function fitted<TSchema extends v.GenericSchema>(
+  child: Part<TSchema>,
+  lookOf: (theme: Theme) => CardLook,
+): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout(content, theme, maxWidth) {
+      const look = lookOf(theme);
+      const inner = child.layout(content, theme, maxWidth - 2 * look.padding);
+      return atOwnSize(cardAround(inner, look, look.radius, 0));
+    },
+  };
+}
+
+/**
+ * A card in the look `lookOf` picks from the theme, fitted around `child` inside its padding, its ends
+ * half its height round, so it is a circle around a square child. It draws at the top-left of its box.
+ */
+export function pill<TSchema extends v.GenericSchema>(
+  child: Part<TSchema>,
+  lookOf: (theme: Theme) => ButtonLook,
+): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout(content, theme, maxWidth) {
+      const look = lookOf(theme);
+      const inner = child.layout(content, theme, maxWidth - 2 * look.padding);
+      const radius = (inner.size.height + 2 * look.padding) / 2;
+      return atOwnSize(cardAround(inner, look, radius, 0));
+    },
+  };
+}
+
+/** `block` drawn at its own size at the top-left of whatever box it is given. */
+function atOwnSize(block: Block): Block {
+  return {
+    size: block.size,
+    draw: (box, newId) => block.draw({ x: box.x, y: box.y, ...block.size }, newId),
+  };
+}
+
+/** `child` drawn at its own size, centred across the box it is given. */
+export function centered<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout(content, theme, maxWidth) {
+      const inner = child.layout(content, theme, maxWidth);
+      const { width, height } = inner.size;
+      return {
+        size: inner.size,
+        draw: (box, newId) =>
+          inner.draw({ x: box.x + (box.width - width) / 2, y: box.y, width, height }, newId),
+      };
+    },
+  };
+}
+
+/** `child` laid out at the width `widthOf` picks from the theme, whatever width it is given. */
+export function atWidth<TSchema extends v.GenericSchema>(
+  child: Part<TSchema>,
+  widthOf: (theme: Theme) => number,
+): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout: (content, theme) => child.layout(content, theme, widthOf(theme)),
   };
 }
 
@@ -29,14 +102,17 @@ export function panel<TSchema extends v.GenericSchema>(child: Part<TSchema>): Pa
     layout(content, theme, maxWidth) {
       const look = theme.panel;
       const inner = child.layout(content, theme, maxWidth - 2 * look.padding);
-      return isEmpty(inner) ? EMPTY : cardAround(inner, look, maxWidth);
+      return isEmpty(inner) ? EMPTY : cardAround(inner, look, look.radius, maxWidth);
     },
   };
 }
 
-/** A card in `look` around `inner`, which is drawn inside its padding. See {@link frame} for its width. */
-function cardAround(inner: Block, look: CardLook, maxWidth: number): Block {
-  const { padding, radius } = look;
+/**
+ * A card in `look` with `radius`-round corners around `inner`, which is drawn inside its padding. See
+ * {@link frame} for its width.
+ */
+function cardAround(inner: Block, look: ButtonLook, radius: number, maxWidth: number): Block {
+  const { padding } = look;
   return {
     size: {
       width: Math.max(maxWidth, inner.size.width + 2 * padding),
@@ -101,20 +177,22 @@ function keyedParts<TParts extends Record<string, Part>>(container: string, part
 }
 
 /**
- * Parts set one over the next, the theme's gap apart, in the order of `parts`' keys. Its content is an
- * object holding each part's content under the part's key.
+ * Parts set one over the next, in the order of `parts`' keys, the gap `gap` picks from the theme apart,
+ * the theme's gap by default. Its content is an object holding each part's content under the part's key.
  * @throws Error when a key looks like an integer or is `__proto__`, since its place in the order is lost.
  */
 export function stack<const TParts extends Record<string, Part>>(
   parts: TParts,
+  options: { readonly gap?: (theme: Theme) => number } = {},
 ): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
   const { entries, schema } = keyedParts("stack", parts);
+  const { gap = (theme: Theme) => theme.gap } = options;
   return {
     schema,
     layout: (content, theme, maxWidth) =>
       stacked(
         entries.map(([key, part]) => part.layout(content[key], theme, maxWidth)),
-        theme.gap,
+        gap(theme),
       ),
   };
 }
@@ -171,7 +249,7 @@ function stacked(blocks: readonly Block[], gap: number): Block {
 
 /**
  * Parts set side by side, the theme's gap apart, in the order of `parts`' keys, each centred in the
- * row's height. Its content is an object holding each part's content under the part's key.
+ * row's height; set at its top when `align` is `"start"`, and drawn as high as the row when it is `"stretch"`. Its content is an object holding each part's content under the part's key.
  *
  * Every part but `grow` is laid out first, each at the width the parts before it leave, and together
  * within half the row's width when it has a `grow` part. The `grow` part then takes all the width that is
@@ -182,10 +260,13 @@ function stacked(blocks: readonly Block[], gap: number): Block {
  */
 export function row<const TParts extends Record<string, Part>>(
   parts: TParts,
-  options: { readonly grow?: keyof TParts & string } = {},
+  options: {
+    readonly grow?: keyof TParts & string;
+    readonly align?: "center" | "start" | "stretch";
+  } = {},
 ): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
   const { entries, schema } = keyedParts("row", parts);
-  const { grow } = options;
+  const { grow, align = "center" } = options;
   return {
     schema,
     layout(content, theme, maxWidth) {
@@ -221,11 +302,9 @@ export function row<const TParts extends Record<string, Part>>(
           let x = box.x;
           return shown.flatMap(({ key, block }) => {
             const width = key === grow ? growWidth(box.width) : block.size.width;
-            const { height } = block.size;
-            const drawn = block.draw(
-              { x, y: box.y + (box.height - height) / 2, width, height },
-              newId,
-            );
+            const height = align === "stretch" ? box.height : block.size.height;
+            const y = align === "center" ? box.y + (box.height - height) / 2 : box.y;
+            const drawn = block.draw({ x, y, width, height }, newId);
             x += width + theme.gap;
             return drawn;
           });

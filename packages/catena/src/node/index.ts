@@ -1,9 +1,28 @@
-export { frame, list, optional, panel, row, section, stack } from "./containers";
 export {
+  atWidth,
+  centered,
+  fitted,
+  frame,
+  list,
+  optional,
+  panel,
+  pill,
+  row,
+  section,
+  stack,
+} from "./containers";
+export {
+  activeRoundButton,
   buildNode,
+  iconTile,
+  iconTitleBodyCard,
+  iconTitleCard,
+  iconTitleCardPair,
   imageTitleBodyCard,
   InvalidNodeContentError,
   itemCard,
+  roundButton,
+  selectedIconTile,
   statusTitleCard,
   titleBadgeCard,
   titleBodyBadgeCard,
@@ -17,6 +36,8 @@ export {
   badgePart,
   bodyText,
   divider,
+  icon,
+  iconPart,
   image,
   imagePart,
   redBadge,
@@ -25,14 +46,17 @@ export {
   textPart,
   title,
 } from "./parts";
+export type { OwnIcon } from "./parts";
 export { element, writeSvg } from "./svg";
 export type { NewId, Outline, SvgElement } from "./svg";
 export { defineTheme, TONES } from "./theme";
 export type {
   BadgeLook,
+  ButtonLook,
   CardLook,
   DividerLook,
   DotLook,
+  IconLook,
   ImageLook,
   TextLook,
   Theme,

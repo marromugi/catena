@@ -1,8 +1,17 @@
 import * as v from "valibot";
+import { iconGrid, iconNames, iconPathData, iconStroke } from "../icon";
+import type { Rect } from "../layout";
 import { layoutText, textPathData, type TextLayout } from "../text";
 import type { Part } from "./part";
 import { element, outlinedRect } from "./svg";
-import { TONES, type BadgeLook, type ImageLook, type TextLook, type Theme } from "./theme";
+import {
+  TONES,
+  type BadgeLook,
+  type IconLook,
+  type ImageLook,
+  type TextLook,
+  type Theme,
+} from "./theme";
 
 const TEXT = v.string();
 
@@ -15,8 +24,29 @@ function setText(content: string, look: TextLook, theme: Theme, maxWidth: number
   });
 }
 
-/** A part showing a string, wrapped to the width it is given, in the look `lookOf` picks from the theme. */
-export function textPart(lookOf: (theme: Theme) => TextLook): Part<typeof TEXT> {
+/** `text`'s outlines with each line centred across `box`. */
+function centredLines(text: TextLayout, box: Rect): string {
+  const { size, lineHeight } = text.style;
+  return text.lines
+    .map((line, index) =>
+      textPathData(
+        { ...text, lines: [line], width: line.width },
+        box.x + (box.width - line.width) / 2,
+        box.y + index * size * lineHeight,
+      ),
+    )
+    .join("");
+}
+
+/**
+ * A part showing a string, wrapped to the width it is given, in the look `lookOf` picks from the theme.
+ * Its lines start at the left of its box, or are each centred across it when `align` is `"center"`.
+ */
+export function textPart(
+  lookOf: (theme: Theme) => TextLook,
+  options: { readonly align?: "start" | "center" } = {},
+): Part<typeof TEXT> {
+  const { align = "start" } = options;
   return {
     schema: TEXT,
     layout(content, theme, maxWidth) {
@@ -24,7 +54,12 @@ export function textPart(lookOf: (theme: Theme) => TextLook): Part<typeof TEXT> 
       const text = setText(content, look, theme, maxWidth);
       return {
         size: { width: text.width, height: text.height },
-        draw: (box) => [element("path", { d: textPathData(text, box.x, box.y), fill: look.color })],
+        draw: (box) => [
+          element("path", {
+            d: align === "center" ? centredLines(text, box) : textPathData(text, box.x, box.y),
+            fill: look.color,
+          }),
+        ],
       };
     },
   };
@@ -152,3 +187,59 @@ export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF
 }
 
 export const image = imagePart((theme) => theme.image);
+
+const FINITE = v.pipe(v.number(), v.finite());
+const BREADTH = v.pipe(v.number(), v.finite(), v.gtValue(0));
+
+/**
+ * A user's own icon: path data in the area `viewBox` names, as an SVG `viewBox` does, either stroked as
+ * the built-in icons are or filled.
+ */
+const OWN_ICON = v.strictObject({
+  pathData: v.string(),
+  viewBox: v.strictObject({ x: FINITE, y: FINITE, width: BREADTH, height: BREADTH }),
+  paint: v.picklist(["stroke", "fill"]),
+});
+export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
+
+const ICON = v.union([v.picklist(iconNames), OWN_ICON]);
+
+const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
+
+/**
+ * An icon in the look `lookOf` picks from the theme. Its content is a built-in icon's name, or the
+ * user's own icon. It is the look's size across, its area scaled to fit that square and centred in it,
+ * and draws at the top-left of its box.
+ */
+export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> {
+  return {
+    schema: ICON,
+    layout(content, theme) {
+      const { size, strokeWidth, color, colors } = lookOf(theme);
+      const { pathData, viewBox, paint }: OwnIcon =
+        typeof content === "string"
+          ? { pathData: iconPathData[content], viewBox: BUILT_IN_VIEW_BOX, paint: "stroke" }
+          : content;
+      const ink = (typeof content === "string" ? colors[content] : undefined) ?? color;
+      const longest = Math.max(viewBox.width, viewBox.height);
+      const scale = size / longest;
+      const left = (size * (1 - viewBox.width / longest)) / 2 - viewBox.x * scale;
+      const top = (size * (1 - viewBox.height / longest)) / 2 - viewBox.y * scale;
+      return {
+        size: { width: size, height: size },
+        draw: (box) => [
+          element("path", {
+            d: pathData,
+            transform: `translate(${box.x + left} ${box.y + top}) scale(${scale})`,
+            ...(paint === "fill"
+              ? { fill: ink }
+              : { ...iconStroke, stroke: ink, "stroke-width": strokeWidth / scale }),
+          }),
+        ],
+      };
+    },
+  };
+}
+
+/** The icon set before a title. */
+export const icon = iconPart((theme) => theme.icon);
