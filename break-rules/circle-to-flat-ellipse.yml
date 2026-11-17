@@ -1,0 +1,5 @@
+id: circle-to-flat-ellipse
+language: TypeScript
+rule:
+  pattern: circle($X, $Y, $R)
+fix: ellipse($X, $Y, $R, $R / 2)

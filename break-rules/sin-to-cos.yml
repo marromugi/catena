@@ -1,0 +1,5 @@
+id: sin-to-cos
+language: TypeScript
+rule:
+  pattern: Math.sin($X)
+fix: Math.cos($X)
