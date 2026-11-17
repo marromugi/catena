@@ -844,4 +844,57 @@ describe("lists, the divider and sections", () => {
     expect(itemCard.layout("い", changed, 100).size).toEqual({ width: 100, height: 26 });
     expect(subtitle.layout("い", changed, 100).size.height).toBe(18);
   });
+
+  test("a section with no items keeps its heading and draws no panel", () => {
+    expect(panel(list(title)).layout([], theme, 200).size).toEqual({ width: 0, height: 0 });
+    const node = buildNode(titleBodyItemsSectionCard, theme, "card", {
+      title: "ここで",
+      body: BODY,
+      items: ["い", "う"],
+      section: { heading: "セクション名", items: [] },
+    });
+
+    // 408.8 less the panel (12 + 96 + 12) and the gap above it.
+    expect(node.leaf.size.height).toBeCloseTo(276.8, 6);
+    const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+    expect(drawn).not.toContain(`rx="10"`);
+    const headingData = textPathData(
+      layoutText("セクション名", { fonts: fonts.bold, size: 12, lineHeight: 1.5, maxWidth: 280 }),
+      20,
+      20 + 21 + 12 + 52.8 + 12 + 96 + 12 + 1 + 12,
+    );
+    expect(drawn).toMatch(new RegExp(`<path d="${headingData}" fill="#1f1f1f"/></g>$`));
+  });
+
+  test("a list holds more items than a call can take arguments", () => {
+    const items = Array.from({ length: 200_000 }, () => null);
+
+    expect(list(fixed(2, 1)).layout(items, theme, 100).size).toEqual({
+      width: 2,
+      height: 200_000 + 199_999 * 12,
+    });
+  });
+
+  test("a list lays each item out at the list's width", () => {
+    // 21 characters of 12 fill the 252 inside an item card's padding at 276, and wrap at 275.
+    const text = "あ".repeat(21);
+
+    expect(list(itemCard).layout([text], theme, 276).size.height).toBe(42);
+    expect(list(itemCard).layout([text], theme, 275).size.height).toBe(60);
+  });
+
+  test("a list's content is required where a stack holds it", () => {
+    const kind = frame(stack({ items: list(title) }));
+    // @ts-expect-error the list's key is left out
+    expect(() => buildNode(kind, theme, "l", {})).toThrow(
+      expect.objectContaining({ name: "InvalidNodeContentError" }),
+    );
+  });
+
+  test("a divider is as high as the theme's line, and takes no negative width", () => {
+    const thick = defineTheme(fonts, { divider: { width: 3 } });
+
+    expect(divider.layout(undefined, thick, 100).size).toEqual({ width: 100, height: 3 });
+    expect(divider.layout(undefined, theme, -10).size).toEqual({ width: 0, height: 1 });
+  });
 });

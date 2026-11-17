@@ -50,7 +50,7 @@ export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
   /** How wide a node is laid out. */
   readonly nodeWidth: number;
-  /** The space between parts stacked one over the next, and between parts set side by side in a row. */
+  /** The space between parts stacked one over the next, between items of a list, and between parts set side by side in a row. */
   readonly gap: number;
   readonly card: CardLook;
   /** A card held in a list inside another card. */

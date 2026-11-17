@@ -17,27 +17,43 @@ export function frame<TSchema extends v.GenericSchema>(
     schema: child.schema,
     layout(content, theme, maxWidth) {
       const look = lookOf(theme);
-      const { padding, radius } = look;
-      const inner = child.layout(content, theme, maxWidth - 2 * padding);
-      return {
-        size: {
-          width: Math.max(maxWidth, inner.size.width + 2 * padding),
-          height: inner.size.height + 2 * padding,
-        },
-        draw: (box, newId) => [
-          outlinedRect(box, radius, look),
-          ...inner.draw(
-            {
-              x: box.x + padding,
-              y: box.y + padding,
-              width: box.width - 2 * padding,
-              height: box.height - 2 * padding,
-            },
-            newId,
-          ),
-        ],
-      };
+      return cardAround(child.layout(content, theme, maxWidth - 2 * look.padding), look, maxWidth);
     },
+  };
+}
+
+/** A card in the theme's panel look around `child`, such as the list of a section. Around a child that takes no room, it takes none either. */
+export function panel<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
+  return {
+    schema: child.schema,
+    layout(content, theme, maxWidth) {
+      const look = theme.panel;
+      const inner = child.layout(content, theme, maxWidth - 2 * look.padding);
+      return isEmpty(inner) ? EMPTY : cardAround(inner, look, maxWidth);
+    },
+  };
+}
+
+/** A card in `look` around `inner`, which is drawn inside its padding. See {@link frame} for its width. */
+function cardAround(inner: Block, look: CardLook, maxWidth: number): Block {
+  const { padding, radius } = look;
+  return {
+    size: {
+      width: Math.max(maxWidth, inner.size.width + 2 * padding),
+      height: inner.size.height + 2 * padding,
+    },
+    draw: (box, newId) => [
+      outlinedRect(box, radius, look),
+      ...inner.draw(
+        {
+          x: box.x + padding,
+          y: box.y + padding,
+          width: box.width - 2 * padding,
+          height: box.height - 2 * padding,
+        },
+        newId,
+      ),
+    ],
   };
 }
 
@@ -120,11 +136,6 @@ export function list<TSchema extends v.GenericSchema>(
   };
 }
 
-/** A card in the theme's panel look around `child`, such as the list of a section. */
-export function panel<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
-  return frame(child, (theme) => theme.panel);
-}
-
 /**
  * A heading over `items`, a gap apart. Its content is `{ heading, items }`: the heading's text, and
  * `items`' content.
@@ -145,7 +156,7 @@ function stacked(blocks: readonly Block[], gap: number): Block {
     });
   return {
     size: {
-      width: Math.max(0, ...placed.map(({ block }) => block.size.width)),
+      width: placed.reduce((widest, { block }) => Math.max(widest, block.size.width), 0),
       height: Math.max(0, next - gap),
     },
     draw: (box, newId) =>
