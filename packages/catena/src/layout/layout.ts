@@ -1,3 +1,4 @@
+/** A point of the canvas, measured from its top-left corner. */
 export interface Point {
   readonly x: number;
   readonly y: number;
@@ -46,9 +47,9 @@ export interface Spacing {
   readonly nodeGap: number;
   /** Between a group's border and the nodes inside it. */
   readonly padding: number;
-  /** Between an edge and a node it does not connect to, unless the node is inside a group it connects. */
+  /** Between an edge and a node, a corner of a node it meets, or the border of a group around one of its ends. A node inside a group the edge connects is left out. */
   readonly edgeToNode: number;
-  /** Between two stretches of edge that run side by side, unless edges of one node share them at that node. */
+  /** Between any two stretches of edge, except where they cross at a right angle clear of their ends, meet at a bend without turning straight back, or are shared by edges of one node at that node. */
   readonly edgeGap: number;
   /** The shortest stretch of an edge between two bends, or between a bend and an end. */
   readonly minSegment: number;

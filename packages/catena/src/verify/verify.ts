@@ -20,7 +20,7 @@ import {
   type Side,
 } from "./geometry";
 
-/** One way a layout is broken, naming what is involved by id. A label is named by its edge and its place in that edge's labels. */
+/** One way a layout is broken, naming what is involved by id. */
 export type Violation =
   /** Two nodes with the same parent are closer than `nodeGap`. */
   | { readonly kind: "nodes-overlap"; readonly nodes: readonly [string, string] }
@@ -29,7 +29,7 @@ export type Violation =
   | { readonly kind: "node-outside-canvas"; readonly node: string }
   | { readonly kind: "edge-outside-canvas"; readonly edge: string }
   | { readonly kind: "label-outside-canvas"; readonly edge: string; readonly label: number }
-  /** An end of the edge does not meet a side of its node at a right angle, away from the corners. */
+  /** An end of the edge does not meet a side of its node at a right angle, away from the corners. A slanted end only has to start on the border. */
   | { readonly kind: "edge-not-attached"; readonly edge: string; readonly end: "from" | "to" }
   /** A stretch of the edge is neither horizontal nor vertical. That stretch is not checked against other edges, nor the edge against nodes or groups. */
   | { readonly kind: "edge-not-orthogonal"; readonly edge: string; readonly segment: number }
@@ -40,7 +40,7 @@ export type Violation =
    * A node inside a group the edge connects is not checked: the group's border lies between them.
    */
   | { readonly kind: "edge-through-node"; readonly edge: string; readonly node: string }
-  /** Both ends of the edge are inside the group, and the edge is not. */
+  /** Both ends of the edge are inside the group, and the edge is anything but a path that stays strictly inside it. */
   | { readonly kind: "edge-leaves-group"; readonly edge: string; readonly group: string }
   /** One end of the edge is inside the group, and the edge does not cross its border exactly once. */
   | { readonly kind: "edge-miscrosses-group"; readonly edge: string; readonly group: string }
@@ -67,6 +67,7 @@ export type Violation =
       readonly node: string;
     };
 
+/** A label, by its edge and its place among that edge's labels. */
 export interface LabelReference {
   readonly edge: string;
   readonly label: number;
