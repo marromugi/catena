@@ -94,28 +94,33 @@ export function outlinedRect(
   };
   if (shadow.opacity === 0) return [element("rect", rect)];
   const id = newId();
+  return [shadowFilter(box, shadow, id), element("rect", { ...rect, filter: `url(#${id})` })];
+}
+
+/**
+ * The `<filter>` named `id` casting `shadow` from a shape drawn inside `area`. Its region reaches past
+ * `area` by the shadow's offset and three times its blur.
+ */
+export function shadowFilter(area: Rect, shadow: Shadow, id: string): SvgElement {
   const reach = 3 * shadow.blur;
-  return [
-    element(
-      "filter",
-      {
-        id,
-        filterUnits: "userSpaceOnUse",
-        x: box.x + Math.min(0, shadow.dx) - reach,
-        y: box.y + Math.min(0, shadow.dy) - reach,
-        width: box.width + Math.abs(shadow.dx) + 2 * reach,
-        height: box.height + Math.abs(shadow.dy) + 2 * reach,
-      },
-      [
-        element("feDropShadow", {
-          dx: shadow.dx,
-          dy: shadow.dy,
-          stdDeviation: shadow.blur,
-          "flood-color": shadow.color,
-          "flood-opacity": shadow.opacity,
-        }),
-      ],
-    ),
-    element("rect", { ...rect, filter: `url(#${id})` }),
-  ];
+  return element(
+    "filter",
+    {
+      id,
+      filterUnits: "userSpaceOnUse",
+      x: area.x + Math.min(0, shadow.dx) - reach,
+      y: area.y + Math.min(0, shadow.dy) - reach,
+      width: area.width + Math.abs(shadow.dx) + 2 * reach,
+      height: area.height + Math.abs(shadow.dy) + 2 * reach,
+    },
+    [
+      element("feDropShadow", {
+        dx: shadow.dx,
+        dy: shadow.dy,
+        stdDeviation: shadow.blur,
+        "flood-color": shadow.color,
+        "flood-opacity": shadow.opacity,
+      }),
+    ],
+  );
 }
