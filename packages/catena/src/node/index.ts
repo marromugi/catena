@@ -6,6 +6,7 @@ export {
   list,
   optional,
   panel,
+  pill,
   row,
   section,
   stack,
@@ -51,6 +52,7 @@ export type { NewId, Outline, SvgElement } from "./svg";
 export { defineTheme, TONES } from "./theme";
 export type {
   BadgeLook,
+  ButtonLook,
   CardLook,
   DividerLook,
   DotLook,

@@ -10,6 +10,7 @@ import {
   list,
   optional,
   panel,
+  pill,
   row,
   section,
   stack,
@@ -88,17 +89,20 @@ export const iconTitleBodyCard = frame(
   row({ icon, text: stack({ title, body: bodyText }) }, { grow: "text", align: "start" }),
 );
 
-/** A panel holding two icon-and-title cards side by side, each as wide as a node. */
+/** A panel holding two icon-and-title cards side by side, each as wide as a node and both as high. */
 export const iconTitleCardPair = panel(
-  row({
-    first: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
-    second: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
-  }),
+  row(
+    {
+      first: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
+      second: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
+    },
+    { align: "stretch" },
+  ),
 );
 
 /**
  * An icon in a square card in the look `lookOf` picks from the theme, as large as the icon and its
- * padding, with a caption and a sub-caption centred under it on the nodes that have them.
+ * padding, with a caption and a sub-caption under it, each line centred, on the nodes that have them.
  */
 function iconTileIn(lookOf: (theme: Theme) => CardLook) {
   return stack({
@@ -111,8 +115,8 @@ function iconTileIn(lookOf: (theme: Theme) => CardLook) {
     label: optional(
       stack(
         {
-          caption: optional(centered(textPart((theme) => theme.caption))),
-          subcaption: optional(centered(bodyText)),
+          caption: optional(textPart((theme) => theme.caption, { align: "center" })),
+          subcaption: optional(textPart((theme) => theme.body, { align: "center" })),
         },
         { gap: (theme) => theme.captionGap },
       ),
@@ -127,13 +131,13 @@ export const iconTile = iconTileIn((theme) => theme.card);
 export const selectedIconTile = iconTileIn((theme) => theme.selectedCard);
 
 /** A small round button holding an icon. */
-export const roundButton = fitted(
+export const roundButton = pill(
   iconPart((theme) => theme.buttonIcon),
   (theme) => theme.button,
 );
 
 /** A small round button in its active look. Its content is the same as {@link roundButton}'s. */
-export const activeRoundButton = fitted(
+export const activeRoundButton = pill(
   iconPart((theme) => theme.activeButtonIcon),
   (theme) => theme.activeButton,
 );

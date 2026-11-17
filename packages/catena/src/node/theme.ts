@@ -16,6 +16,11 @@ export interface CardLook extends Outline {
   readonly radius: number;
 }
 
+/** How a round button looks. `padding` lies between the button's edge and what it holds. */
+export interface ButtonLook extends Outline {
+  readonly padding: number;
+}
+
 /** How a pill holding short text looks. Its ends are half its height round. */
 export interface BadgeLook extends TextLook, Outline {
   /** Between the pill's edge and its text, at either end. */
@@ -37,7 +42,10 @@ export interface DividerLook {
   readonly dash: readonly number[];
 }
 
-/** How an icon looks. It is drawn `size` across, its lines `strokeWidth` wide as drawn. */
+/**
+ * How an icon looks. It is drawn `size` across, in `color`: a stroked icon's lines are `strokeWidth`
+ * wide as drawn, and a filled icon is filled with it.
+ */
 export interface IconLook {
   readonly size: number;
   readonly strokeWidth: number;
@@ -60,7 +68,10 @@ export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
   /** How wide a node is laid out. */
   readonly nodeWidth: number;
-  /** The space between parts stacked one over the next, between items of a list, and between parts set side by side in a row. */
+  /**
+   * The space between parts stacked one over the next, unless the stack is given its own gap, between
+   * items of a list, and between parts set side by side in a row.
+   */
   readonly gap: number;
   readonly card: CardLook;
   /** A card drawn as selected, such as the selected icon tile. */
@@ -82,13 +93,13 @@ export interface Theme {
   readonly tileIcon: IconLook;
   /** The text under an icon tile; its sub-caption is in the body look. */
   readonly caption: TextLook;
-  /** The space between a caption and its sub-caption. */
+  /** The space between a caption and its sub-caption, the gap of the stack holding them. */
   readonly captionGap: number;
-  /** A round button around an icon. Its radius is half its size, so it is round. */
-  readonly button: CardLook;
+  /** A round button around an icon. */
+  readonly button: ButtonLook;
   readonly buttonIcon: IconLook;
   /** A round button in its active look. */
-  readonly activeButton: CardLook;
+  readonly activeButton: ButtonLook;
   readonly activeButtonIcon: IconLook;
 }
 
@@ -114,9 +125,9 @@ export interface ThemeOverrides {
   readonly tileIcon?: Partial<IconLook>;
   readonly caption?: Partial<TextLook>;
   readonly captionGap?: number;
-  readonly button?: Partial<CardLook>;
+  readonly button?: Partial<ButtonLook>;
   readonly buttonIcon?: Partial<IconLook>;
-  readonly activeButton?: Partial<CardLook>;
+  readonly activeButton?: Partial<ButtonLook>;
   readonly activeButtonIcon?: Partial<IconLook>;
 }
 
@@ -185,21 +196,29 @@ const DEFAULT_CAPTION: TextLook = {
   lineHeight: 1.5,
   color: "#1f1f1f",
 };
-const DEFAULT_BUTTON: CardLook = {
+const DEFAULT_BUTTON: ButtonLook = {
   padding: 8,
-  radius: 15,
   fill: "#ffffff",
   stroke: "#e6e6e6",
   strokeWidth: 1,
 };
-const DEFAULT_BUTTON_ICON: IconLook = { size: 14, strokeWidth: 1.5, color: "#1f1f1f", colors: {} };
-const DEFAULT_ACTIVE_BUTTON: CardLook = {
+const DEFAULT_BUTTON_ICON: IconLook = {
+  size: 14,
+  strokeWidth: 1.5,
+  color: "#1f1f1f",
+  colors: ICON_COLORS,
+};
+const DEFAULT_ACTIVE_BUTTON: ButtonLook = {
   ...DEFAULT_BUTTON,
   fill: "#edf1fe",
   stroke: "#3e63dd",
   strokeWidth: 2,
 };
-const DEFAULT_ACTIVE_BUTTON_ICON: IconLook = { ...DEFAULT_BUTTON_ICON, color: "#3e63dd" };
+const DEFAULT_ACTIVE_BUTTON_ICON: IconLook = {
+  ...DEFAULT_BUTTON_ICON,
+  color: "#3e63dd",
+  colors: {},
+};
 
 function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T {
   const given = Object.entries(overrides).filter(([, value]) => value !== undefined);

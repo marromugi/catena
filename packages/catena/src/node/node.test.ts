@@ -924,6 +924,14 @@ const iconSvg = (
   `<path d="${pathData}" transform="translate(${x} ${y}) scale(${size / grid})" fill="none" ` +
   `stroke-width="${strokeWidth / (size / grid)}" stroke-linecap="round" stroke-linejoin="round" stroke="${color}"/>`;
 
+// One line of caption text drawn at (x, y).
+const captionLine = (text: string, x: number, y: number) =>
+  textPathData(
+    layoutText(text, { fonts: fonts.regular, size: 14, lineHeight: 1.5, maxWidth: 320 }),
+    x,
+    y,
+  );
+
 describe("icons and the kinds that carry one", () => {
   test("a built-in icon is drawn by name, scaled from its grid to the look's size, in its colour", () => {
     const block = icon.layout("spark", theme, 100);
@@ -943,23 +951,63 @@ describe("icons and the kinds that carry one", () => {
     ]);
   });
 
-  test("a user's own icon is its path data on its grid, drawn in the look's colour", () => {
-    const block = icon.layout({ pathData: "M 4 4 L 44 44", grid: 48 }, theme, 100);
+  test("a user's own stroked icon is its path data in its view box, stroked in the look's colour", () => {
+    const node = buildNode(iconTitleCard, theme, "c", {
+      icon: {
+        pathData: "M 4 4 L 44 44",
+        viewBox: { x: 0, y: 0, width: 48, height: 48 },
+        paint: "stroke",
+      },
+      title: "ここで",
+    });
 
-    expect(block.draw({ x: 0, y: 0, width: 20, height: 20 }, noId).map(writeSvg)).toEqual([
-      `<path d="M 4 4 L 44 44" transform="translate(0 0) scale(0.4166666666666667)" fill="none" ` +
+    expect(node.draw({ x: 10, y: 20, width: 320, height: 61 })).toContain(
+      `<path d="M 4 4 L 44 44" transform="translate(30 40.5) scale(0.4166666666666667)" fill="none" ` +
         `stroke-width="3.5999999999999996" stroke-linecap="round" stroke-linejoin="round" stroke="#1f1f1f"/>`,
+    );
+  });
+
+  test("a user's own filled icon on a view box away from the origin is filled in the look's colour, inside its box", () => {
+    // Material Symbols' icons are filled, on the view box 0 -960 960 960.
+    const add = "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z";
+    const node = buildNode(iconTitleCard, theme, "c", {
+      icon: { pathData: add, viewBox: { x: 0, y: -960, width: 960, height: 960 }, paint: "fill" },
+      title: "ここで",
+    });
+
+    // The icon's box is (30, 40.5), 20 across; the view box's top, y -960, lands on 40.5 and y 0 on 60.5.
+    expect(node.draw({ x: 10, y: 20, width: 320, height: 61 })).toContain(
+      `<path d="${add}" transform="translate(30 60.5) scale(0.020833333333333332)" fill="#1f1f1f"/>`,
+    );
+  });
+
+  test("a user's own icon on a view box that is not square is scaled to fit and centred in the icon's square", () => {
+    const own = {
+      pathData: "M 0 0 L 48 24",
+      viewBox: { x: 0, y: 0, width: 48, height: 24 },
+      paint: "fill",
+    } as const;
+
+    expect(
+      icon.layout(own, theme, 100).draw({ x: 0, y: 0, width: 20, height: 20 }, noId).map(writeSvg),
+    ).toEqual([
+      `<path d="M 0 0 L 48 24" transform="translate(0 5) scale(0.4166666666666667)" fill="#1f1f1f"/>`,
     ]);
   });
 
-  test("an icon is a built-in name or a user's own icon on a grid wider than 0, and nothing else", () => {
+  test("an icon is a built-in name or a user's own icon with a view box and a paint, and nothing else", () => {
     const kind = frame(icon);
+    const box = { x: 0, y: 0, width: 24, height: 24 };
     const notIcons: unknown[] = [
       "sparks",
-      { pathData: "M 0 0", grid: 0 },
-      { pathData: "M 0 0", grid: Number.POSITIVE_INFINITY },
-      { pathData: "M 0 0" },
-      { pathData: "M 0 0", grid: 24, color: "red" },
+      { pathData: "M 0 0", grid: 24 },
+      { pathData: "M 0 0", viewBox: box },
+      { pathData: "M 0 0", viewBox: box, paint: "both" },
+      { pathData: "M 0 0", viewBox: { ...box, width: 0 }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, height: Number.POSITIVE_INFINITY }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, x: Number.NaN }, paint: "fill" },
+      { pathData: 1, viewBox: box, paint: "fill" },
+      { pathData: "M 0 0", viewBox: box, paint: "fill", color: "red" },
     ];
     for (const content of notIcons) {
       // @ts-expect-error not an icon
@@ -1023,6 +1071,18 @@ describe("icons and the kinds that carry one", () => {
     expect(svg).toContain(iconSvg(iconPathData.plus, 24, 364, 32.5, 20, "#1f1f1f", 1.5));
   });
 
+  test("the panel of two icon-and-title cards draws both cards as high as the higher one", () => {
+    const node = buildNode(iconTitleCardPair, theme, "p", {
+      first: { icon: "spark", title: "ここで LLM を使う".repeat(4) },
+      second: { icon: "spark", title: "ここで" },
+    });
+
+    const svg = node.draw({ x: 0, y: 0, ...node.leaf.size });
+    const heights = [...svg.matchAll(/<rect [^>]* height="([^"]*)"/g)].map(([, height]) => height);
+    // The panel, 12 + the first card + 12, and the two cards.
+    expect(heights).toEqual([String(node.leaf.size.height - 1), "81", "81"]);
+  });
+
   test("the icon tile is a square card around its icon, with the caption and sub-caption centred under it", () => {
     // Eight characters of 14 make a caption 112 wide, wider than the 72 of the tile.
     const caption = "あ".repeat(8);
@@ -1049,6 +1109,32 @@ describe("icons and the kinds that carry one", () => {
         iconSvg(iconPathData.service, 24, 50, 40, 32, "#1f1f1f", 2) +
         `<path d="${captionData}" fill="#1f1f1f"/>` +
         `<path d="${subcaptionData}" fill="#8c8c8c"/></g>`,
+    );
+  });
+
+  test("an icon tile centres each line of a caption that wraps", () => {
+    // 23 characters of 14 wrap at the node width of 320: 22 on the first line, 308 wide, and one on the second.
+    const node = buildNode(iconTile, theme, "t", {
+      icon: "spark",
+      label: { caption: "あ".repeat(23) },
+    });
+    expect(node.leaf.size.width).toBe(308);
+
+    expect(node.draw({ x: 10, y: 20, ...node.leaf.size })).toContain(
+      `<path d="${captionLine("あ".repeat(22), 10, 104)}${captionLine("あ", 157, 125)}" fill="#1f1f1f"/>`,
+    );
+  });
+
+  test("an icon tile centres a caption narrower than its sub-caption", () => {
+    const node = buildNode(iconTile, theme, "t", {
+      icon: "spark",
+      label: { caption: "あ", subcaption: "あ".repeat(10) },
+    });
+    // The sub-caption is 110 wide; the caption's 14 sit 48 in.
+    expect(node.leaf.size.width).toBe(110);
+
+    expect(node.draw({ x: 10, y: 20, ...node.leaf.size })).toContain(
+      `<path d="${captionLine("あ", 58, 104)}" fill="#1f1f1f"/>`,
     );
   });
 
@@ -1095,6 +1181,26 @@ describe("icons and the kinds that carry one", () => {
     );
   });
 
+  test("the spark keeps its colour on the plain round button, and is blue on the active one", () => {
+    expect(
+      buildNode(roundButton, theme, "b", "spark").draw({ x: 0, y: 0, width: 30, height: 30 }),
+    ).toContain(iconSvg(iconPathData.spark, 24, 8, 8, 14, "#d97757", 1.5));
+    expect(
+      buildNode(activeRoundButton, theme, "b", "spark").draw({ x: 0, y: 0, width: 30, height: 30 }),
+    ).toContain(iconSvg(iconPathData.spark, 24, 8, 8, 14, "#3e63dd", 1.5));
+  });
+
+  test("a round button stays round when its looks change its size", () => {
+    const larger = defineTheme(fonts, { buttonIcon: { size: 24 }, activeButton: { padding: 4 } });
+
+    const plus = buildNode(roundButton, larger, "b", "plus");
+    expect(plus.leaf.size).toEqual({ width: 40, height: 40 });
+    expect(plus.draw({ x: 0, y: 0, width: 40, height: 40 })).toContain(`rx="20"`);
+    const info = buildNode(activeRoundButton, larger, "b", "info");
+    expect(info.leaf.size).toEqual({ width: 22, height: 22 });
+    expect(info.draw({ x: 0, y: 0, width: 22, height: 22 })).toContain(`rx="11"`);
+  });
+
   test("a fitted card draws at its own size at the top-left of a larger box", () => {
     const block = fitted(fixed(10, 6), (t) => t.card).layout(null, theme, 300);
 
@@ -1103,6 +1209,14 @@ describe("icons and the kinds that carry one", () => {
       `<rect x="5.5" y="7.5" width="49" height="45" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
       `<rect x="25" y="27" width="10" height="6"/>`,
     ]);
+  });
+
+  test("a fitted card lays its child out inside its padding", () => {
+    // 40 characters of 11 in the 60 left inside 20 of padding at 100: five to a line, eight lines.
+    const block = fitted(bodyText, (t) => t.card).layout("あ".repeat(40), theme, 100);
+
+    expect(block.size.width).toBe(95);
+    expect(block.size.height).toBeCloseTo(40 + 8 * 17.6, 6);
   });
 
   test("a centred part draws at its own size across the middle of its box", () => {
