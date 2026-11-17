@@ -1,0 +1,8 @@
+id: border-to-along
+language: TypeScript
+rule:
+  kind: identifier
+  regex: ^border$
+  inside:
+    kind: arguments
+fix: '"along"'

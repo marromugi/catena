@@ -1,0 +1,8 @@
+id: local-lane-before-to-after
+language: TypeScript
+rule:
+  pattern: laneBefore($X)
+  not:
+    inside:
+      kind: member_expression
+fix: laneAfter($X)

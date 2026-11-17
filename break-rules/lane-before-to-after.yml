@@ -1,0 +1,5 @@
+id: lane-before-to-after
+language: TypeScript
+rule:
+  pattern: $F.laneBefore($X)
+fix: $F.laneAfter($X)

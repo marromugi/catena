@@ -1,0 +1,5 @@
+id: from-beside-to-to-beside
+language: TypeScript
+rule:
+  pattern: '{ kind: "fromBeside", beside: $B }'
+fix: '{ kind: "toBeside", beside: $B }'
