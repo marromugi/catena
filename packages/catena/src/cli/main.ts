@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import { configFile, InvalidConfigError, readCustomIcons } from "../config";
@@ -6,9 +7,10 @@ import { defineTheme, InvalidNodeContentError, type CustomIcons, type Theme } fr
 import { InvalidGraphError } from "../place";
 import { Typeface } from "../text";
 import { InvalidDiagramFileError, readDiagramFile } from "./diagram-file";
+import { diagramJsonSchema } from "./diagram-schema";
 import { drawDiagramFile } from "./draw";
 
-export const USAGE = "Usage: catena draw <diagram.json> [-o <out.svg>]";
+export const USAGE = "Usage: catena draw <diagram.json> [-o <out.svg>]\n       catena schema";
 
 /** Where the command writes what it says. */
 export interface Output {
@@ -29,7 +31,7 @@ function defaultTheme(icons: CustomIcons): Theme {
 }
 
 /**
- * The custom icons the user's config file defines, or the line saying why they can't be read.
+ * The custom icons the user's config file defines, or why they can't be read.
  * @throws what reading them throws that is neither the config's refusal nor the system's.
  */
 function configIcons(): { value: CustomIcons } | { refusal: string } {
@@ -38,7 +40,7 @@ function configIcons(): { value: CustomIcons } | { refusal: string } {
     return onFile(file, () => readCustomIcons(file));
   } catch (error) {
     if (!(error instanceof InvalidConfigError)) throw error;
-    return { refusal: `catena: ${error.message}\n` };
+    return { refusal: error.message };
   }
 }
 
@@ -52,12 +54,12 @@ function isRefusal(error: unknown): error is Error {
 }
 
 /** An error the system gave for a file, such as one missing, a directory, or not allowed. */
-function isSystemError(error: unknown): error is Error {
+function isSystemError(error: unknown): error is Error & { code: string } {
   return error instanceof Error && "code" in error && typeof error.code === "string";
 }
 
 /**
- * What `action` gives, or the line saying why the system refused it on `path`.
+ * What `action` gives, or why the system refused it on `path`, after that path.
  * @throws what `action` throws that the system did not give.
  */
 function onFile<T>(path: string, action: () => T): { value: T } | { refusal: string } {
@@ -65,14 +67,51 @@ function onFile<T>(path: string, action: () => T): { value: T } | { refusal: str
     return { value: action() };
   } catch (error) {
     if (!isSystemError(error)) throw error;
-    return { refusal: `catena: ${path}: ${error.message}\n` };
+    return { refusal: `${path}: ${error.message}` };
+  }
+}
+
+/** Where the diagram file's JSON Schema is written: beside the user's config file. */
+function schemaFile(): string {
+  return join(dirname(configFile()), "diagram.schema.json");
+}
+
+/**
+ * Writes the diagram file's JSON Schema, naming the built-in icons and `icons`, to `file` unless `file`
+ * holds it already, making its directory when that isn't there.
+ * @throws what writing throws that the system did not give.
+ */
+function writeSchema(file: string, icons: CustomIcons): { value: void } | { refusal: string } {
+  const schema = `${JSON.stringify(diagramJsonSchema(Object.keys(icons)), null, 2)}\n`;
+  return onFile(file, () => {
+    if (textIn(file) === schema) return;
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, schema);
+  });
+}
+
+/** The text `file` holds, or `undefined` when it isn't there. */
+function textIn(file: string): string | undefined {
+  try {
+    return readFileSync(file, "utf8");
+  } catch (error) {
+    if (isSystemError(error) && error.code === "ENOENT") return undefined;
+    throw error;
   }
 }
 
 /**
- * Runs `catena` with `args`, the words after the command's name, and gives its exit code: 0 when the SVG
- * was written, 1 when the user's config or the diagram file can't be read or the diagram drawn, 2 when the
- * words are not a command. A bare string as an icon's content names a built-in icon or one of the config's.
+ * Runs `catena` with `args`, the words after the command's name, and gives its exit code.
+ *
+ * `catena draw` writes the diagram's SVG and exits 0, or exits 1 when the user's config or the diagram
+ * file can't be read or the diagram drawn. A bare string as an icon's content names a built-in icon or one
+ * of the config's. Once the config is read, it brings the diagram file's JSON Schema beside the config up
+ * to date; when that can't be written it says so on stderr and draws all the same.
+ *
+ * `catena schema` writes that JSON Schema and prints where, or exits 1 when the config can't be read or
+ * the schema written.
+ *
+ * Words that are not a command exit 2.
  */
 export function run(args: readonly string[], stdout: Output, stderr: Output): number {
   let parsed;
@@ -87,18 +126,53 @@ export function run(args: readonly string[], stdout: Output, stderr: Output): nu
     return 2;
   }
   const [command, path, ...extra] = parsed.positionals;
-  if (command !== "draw" || path === undefined || extra.length > 0) {
-    stderr.write(`${USAGE}\n`);
-    return 2;
+  const out = parsed.values.output;
+  if (command === "draw" && path !== undefined && extra.length === 0) {
+    return drawCommand(path, out, stdout, stderr);
   }
+  if (command === "schema" && path === undefined && out === undefined) {
+    return schemaCommand(stdout, stderr);
+  }
+  stderr.write(`${USAGE}\n`);
+  return 2;
+}
+
+function schemaCommand(stdout: Output, stderr: Output): number {
   const icons = configIcons();
   if ("refusal" in icons) {
-    stderr.write(icons.refusal);
+    stderr.write(`catena: ${icons.refusal}\n`);
     return 1;
+  }
+  const file = schemaFile();
+  const written = writeSchema(file, icons.value);
+  if ("refusal" in written) {
+    stderr.write(`catena: ${written.refusal}\n`);
+    return 1;
+  }
+  stdout.write(`${file}\n`);
+  return 0;
+}
+
+function drawCommand(
+  path: string,
+  out: string | undefined,
+  stdout: Output,
+  stderr: Output,
+): number {
+  const icons = configIcons();
+  if ("refusal" in icons) {
+    stderr.write(`catena: ${icons.refusal}\n`);
+    return 1;
+  }
+  const schemaWritten = writeSchema(schemaFile(), icons.value);
+  if ("refusal" in schemaWritten) {
+    stderr.write(
+      `catena: the diagram file's JSON Schema was not written: ${schemaWritten.refusal}\n`,
+    );
   }
   const text = onFile(path, () => readFileSync(path, "utf8"));
   if ("refusal" in text) {
-    stderr.write(text.refusal);
+    stderr.write(`catena: ${text.refusal}\n`);
     return 1;
   }
   let svg;
@@ -109,14 +183,13 @@ export function run(args: readonly string[], stdout: Output, stderr: Output): nu
     stderr.write(`catena: ${path}: ${error.message}\n`);
     return 1;
   }
-  const out = parsed.values.output;
   if (out === undefined) {
     stdout.write(`${svg}\n`);
     return 0;
   }
   const written = onFile(out, () => writeFileSync(out, `${svg}\n`));
   if ("refusal" in written) {
-    stderr.write(written.refusal);
+    stderr.write(`catena: ${written.refusal}\n`);
     return 1;
   }
   return 0;

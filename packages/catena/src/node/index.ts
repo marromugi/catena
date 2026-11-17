@@ -37,6 +37,7 @@ export {
   bodyText,
   divider,
   icon,
+  ICON_NAME,
   iconPart,
   image,
   imagePart,
