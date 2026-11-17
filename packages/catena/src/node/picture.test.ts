@@ -315,7 +315,7 @@ describe("the default looks, matched to the picture on #20", () => {
   const sizeOf = (id: string) => nodes.get(id)?.leaf.size;
 
   test("the default theme holds the looks read off the picture", () => {
-    const { fonts: _, logos: __, ...looks } = defineTheme(fonts);
+    const { fonts: _, logos: __, icons: ___, ...looks } = defineTheme(fonts);
 
     expect(looks).toMatchInlineSnapshot(`
       {

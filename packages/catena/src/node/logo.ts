@@ -37,6 +37,21 @@ export type OwnLogo = v.InferOutput<typeof OWN_LOGO>;
 const OWN_IMAGE = v.strictObject({ href: v.string() });
 export type OwnImage = v.InferOutput<typeof OWN_IMAGE>;
 
+/**
+ * A user's own icon: path data in the area `viewBox` names, as an SVG `viewBox` does, either stroked as
+ * the built-in icons are or filled, in the look's colour.
+ */
+export const OWN_ICON = v.strictObject({
+  pathData: v.string(),
+  viewBox: VIEW_BOX,
+  paint: v.picklist(["stroke", "fill"]),
+});
+export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
+
+/** What a theme can hold as a custom icon: a user's own icon, logo or image. */
+export const CUSTOM_ICON = v.union([OWN_ICON, OWN_LOGO, OWN_IMAGE]);
+export type CustomIcon = v.InferOutput<typeof CUSTOM_ICON>;
+
 /** What can be registered on a theme by name: a user's own logo or image. */
 export const REGISTRABLE_LOGO = v.union([OWN_LOGO, OWN_IMAGE]);
 export type RegistrableLogo = v.InferOutput<typeof REGISTRABLE_LOGO>;
@@ -51,5 +66,14 @@ export class UnknownLogoError extends Error {
 
   constructor(readonly logo: string) {
     super(`The theme holds no logo named "${logo}".`);
+  }
+}
+
+/** An icon's content is a name that is neither a built-in icon's nor one of the theme's custom icons'. */
+export class UnknownIconError extends Error {
+  override readonly name = "UnknownIconError";
+
+  constructor(readonly icon: string) {
+    super(`No icon is named "${icon}": neither a built-in icon nor a custom one.`);
   }
 }

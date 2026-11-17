@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
-import { defineTheme, InvalidNodeContentError, type Theme } from "../node";
+import { configFile, InvalidConfigError, readCustomIcons } from "../config";
+import { defineTheme, InvalidNodeContentError, type CustomIcons, type Theme } from "../node";
 import { InvalidGraphError } from "../place";
 import { Typeface } from "../text";
 import { InvalidDiagramFileError, readDiagramFile } from "./diagram-file";
@@ -16,12 +17,29 @@ export interface Output {
 
 const read = (url: URL) => Typeface.read(readFileSync(url));
 
-/** The theme every diagram is drawn in: the default looks, set in Source Han Sans JP. */
-function defaultTheme(): Theme {
-  return defineTheme({
-    regular: [read(sourceHanSansJP.regular)],
-    bold: [read(sourceHanSansJP.bold)],
-  });
+/**
+ * The theme every diagram is drawn in: the default looks, set in Source Han Sans JP, holding the custom
+ * icons of the user's config.
+ */
+function defaultTheme(icons: CustomIcons): Theme {
+  return defineTheme(
+    { regular: [read(sourceHanSansJP.regular)], bold: [read(sourceHanSansJP.bold)] },
+    { icons },
+  );
+}
+
+/**
+ * The custom icons the user's config file defines, or the line saying why they can't be read.
+ * @throws what reading them throws that is neither the config's refusal nor the system's.
+ */
+function configIcons(): { value: CustomIcons } | { refusal: string } {
+  const file = configFile();
+  try {
+    return onFile(file, () => readCustomIcons(file));
+  } catch (error) {
+    if (!(error instanceof InvalidConfigError)) throw error;
+    return { refusal: `catena: ${error.message}\n` };
+  }
 }
 
 /** A refusal of the diagram file's, as opposed to a fault of catena's own. */
@@ -53,7 +71,8 @@ function onFile<T>(path: string, action: () => T): { value: T } | { refusal: str
 
 /**
  * Runs `catena` with `args`, the words after the command's name, and gives its exit code: 0 when the SVG
- * was written, 1 when the diagram file can't be read or drawn, 2 when the words are not a command.
+ * was written, 1 when the user's config or the diagram file can't be read or the diagram drawn, 2 when the
+ * words are not a command. A bare string as an icon's content names a built-in icon or one of the config's.
  */
 export function run(args: readonly string[], stdout: Output, stderr: Output): number {
   let parsed;
@@ -72,6 +91,11 @@ export function run(args: readonly string[], stdout: Output, stderr: Output): nu
     stderr.write(`${USAGE}\n`);
     return 2;
   }
+  const icons = configIcons();
+  if ("refusal" in icons) {
+    stderr.write(icons.refusal);
+    return 1;
+  }
   const text = onFile(path, () => readFileSync(path, "utf8"));
   if ("refusal" in text) {
     stderr.write(text.refusal);
@@ -79,7 +103,7 @@ export function run(args: readonly string[], stdout: Output, stderr: Output): nu
   }
   let svg;
   try {
-    svg = drawDiagramFile(readDiagramFile(text.value), defaultTheme());
+    svg = drawDiagramFile(readDiagramFile(text.value), defaultTheme(icons.value));
   } catch (error) {
     if (!isRefusal(error)) throw error;
     stderr.write(`catena: ${path}: ${error.message}\n`);
