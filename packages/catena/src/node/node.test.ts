@@ -172,8 +172,12 @@ describe("frame and stack", () => {
   test.each(["0", "1", "10", "__proto__"])(
     "a stack and a row refuse the key %s, whose place in the order is lost",
     (key) => {
-      expect(() => stack({ a: title, [key]: bodyText })).toThrow(`"${key}"`);
-      expect(() => row({ a: title, [key]: bodyText })).toThrow(`"${key}"`);
+      expect(() => stack({ a: title, [key]: bodyText })).toThrow(
+        `A stack's part may not be keyed "${key}".`,
+      );
+      expect(() => row({ a: title, [key]: bodyText })).toThrow(
+        `A row's part may not be keyed "${key}".`,
+      );
     },
   );
 
@@ -387,5 +391,118 @@ describe("the kinds made with badges and status dots", () => {
     expect(drawn).toContain(`<path d="${titleData}" fill="#1f1f1f"/>`);
     const without = buildNode(statusTitleCard, theme, "n", { title: "ここで" });
     expect(without.draw({ x: 0, y: 0, ...without.leaf.size })).not.toContain("<circle");
+  });
+});
+
+describe("what review found", () => {
+  test("a row gives the parts but its growing one at most half its width, so the title keeps the rest", () => {
+    const content = { title: "ここで LLM を使う", badge: "あ".repeat(40) };
+    const node = buildNode(titleBadgeCard, theme, "n", content);
+
+    // The badge is laid out within 140: 10 characters of 10 to a line of 108, four lines.
+    expect(badgeText(content.badge, 108).width).toBe(100);
+    expect(node.leaf.size).toEqual({ width: 320, height: 102 });
+    const titleData = textPathData(
+      layoutText(content.title, { fonts: fonts.bold, size: 14, lineHeight: 1.5, maxWidth: 136 }),
+      20,
+      20 + (62 - 21) / 2,
+    );
+    const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+    expect(drawn).toContain(`<path d="${titleData}" fill="#1f1f1f"/>`);
+    expect(drawn).toContain(`<rect x="168.5" y="20.5" width="131" height="61" rx="31"`);
+  });
+
+  test("a row gives no part a negative width, and sets parts wider than it after one another", () => {
+    const kind = row({ a: fixed(200, 10), g: fixed(30, 10), b: fixed(200, 10) }, { grow: "g" });
+    const block = kind.layout({ a: null, g: null, b: null }, theme, 300);
+
+    expect(block.size).toEqual({ width: 454, height: 10 });
+    expect(block.draw({ x: 0, y: 0, width: 300, height: 10 }).map(writeSvg)).toEqual([
+      `<rect x="0" y="0" width="200" height="10"/>`,
+      `<rect x="212" y="0" width="30" height="10"/>`,
+      `<rect x="254" y="0" width="200" height="10"/>`,
+    ]);
+  });
+
+  test("a row whose part beside the title is absent gives the title the whole width", () => {
+    // 20 characters of 14 fill a line of 280.
+    const full = "あ".repeat(20);
+
+    expect(buildNode(statusTitleCard, theme, "n", { title: full }).leaf.size).toEqual({
+      width: 320,
+      height: 61,
+    });
+    expect(buildNode(titleBadgeCard, theme, "n", { title: full }).leaf.size).toEqual({
+      width: 320,
+      height: 61,
+    });
+  });
+
+  test("a row lays its growing part out once, after the others", () => {
+    const kind = row({ end: bodyText, g: fixed(10, 10) }, { grow: "g" });
+
+    // `end` is laid out within 100: 9 characters of 11 to a line, two lines of 17.6.
+    const { size } = kind.layout({ end: "あ".repeat(18), g: null }, theme, 200);
+    expect(size.height).toBeCloseTo(35.2, 6);
+  });
+
+  test("a part with only one side 0, or empty text, still takes its place and its gap", () => {
+    const tall = stack({ a: fixed(10, 0), b: fixed(10, 10) });
+    expect(tall.layout({ a: null, b: null }, theme, 100).size).toEqual({ width: 10, height: 22 });
+    const wide = row({ a: fixed(0, 10), b: fixed(10, 10) });
+    expect(wide.layout({ a: null, b: null }, theme, 100).size).toEqual({ width: 22, height: 10 });
+    // 17.6 (one empty line of 11 × 1.6) + 12 + 10
+    const text = stack({ a: bodyText, b: fixed(10, 10) });
+    expect(text.layout({ a: "", b: null }, theme, 100).size.height).toBeCloseTo(39.6, 6);
+  });
+
+  test("a row whose parts are all absent takes no room, so a stack around it sets no gap", () => {
+    const absent = row({ a: optional(fixed(10, 10)), b: optional(fixed(20, 20)) }, { grow: "a" });
+
+    expect(absent.layout({}, theme, 100).size).toEqual({ width: 0, height: 0 });
+    const around = stack({ r: absent, c: fixed(10, 10) });
+    expect(around.layout({ r: {}, c: null }, theme, 100).size).toEqual({ width: 10, height: 10 });
+  });
+
+  test("an absent optional part draws nothing, alone or in a frame", () => {
+    const alone = buildNode(optional(fixed(10, 10)), theme, "o", undefined);
+    expect(alone.draw({ x: 0, y: 0, width: 10, height: 10 })).toBe("<g/>");
+    const framed = buildNode(frame(optional(fixed(10, 10))), theme, "f", undefined);
+    expect(framed.leaf.size).toEqual({ width: 320, height: 40 });
+    expect(framed.draw({ x: 0, y: 0, ...framed.leaf.size })).toBe(
+      `<g><rect x="0.5" y="0.5" width="319" height="39" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/></g>`,
+    );
+  });
+
+  test("the theme changes the plain badge's and the plain dot's looks", () => {
+    const changed = defineTheme(fonts, {
+      badges: { plain: { fill: "ivory", color: "navy" } },
+      dot: { colors: { plain: "gray" } },
+    });
+    const pill = badge.layout("Badge", changed, 300);
+    const drawn = pill.draw({ x: 0, y: 0, ...pill.size }).map(writeSvg);
+
+    expect(drawn[0]).toMatch(/ fill="ivory" stroke="#e6e6e6" /);
+    expect(drawn[1]).toMatch(/fill="navy"\/>$/);
+    const dot = statusDot.layout("plain", changed, 300);
+    expect(dot.draw({ x: 0, y: 0, ...dot.size }).map(writeSvg)).toEqual([
+      `<circle cx="8" cy="8" r="8" fill="gray"/>`,
+    ]);
+  });
+
+  test("a stack or a row refuses content under a key that is not one of its parts", () => {
+    const refusal = expect.objectContaining({
+      name: "InvalidNodeContentError",
+      message: expect.stringContaining(`"bdage"`),
+    });
+
+    expect(() =>
+      // @ts-expect-error the badge's key is misspelt
+      buildNode(titleBadgeCard, theme, "n", { title: "ここで", bdage: "x" }),
+    ).toThrow(refusal);
+    expect(() =>
+      // @ts-expect-error the badge's key is misspelt
+      buildNode(titleBodyBadgeCard, theme, "n", { title: "ここで", body: "", bdage: "x" }),
+    ).toThrow(refusal);
   });
 });

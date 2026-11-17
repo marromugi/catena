@@ -37,7 +37,7 @@ export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
   /** How wide a node is laid out. */
   readonly nodeWidth: number;
-  /** The space between parts stacked one over the next. */
+  /** The space between parts stacked one over the next, and between parts set side by side in a row. */
   readonly gap: number;
   readonly card: CardLook;
   readonly title: TextLook;

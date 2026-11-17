@@ -50,7 +50,7 @@ const UNORDERED_KEY = /^(?:0|[1-9]\d*|__proto__)$/;
 
 /**
  * `parts` as entries in the order their keys were written in, and the schema of an object holding each
- * part's content under its key.
+ * part's content under its key. The schema refuses keys that are not parts', so a misspelt key is an error.
  * @throws Error when a key looks like an integer or is `__proto__`, since its place in the order is lost.
  */
 function keyedParts<TParts extends Record<string, Part>>(container: string, parts: TParts) {
@@ -65,7 +65,7 @@ function keyedParts<TParts extends Record<string, Part>>(container: string, part
   const shape = Object.fromEntries(
     entries.map(([key, part]) => [key, part.schema]),
   ) as Schemas<TParts>;
-  return { entries, schema: v.object(shape) };
+  return { entries, schema: v.strictObject(shape) };
 }
 
 /**
@@ -75,7 +75,7 @@ function keyedParts<TParts extends Record<string, Part>>(container: string, part
  */
 export function stack<const TParts extends Record<string, Part>>(
   parts: TParts,
-): Part<v.ObjectSchema<Schemas<TParts>, undefined>> {
+): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
   const { entries, schema } = keyedParts("stack", parts);
   return {
     schema,
@@ -107,48 +107,54 @@ export function stack<const TParts extends Record<string, Part>>(
  * Parts set side by side, the theme's gap apart, in the order of `parts`' keys, each centred in the
  * row's height. Its content is an object holding each part's content under the part's key.
  *
- * Every part but `grow` is laid out first, at the width the parts before it leave. The `grow` part then
- * takes all the width that is left, so the row fills its width and the parts after `grow` sit at its end.
- * With no `grow`, the parts sit together at the start.
+ * Every part but `grow` is laid out first, each at the width the parts before it leave, and together
+ * within half the row's width when it has a `grow` part. The `grow` part then takes all the width that is
+ * left, so the row fills its width and the parts after `grow` sit at its end. With no `grow`, the parts
+ * sit together at the start. No part is given a negative width, and no part is drawn over another: a part
+ * wider than the width it was given pushes the parts after it along, and the row grows past its width.
  * @throws Error when a key looks like an integer or is `__proto__`, since its place in the order is lost.
  */
 export function row<const TParts extends Record<string, Part>>(
   parts: TParts,
   options: { readonly grow?: keyof TParts & string } = {},
-): Part<v.ObjectSchema<Schemas<TParts>, undefined>> {
+): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
   const { entries, schema } = keyedParts("row", parts);
   const { grow } = options;
   return {
     schema,
     layout(content, theme, maxWidth) {
       const blocks = new Map<string, Block>();
-      let left = maxWidth;
+      const othersWidth = grow === undefined ? maxWidth : maxWidth / 2;
+      let taken = 0;
       for (const [key, part] of entries) {
         if (key === grow) continue;
-        const block = part.layout(content[key], theme, left);
+        const block = part.layout(content[key], theme, Math.max(0, othersWidth - taken));
         blocks.set(key, block);
-        if (!isEmpty(block)) left -= block.size.width + theme.gap;
+        if (!isEmpty(block)) taken += block.size.width + theme.gap;
       }
       for (const [key, part] of entries) {
-        if (key === grow) blocks.set(key, part.layout(content[key], theme, left));
+        if (key !== grow) continue;
+        blocks.set(key, part.layout(content[key], theme, Math.max(0, maxWidth - taken)));
       }
       const shown = entries
         .map(([key]) => ({ key, block: blocks.get(key) ?? EMPTY }))
         .filter(({ block }) => !isEmpty(block));
-      const grows = shown.some(({ key }) => key === grow);
       const fixedWidth = shown
         .filter(({ key }) => key !== grow)
         .reduce((sum, { block }) => sum + block.size.width, 0);
       const gaps = Math.max(0, shown.length - 1) * theme.gap;
+      const grown = shown.find(({ key }) => key === grow)?.block;
+      const growWidth = (rowWidth: number) =>
+        Math.max(grown?.size.width ?? 0, rowWidth - fixedWidth - gaps);
       return {
         size: {
-          width: grows ? maxWidth : fixedWidth + gaps,
+          width: grown === undefined ? fixedWidth + gaps : fixedWidth + gaps + growWidth(maxWidth),
           height: Math.max(0, ...shown.map(({ block }) => block.size.height)),
         },
         draw: (box) => {
           let x = box.x;
           return shown.flatMap(({ key, block }) => {
-            const width = key === grow ? box.width - fixedWidth - gaps : block.size.width;
+            const width = key === grow ? growWidth(box.width) : block.size.width;
             const { height } = block.size;
             const drawn = block.draw({ x, y: box.y + (box.height - height) / 2, width, height });
             x += width + theme.gap;
