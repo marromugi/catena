@@ -39,7 +39,7 @@ const SPACE = /\s*/y;
  * @throws MalformedXmlError when the text is not one well-formed root element.
  */
 export function parseXml(text: string): XmlElement {
-  const reader = new Reader(text.startsWith("﻿") ? text.slice(1) : text);
+  const reader = new Reader(text);
   reader.skipMisc(true);
   if (!reader.at("<")) reader.fail("Expected the root element");
   const root = reader.element(0);
@@ -136,23 +136,26 @@ class Reader {
     const start = this.offset + 1;
     this.offset = end + 1;
     return raw
-      .replaceAll(/[\t\n\r]/g, " ")
+      .replaceAll(/\r\n?|[\t\n]/g, " ")
       .replaceAll(/&([^;]*);?/g, (whole, entity: string, index: number) =>
         decodeEntity(whole, entity, start + index),
       );
   }
 
+  /** Skips the doctype, its quoted literals and internal subset whole, whatever they hold. */
   private skipDoctype(): void {
+    let inSubset = false;
     for (this.offset += "<!DOCTYPE".length; !this.done(); this.offset += 1) {
       const c = this.text[this.offset];
-      if (c === ">") {
-        this.offset += 1;
-        return;
-      }
-      if (c === "[") {
-        const end = this.text.indexOf("]", this.offset);
+      if (c === '"' || c === "'") {
+        const end = this.text.indexOf(c, this.offset + 1);
         if (end === -1) break;
         this.offset = end;
+      } else if (c === "[") inSubset = true;
+      else if (c === "]") inSubset = false;
+      else if (c === ">" && !inSubset) {
+        this.offset += 1;
+        return;
       }
     }
     this.fail("The doctype is not closed");

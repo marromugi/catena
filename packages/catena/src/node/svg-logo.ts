@@ -190,7 +190,7 @@ function refuseUnheld(element: XmlElement, properties: ReadonlyMap<string, strin
   }
   for (const property of ["opacity", "fill-opacity", "stroke-opacity"]) {
     const value = properties.get(property)?.trim();
-    if (value === undefined || value.toLowerCase() === "inherit") continue;
+    if (value === undefined || value === "" || value.toLowerCase() === "inherit") continue;
     if (opacity(element, property, value) < 1) {
       throw refused(`${property} ${value} on <${element.name}>`);
     }
@@ -240,7 +240,7 @@ function paintOf(
     const lower = value.toLowerCase();
     if (lower === "none") return null;
     if (lower.startsWith("url(")) throw refused(`url(...) ${property} on <${element.name}>`);
-    if (lower === "currentcolor" || lower.startsWith("context-")) {
+    if (lower === "currentcolor" || lower.startsWith("context-") || lower.includes("var(")) {
       throw refused(`${property} ${value} on <${element.name}>`);
     }
     return value;
@@ -265,8 +265,8 @@ function viewBoxOf(root: XmlElement): OwnLogo["viewBox"] {
   }
   const given = root.attributes.get("viewBox");
   if (given !== undefined) {
-    const numbers = given.trim().split(/[\s,]+/);
-    const [x, y, width, height] = numbers.map((n) => number(n));
+    const numbers = numberList(given) ?? [];
+    const [x, y, width, height] = numbers;
     if (
       numbers.length !== 4 ||
       x === undefined ||
@@ -337,8 +337,8 @@ function ellipsePath(cx: number, cy: number, rx: number, ry: number): string {
 function pointsPath(shape: XmlElement, closed: boolean): string | undefined {
   const given = shape.attributes.get("points")?.trim() ?? "";
   if (given === "") return undefined;
-  const numbers = given.split(/[\s,]+/).map((n) => number(n));
-  if (numbers.length % 2 !== 0 || numbers.some((n) => n === undefined)) {
+  const numbers = numberList(given);
+  if (numbers === undefined || numbers.length % 2 !== 0) {
     throw new UnreadableSvgError(`The points of <${shape.name}> are not pairs of numbers.`);
   }
   const pairs: string[] = [];
@@ -376,6 +376,22 @@ function opacity(element: XmlElement, property: string, value: string): number {
 }
 
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+const LISTED_NUMBER = /[\s,]*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)/iy;
+
+/** Numbers apart by space, a comma, or nothing where the next sign or point starts one, as SVG lists them. */
+function numberList(given: string): number[] | undefined {
+  const text = given.trim();
+  const numbers: number[] = [];
+  for (let at = 0; at < text.length; at = LISTED_NUMBER.lastIndex) {
+    LISTED_NUMBER.lastIndex = at;
+    const found = LISTED_NUMBER.exec(text)?.[1];
+    const value = found === undefined ? undefined : number(found);
+    if (value === undefined) return undefined;
+    numbers.push(value);
+  }
+  return numbers;
+}
 
 function number(given: string): number | undefined {
   if (!NUMBER.test(given)) return undefined;

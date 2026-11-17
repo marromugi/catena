@@ -8,12 +8,34 @@ import {
   type LogoShape,
   type OwnLogo,
 } from "./index";
+import { MalformedXmlError } from "./xml";
 
 // Made-up shapes: catena's tests carry no real company's mark or colours.
 const svg = (body: string, root = 'viewBox="0 0 48 48"') =>
   `<svg xmlns="http://www.w3.org/2000/svg" ${root}>${body}</svg>`;
 
 const ROUND = 'stroke-linecap="round" stroke-linejoin="round"';
+
+const BLACK = { pathData: "M0 0", paint: "fill", color: "black" };
+
+/** What reading `given` returns, or the error it throws. */
+const attempt = (given: string): unknown => {
+  try {
+    return readSvgLogo(given);
+  } catch (error) {
+    return error;
+  }
+};
+const readInGroup = (written: string) =>
+  attempt(svg(`<g fill="blue" stroke="green" ${ROUND}><path d="M0 0" ${written}/></g>`));
+const viewBox = (root: string) => readSvgLogo(svg('<path d="M0 0"/>', root)).viewBox;
+const readRoot = (root: string) => () => readSvgLogo(svg('<path d="M0 0"/>', root));
+const rectWidth = (given: string) =>
+  readSvgLogo(svg(`<rect width="${given}" height="1"/>`)).shapes[0]?.pathData;
+const paths = (body: string) =>
+  readSvgLogo(svg(body + '<path d="M9 9"/>')).shapes.map((s) => s.pathData);
+const colors = (body: string) =>
+  readSvgLogo(svg(`<g fill="red">${body}</g>`)).shapes.map((s) => s.color);
 
 const fill = (style: string) =>
   readSvgLogo(svg(`<path d="M0 0" style="${style}"/>`)).shapes[0]?.color;
@@ -179,6 +201,242 @@ describe("readSvgLogo", () => {
     ).toBe(
       "M 5 0 H 15 A 5 5 0 0 1 20 5 V 15 A 5 5 0 0 1 15 20 H 5 A 5 5 0 0 1 0 15 V 5 A 5 5 0 0 1 5 0 Z",
     );
+  });
+
+  test("any text gives a logo or an UnreadableSvgError, nothing else", () => {
+    const pieces = fc.constantFrom(
+      "<svg",
+      ' viewBox="0 0 4 4"',
+      ">",
+      "</svg>",
+      "<path",
+      ' d="M0 0"',
+      "/>",
+      "<g>",
+      "</g>",
+      "&",
+      "&amp;",
+      ";",
+      '"',
+      "<!--",
+      "-->",
+      "<![CDATA[",
+      "]]>",
+      "<!DOCTYPE",
+      "[",
+      "]",
+      ' style="',
+      "fill:red",
+      "/*",
+      "*/",
+      "<constructor/>",
+      "&toString;",
+    );
+    const text = fc.oneof(
+      fc.string(),
+      fc.array(pieces).map((p) => p.join("")),
+    );
+    fc.assert(
+      fc.property(text, (given) => {
+        const outcome = attempt(given);
+        expect(outcome instanceof UnreadableSvgError || !(outcome instanceof Error)).toBe(true);
+      }),
+    );
+  });
+
+  test("a paint property reads the same as an attribute or in style", () => {
+    const color = fc.constantFrom("red", "#123", "none", "inherit", "rgb(1, 2, 3)");
+    const property = fc.oneof(
+      fc.tuple(fc.constantFrom("fill", "stroke"), color),
+      fc.tuple(fc.constant("stroke-width"), fc.constantFrom("0", "2", "1.5px", "inherit")),
+      fc.tuple(fc.constantFrom("stroke-linecap", "stroke-linejoin"), fc.constantFrom("round")),
+    );
+    fc.assert(
+      fc.property(fc.uniqueArray(property, { selector: ([name]) => name }), (properties) => {
+        const asAttributes = properties.map(([name, value]) => `${name}="${value}"`).join(" ");
+        const asStyle = `style="${properties.map(([name, value]) => `${name}: ${value}`).join("; ")}"`;
+        expect(readInGroup(asStyle)).toEqual(readInGroup(asAttributes));
+      }),
+    );
+  });
+
+  const limited: ReadonlyArray<readonly [string, readonly string[], string]> = [
+    ["clip-path", ["none", "None"], "url(#c)"],
+    ["mask", ["none"], "url(#m)"],
+    ["filter", ["none"], "url(#f)"],
+    ["marker", ["none"], "url(#m)"],
+    ["marker-start", ["none"], "url(#m)"],
+    ["marker-mid", ["none"], "url(#m)"],
+    ["marker-end", ["none"], "url(#m)"],
+    ["stroke-dasharray", ["none"], "2 2"],
+    ["fill-rule", ["nonzero", "NONZERO", "inherit"], "evenodd"],
+    ["visibility", ["visible", "inherit"], "hidden"],
+    ["paint-order", ["normal", "fill stroke", "fill"], "stroke"],
+    ["vector-effect", ["none"], "non-scaling-stroke"],
+    ["mix-blend-mode", ["normal"], "multiply"],
+  ];
+
+  test.each(limited)("%s holds %j and refuses %s", (property, held, unheld) => {
+    for (const value of held) {
+      expect(readSvgLogo(svg(`<path d="M0 0" ${property}="${value}"/>`)).shapes).toEqual([BLACK]);
+    }
+    expect(() => readSvgLogo(svg(`<path d="M0 0" ${property}="${unheld}"/>`))).toThrow(
+      new UnreadableSvgError(`A logo cannot hold the SVG's ${property} ${unheld} on <path>.`),
+    );
+  });
+
+  test("an opacity of 1 or more, or empty, draws whole; below 1 is refused", () => {
+    for (const value of ["1", " 1 ", "100%", "1.5", ""]) {
+      expect(readSvgLogo(svg(`<path d="M0 0" opacity="${value}"/>`)).shapes).toEqual([BLACK]);
+    }
+    for (const value of ["0", "0.99", "99%"]) {
+      expect(() => readSvgLogo(svg(`<path d="M0 0" opacity="${value}"/>`))).toThrow(
+        new UnreadableSvgError(`A logo cannot hold the SVG's opacity ${value} on <path>.`),
+      );
+    }
+  });
+
+  test("a viewBox is four numbers apart by space or commas, and wins over width and height", () => {
+    expect(viewBox('viewBox="0,0,4,4"')).toEqual({ x: 0, y: 0, width: 4, height: 4 });
+    expect(viewBox('viewBox="  -1 -2,  3 4 "')).toEqual({ x: -1, y: -2, width: 3, height: 4 });
+    expect(viewBox('viewBox="0 0 4 4" width="100" height="50"')).toEqual({
+      x: 0,
+      y: 0,
+      width: 4,
+      height: 4,
+    });
+    for (const given of ["0 0 4", "0 0 4 4 4", "0 0 x 4", "0 0 4 0", "0 0 -4 4", "0 0 4 4,"]) {
+      expect(() => viewBox(`viewBox="${given}"`)).toThrow(
+        new UnreadableSvgError(
+          `The root <svg>'s viewBox "${given}" is not four numbers with a width and height above 0.`,
+        ),
+      );
+    }
+  });
+
+  test("a root without a viewBox needs a width and a height, both above 0 in user units", () => {
+    expect(readRoot('width="4"')).toThrow(
+      new UnreadableSvgError("The root <svg> gives neither a viewBox nor a width and height."),
+    );
+    expect(readRoot('height="4"')).toThrow(
+      new UnreadableSvgError("The root <svg> gives neither a viewBox nor a width and height."),
+    );
+    expect(readRoot('width="0" height="4"')).toThrow(
+      new UnreadableSvgError("The root <svg>'s width and height are not both above 0."),
+    );
+    expect(readRoot('width="4" height="-4"')).toThrow(
+      new UnreadableSvgError("The root <svg>'s width and height are not both above 0."),
+    );
+    expect(readRoot('width="4" height="3mm"')).toThrow(
+      new UnreadableSvgError('height "3mm" on <svg> is not a number of user units.'),
+    );
+  });
+
+  test("a length is a number, in user units or px", () => {
+    expect(rectWidth(".5")).toBe("M 0 0 H 0.5 V 1 H 0 Z");
+    expect(rectWidth("1e1")).toBe("M 0 0 H 10 V 1 H 0 Z");
+    expect(rectWidth("1E+1px")).toBe("M 0 0 H 10 V 1 H 0 Z");
+    expect(rectWidth("+2")).toBe("M 0 0 H 2 V 1 H 0 Z");
+    for (const given of ["0x10", "", "Infinity", "1e999", "1px2", "1 px"]) {
+      expect(() => rectWidth(given)).toThrow(
+        new UnreadableSvgError(`width "${given}" on <rect> is not a number of user units.`),
+      );
+    }
+  });
+
+  test("shapes with no area or length are left out, and radii are clamped or taken from each other", () => {
+    expect(
+      paths(
+        '<path/><rect width="4" height="0"/><rect width="0" height="4"/><ellipse rx="0" ry="4"/>' +
+          '<ellipse rx="4" ry="0"/><circle r="-1"/><polygon/><polyline points=" "/>',
+      ),
+    ).toEqual(["M9 9"]);
+    expect(
+      paths('<rect width="4" height="4" rx="3" ry="0"/><rect width="4" height="4" rx="0" ry="3"/>'),
+    ).toEqual(["M 0 0 H 4 V 4 H 0 Z", "M 0 0 H 4 V 4 H 0 Z", "M9 9"]);
+    expect(paths('<rect width="4" height="40" rx="30"/><ellipse cx="1" cy="1" rx="2"/>')).toEqual([
+      "M 2 0 H 2 A 2 20 0 0 1 4 20 V 20 A 2 20 0 0 1 2 40 H 2 A 2 20 0 0 1 0 20 V 20 A 2 20 0 0 1 2 0 Z",
+      "M 3 1 A 2 2 0 1 1 -1 1 A 2 2 0 1 1 3 1 Z",
+      "M9 9",
+    ]);
+    expect(paths('<polygon points="10-5 3 4 1-1"/><polyline points="1.5.5"/>')).toEqual([
+      "M 10 -5 L 3 4 L 1 -1 Z",
+      "M 1.5 0.5",
+      "M9 9",
+    ]);
+    expect(() => paths('<polyline points="1 x"/>')).toThrow(
+      new UnreadableSvgError("The points of <polyline> are not pairs of numbers."),
+    );
+  });
+
+  test("a stroke is refused unless its caps and joins are both round, in any case", () => {
+    expect(
+      readSvgLogo(
+        svg(
+          '<path d="M0 0" fill="none" stroke="red" stroke-linecap="ROUND" stroke-linejoin="Round"/>',
+        ),
+      ).shapes,
+    ).toEqual([{ pathData: "M0 0", paint: "stroke", color: "red", width: 1 }]);
+    expect(() => readSvgLogo(svg('<path d="M0 0" stroke="red"/>'))).toThrow(
+      new UnreadableSvgError(
+        "The stroke of <path> has stroke-linecap butt and stroke-linejoin miter; a logo's strokes have both round.",
+      ),
+    );
+    expect(() =>
+      readSvgLogo(
+        svg('<path d="M0 0" stroke="red" stroke-linecap="round" stroke-linejoin="bevel"/>'),
+      ),
+    ).toThrow(
+      new UnreadableSvgError(
+        "The stroke of <path> has stroke-linecap round and stroke-linejoin bevel; a logo's strokes have both round.",
+      ),
+    );
+    expect(() => readSvgLogo(svg('<path d="M0 0" stroke="red" stroke-width="-1"/>'))).toThrow(
+      new UnreadableSvgError("A logo cannot hold the SVG's stroke-width -1 on <path>."),
+    );
+  });
+
+  test("paint values are trimmed, and empty or inherit takes the parent's", () => {
+    expect(
+      colors(
+        '<path d="M0 0" fill=" blue "/><path d="M0 0" fill=""/><path d="M0 0" fill="INHERIT"/>' +
+          '<path d="M0 0" style="FILL:green"/><path d="M0 0" style="fill:green;fill:teal;fills"/>',
+      ),
+    ).toEqual(["blue", "red", "red", "green", "teal"]);
+    for (const [property, value] of [
+      ["fill", "context-fill"],
+      ["stroke", "context-stroke"],
+      ["fill", "var(--x)"],
+      ["fill", "CurrentColor"],
+    ] as const) {
+      expect(() => colors(`<path d="M0 0" ${property}="${value}"/>`)).toThrow(
+        new UnreadableSvgError(`A logo cannot hold the SVG's ${property} ${value} on <path>.`),
+      );
+    }
+  });
+
+  test("a hidden element is left out whatever its paint, in any case and spacing of none", () => {
+    expect(
+      readSvgLogo(
+        svg(
+          '<path d="M1 1" display=" NONE " fill="url(#a)"/><g style="display:none"><path d="M2 2"/></g><path d="M0 0"/>',
+        ),
+      ).shapes,
+    ).toEqual([BLACK]);
+  });
+
+  test("XML the reader cannot read is refused as an UnreadableSvgError caused by it", () => {
+    let thrown: unknown;
+    try {
+      readSvgLogo("<svg");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(UnreadableSvgError);
+    expect(thrown).toMatchObject({
+      name: "UnreadableSvgError",
+      cause: expect.any(MalformedXmlError),
+    });
   });
 
   test("with no viewBox the view box is the root's width and height", () => {
