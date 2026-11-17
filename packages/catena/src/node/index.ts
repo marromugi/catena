@@ -47,6 +47,7 @@ export {
   title,
 } from "./parts";
 export { UnknownLogoError } from "./logo";
+export { readSvgLogo, UnreadableSvgError } from "./svg-logo";
 export type { LogoShape, OwnImage, OwnLogo, RegisteredLogo, RegistrableLogo } from "./logo";
 export type { OwnIcon } from "./parts";
 export { element, NO_SHADOW, writeSvg } from "./svg";
