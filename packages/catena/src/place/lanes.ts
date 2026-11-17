@@ -6,11 +6,6 @@ export const outside: unique symbol = Symbol("outside");
 /** An end of an edge in one grid: a node of the grid, or the outside. */
 export type End = string | typeof outside;
 
-/**
- * An edge as one grid draws it: between two of its nodes, or between one of them and the outside.
- * An edge from the outside comes in at the middle of the grid's side that faces back along the flow,
- * and an edge to the outside goes out at the middle of the side that faces along it.
- */
 export type Run =
   | {
       readonly id: string;
@@ -74,7 +69,6 @@ function corridorBeside(from: Spot, to: Spot): number {
 class LaneOrder {
   readonly #later = new Map<End, Set<End>>();
 
-  /** Whether the lane of `first` already has to come before that of `second`. */
   #precedes(first: End, second: End): boolean {
     const seen = new Set<End>([first]);
     const open: End[] = [first];

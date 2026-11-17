@@ -42,14 +42,12 @@ interface Track {
   readonly size: number;
 }
 
-/** Rows or columns in a line, with the length of the whole line. */
 interface Line {
   readonly tracks: readonly Track[];
   readonly corridors: readonly number[];
   readonly length: number;
 }
 
-/** The room the lanes of one corridor take, and how many there are. */
 interface Stack {
   readonly lanes: number;
   readonly height: number;

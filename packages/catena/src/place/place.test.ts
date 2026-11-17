@@ -984,7 +984,6 @@ describe("placeGraph: a corridor", () => {
   });
 });
 
-/** A group that flows across the graph, with edges inside it, to it, from it, and out of a node inside it. */
 const nestedGraph = (): Layout =>
   place(
     "down",
@@ -1070,7 +1069,6 @@ const filling = (columnCount: number, rowCount: number): [GraphNode, ...GraphNod
   return [first, ...rest];
 };
 
-/** The placement, once `verify` has found nothing broken in it. */
 const checked = (placement: Layout, kept: Spacing = spacing): Layout => {
   expect(verify(placement, kept)).toEqual([]);
   return placement;
@@ -1582,7 +1580,6 @@ describe("placeGraph: an edge into or out of a group that flows as the grid arou
   });
 });
 
-/** A group of three nodes in a row, as wide as given. */
 const columns = (...widths: [number, number, number]): GraphNode =>
   group("G", "down", [
     leaf("A", widths[0], 30, { row: 0, column: 0 }),

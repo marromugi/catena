@@ -106,7 +106,6 @@ function runsOf(
   });
 }
 
-/** The ids of the edges among `runs` that start or end inside the node `id`. */
 function crossingInto(id: string, runs: readonly Run[]): Set<string> {
   return new Set(
     runs.flatMap((run) =>
@@ -119,11 +118,6 @@ function crossingInto(id: string, runs: readonly Run[]): Set<string> {
   );
 }
 
-/**
- * Refuses a node that edges cannot meet soundly: one too narrow for an edge to meet the middle of its
- * side clear of its corners, or too short for the edges that enter it and the edges that leave it to
- * keep apart.
- */
 function requireRoomForEdges(
   items: ReadonlyMap<string, Item>,
   edges: readonly Run[],
@@ -145,7 +139,7 @@ function requireRoomForEdges(
   }
 }
 
-/** The points of an edge of a grid, from its source to its target. Two that follow each other may be the same. */
+/** Two points that follow each other may be the same. */
 function pathOf(edge: Run, route: Route, frame: Frame): FlowPoint[] {
   const start = edge.from === outside ? frame.entry : frame.exitOf(edge.from);
   const end = edge.to === outside ? frame.exit : frame.entryOf(edge.to);
