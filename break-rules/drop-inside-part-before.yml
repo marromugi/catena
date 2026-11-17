@@ -1,0 +1,5 @@
+id: drop-inside-part-before
+language: TypeScript
+rule:
+  pattern: "[...insideOf($END, $EDGE, $AT), ...between]"
+fix: "[...between]"
