@@ -564,6 +564,72 @@ describe("placeGraph: lanes between two rows", () => {
     });
   });
 
+  const grid = [
+    leaf("A", 50, 30, { row: 0, column: 0 }),
+    leaf("B", 50, 30, { row: 0, column: 1 }),
+    leaf("C", 50, 30, { row: 0, column: 2 }),
+    leaf("T0", 50, 30, { row: 1, column: 0 }),
+    leaf("T1", 50, 30, { row: 1, column: 1 }),
+    leaf("T2", 50, 30, { row: 1, column: 2 }),
+  ];
+
+  test("keep an order put first when a later one names the same node", () => {
+    expect(paths(place("down", grid, ["C>T1", "B>T0"]))).toEqual({
+      "C>T1 #0": [
+        [175, 40],
+        [175, 53],
+        [105, 53],
+        [105, 61],
+      ],
+      "B>T0 #1": [
+        [105, 40],
+        [105, 48],
+        [35, 48],
+        [35, 61],
+      ],
+    });
+  });
+
+  test("put a lane after the lanes of both the nodes it has to follow", () => {
+    expect(paths(place("down", grid, ["A>T1", "A>T2", "B>B", "C>C"]))).toMatchObject({
+      "A>T1 #0": [
+        [35, 51],
+        [35, 69],
+        [105, 69],
+        [105, 77],
+      ],
+      "B>B #2": [
+        [105, 51],
+        [105, 59],
+        [140, 59],
+        [140, 8],
+        [105, 8],
+        [105, 21],
+      ],
+      "C>C #3": [
+        [175, 51],
+        [175, 64],
+        [208, 64],
+        [208, 13],
+        [175, 13],
+        [175, 21],
+      ],
+    });
+  });
+
+  test("are put in order quickly for a row of many nodes that each lead to every target before them", () => {
+    const count = 28;
+    const row = Array.from({ length: count }, (_, at) => [
+      leaf(`N${at}`, 50, 30, { row: 0, column: at }),
+      leaf(`T${at}`, 50, 30, { row: 1, column: at }),
+    ]).flat();
+    const links = Array.from({ length: count }, (_, back) => count - 1 - back).flatMap((target) =>
+      Array.from({ length: count - 1 - target }, (_, back) => `N${count - 1 - back}>T${target}`),
+    );
+
+    expect(place("down", row, links).edges).toHaveLength(378);
+  }, 2000);
+
   test("send the later of two edges that would each run along the start of the other around", () => {
     expect(paths(place("down", square, ["A>X", "Y>B"]))).toEqual({
       "A>X #0": [
@@ -652,6 +718,66 @@ describe("placeGraph: an edge that goes around", () => {
       ],
     });
   });
+
+  test("puts the lanes that enter a row after all the lanes that leave the row before, however many enter", () => {
+    const loops = place(
+      "down",
+      [
+        leaf("A", 50, 30, { row: 0, column: 0 }),
+        leaf("B", 50, 30, { row: 0, column: 1 }),
+        leaf("C", 50, 30, { row: 1, column: 0 }),
+        leaf("D", 50, 30, { row: 1, column: 1 }),
+      ],
+      ["A>A", "C>C", "D>D"],
+    );
+
+    expect(paths(loops)).toEqual({
+      "A>A #0": [
+        [35, 46],
+        [35, 54],
+        [68, 54],
+        [68, 8],
+        [35, 8],
+        [35, 16],
+      ],
+      "C>C #1": [
+        [35, 105],
+        [35, 113],
+        [73, 113],
+        [73, 62],
+        [35, 62],
+        [35, 75],
+      ],
+      "D>D #2": [
+        [106, 105],
+        [106, 118],
+        [139, 118],
+        [139, 67],
+        [106, 67],
+        [106, 75],
+      ],
+    });
+  });
+
+  test.each([{ edgeToNode: 12 }, { edgeGap: 12 }, { minSegment: 12 }])(
+    "keeps its lanes clear of the rows and columns by the largest of the edge spacings, with %j",
+    (larger) => {
+      const loop = place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], ["A>B", "B>A"], {
+        ...spacing,
+        ...larger,
+      });
+
+      expect([loop.width, loop.height]).toEqual([84, 128]);
+      expect(paths(loop)["B>A #1"]).toEqual([
+        [35, 104],
+        [35, 116],
+        [72, 116],
+        [72, 12],
+        [35, 12],
+        [35, 24],
+      ]);
+    },
+  );
 
   test("passes a row beside its source, then turns to its target", () => {
     const skipping = place(
@@ -805,6 +931,32 @@ describe("placeGraph: a corridor", () => {
 
     expect(boxes(placement)).toEqual({ A: [3, 2, 10, 30], B: [16, 2, 10, 30], C: [3, 40, 10, 30] });
     expect([placement.width, placement.height]).toEqual([29, 72]);
+  });
+
+  test("is the padding at the outside and the gap between nodes inside, whichever is larger", () => {
+    const apart = place(
+      "down",
+      [leaf("A", 50, 30, { row: 0, column: 0 }), leaf("B", 50, 30, { row: 5, column: 0 })],
+      [],
+      { ...spacing, nodeGap: 5, padding: 30 },
+    );
+
+    expect(boxes(apart)).toEqual({ A: [30, 30, 50, 30], B: [30, 65, 50, 30] });
+  });
+
+  test("keeps the middle of a short row clear of the rows on both its sides", () => {
+    const column = place(
+      "down",
+      [
+        leaf("A", 50, 100, { row: 0, column: 0 }),
+        leaf("B", 50, 6, { row: 1, column: 0 }),
+        leaf("C", 50, 100, { row: 2, column: 0 }),
+      ],
+      ["C>C"],
+      { ...spacing, nodeGap: 0, padding: 0 },
+    );
+
+    expect(boxes(column)).toEqual({ A: [0, 0, 50, 100], B: [0, 105, 50, 6], C: [0, 127, 50, 100] });
   });
 
   test("is as long as the shortest stretch where an edge runs straight through it", () => {
@@ -1026,6 +1178,25 @@ describe("placeGraph: a node too small for its edges", () => {
       expect(through).toThrow('"N" is 4 long');
     },
   );
+
+  test("is measured across against the clearance and along against the gap between edges", () => {
+    const uneven = { ...spacing, edgeToNode: 3, edgeGap: 7 };
+    const chain = (width: number, height: number) => () =>
+      place(
+        "down",
+        [leaf("A", width, height), leaf("B", width, height), leaf("C", width, height)],
+        ["A>B", "B>C"],
+        uneven,
+      );
+
+    expect(chain(6, 7)).not.toThrow();
+    expect(chain(5, 7)).toThrow(
+      '"A" is 5 across where its edges meet it, too narrow for an edge to keep 3 from',
+    );
+    expect(chain(6, 6)).toThrow(
+      '"B" is 6 long between the edges that enter it and the edges that leave it, less than the gap of 7',
+    );
+  });
 
   test("is accepted at exactly twice the clearance across and the gap between edges along", () => {
     const exact = place(

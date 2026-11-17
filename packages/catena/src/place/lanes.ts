@@ -119,9 +119,10 @@ class LaneOrder {
  * Gives every edge of one grid its route, and every lane its place in its corridor.
  *
  * All the edges that leave a node share one lane, in the corridor after its row. An edge to the next row
- * drops from that lane straight into its target, unless that would run it along the edges leaving the
- * node before the target: then the lane of that node comes first, and where two nodes would each have to
- * come first, the later edge goes around instead. Every other edge goes around: through a corridor
+ * drops from that lane straight into its target. The node right before the target may have a lane of its
+ * own, which its edges run out to along the same line: that lane then comes first, so the drop starts
+ * past it, and where two nodes would each have to come first, the later edge goes around instead. An
+ * edge straight from that node into the target is one the drop may join. Every other edge goes around: through a corridor
  * beside its source to the lane of its target, in the corridor before the target's row. All the edges
  * that come around to a node share that lane.
  *
