@@ -44,15 +44,8 @@
                 "message": "Import another module through its index, as \"../<module>\", not a file inside it or a longer way round."
               },
               {
-                "group": [
-                  "**/place",
-                  "**/place/**",
-                  "**/verify",
-                  "**/verify/**",
-                  "**/text",
-                  "**/text/**"
-                ],
-                "message": "layout holds the types place and verify share, so it imports neither of them nor any other module."
+                "group": ["../*"],
+                "message": "layout holds the types the other modules share, so it imports nothing outside layout."
               }
             ]
           }

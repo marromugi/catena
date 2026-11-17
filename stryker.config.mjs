@@ -1,10 +1,14 @@
+import path from "node:path";
+
+const outside = `../.${path.basename(process.cwd())}-stryker-tmp`;
+
 /** @type {import("@stryker-mutator/api/core").PartialStrykerOptions} */
 export default {
   testRunner: "vitest",
   coverageAnalysis: "perTest",
-  tempDirName: "../.catena-stryker-tmp",
+  tempDirName: outside,
   reporters: ["clear-text", "json"],
-  jsonReporter: { fileName: "../.catena-stryker-tmp/mutation.json" },
+  jsonReporter: { fileName: `${outside}/mutation.json` },
   // Names no file, so Stryker leaves the tsconfigs alone: it rewrites them through the
   // TypeScript JavaScript API, which TypeScript 7 doesn't have.
   tsconfigFile: "stryker-rewrites-no-tsconfig",

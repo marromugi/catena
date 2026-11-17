@@ -19,9 +19,9 @@ StrykerJS, on the changed lines of one file, from the copy's root. Each mutant r
 pnpm exec stryker run --mutate "packages/<package>/src/<file>.ts:<from>-<to>"
 ```
 
-The report and sandboxes go to `.catena-stryker-tmp` beside the copy (`stryker.config.mjs`).
+The report and sandboxes go to `.<copy's directory name>-stryker-tmp` beside the copy (`stryker.config.mjs`).
 
-Break rules are ast-grep rules with a `fix`, kept in `packages/<package>/break-rules/`. Run them from that package's directory, so only its changed lines are broken and only the tests that reach the broken file run:
+Break rules are ast-grep rules with a `fix`, kept in `break-rules/`. Run them from the copy's root, where Vitest finds tests across packages, so only the tests that reach the broken file run:
 
 ```sh
 node <is-it-right>/scripts/break-changed.mts --rules break-rules origin/main -- sh -c 'pnpm vitest related "$BREAK_CHANGED_FILE" --run'
