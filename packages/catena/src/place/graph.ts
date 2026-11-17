@@ -33,6 +33,7 @@ export type GraphNode = Leaf | Group;
 
 /** A connection between two nodes, at any depth. */
 export interface GraphEdge {
+  readonly id: string;
   readonly from: string;
   readonly to: string;
 }

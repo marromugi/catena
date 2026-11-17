@@ -50,9 +50,10 @@ function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
 }
 
 /**
- * Graphs of the kinds `placeNodes` accepts: nested groups, both directions, sizes from 1 up that are not
- * whole numbers, nodes that name a cell up to row 4 and column 4, and edges between any two nodes,
- * including edges that go back, edges from a node to itself, and edges between a group and a node inside it.
+ * Graphs of the kinds `placeGraph` lays out, once their leaves have room for their edges: nested groups,
+ * both directions, sizes from 1 up that are not whole numbers, nodes that name a cell up to row 4 and
+ * column 4, and edges between any two nodes, including edges that go back, edges from a node to itself,
+ * and edges between a group and a node inside it.
  */
 export const graphs: fc.Arbitrary<Graph> = fc
   .record({
@@ -63,10 +64,12 @@ export const graphs: fc.Arbitrary<Graph> = fc
   .map(({ direction: flow, shapes, links }) => {
     const ids: string[] = [];
     const nodes = named(shapes, ids);
-    const edges = links.flatMap(([from, to]) => {
+    const edges = links.flatMap(([from, to], index) => {
       const source = ids[from % ids.length];
       const target = ids[to % ids.length];
-      return source === undefined || target === undefined ? [] : [{ from: source, to: target }];
+      return source === undefined || target === undefined
+        ? []
+        : [{ id: `e${index}`, from: source, to: target }];
     });
     return { direction: flow, nodes, edges };
   });

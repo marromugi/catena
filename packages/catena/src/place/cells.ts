@@ -8,8 +8,14 @@ function cellAt(step: number, place: number, direction: Direction): Cell {
   return direction === "down" ? { row: step, column: place } : { row: place, column: step };
 }
 
-function stepOf(cell: Cell, direction: Direction): number {
+/** How many steps along the flow a cell lies. */
+export function stepOf(cell: Cell, direction: Direction): number {
   return direction === "down" ? cell.row : cell.column;
+}
+
+/** How many places across the flow a cell lies. */
+export function placeOf(cell: Cell, direction: Direction): number {
+  return direction === "down" ? cell.column : cell.row;
 }
 
 function requireCell(node: GraphNode, cell: Cell): void {
@@ -36,7 +42,7 @@ function requireCell(node: GraphNode, cell: Cell): void {
 export function assignCells(
   nodes: readonly GraphNode[],
   direction: Direction,
-  edges: readonly GraphEdge[],
+  edges: readonly Omit<GraphEdge, "id">[],
 ): Map<string, Cell> {
   const holders = new Map<string, string>();
   for (const node of nodes) {

@@ -102,10 +102,11 @@ describe("graphs", () => {
     expect(found).toBe(true);
   });
 
-  test("give every node of a graph its own id, and every edge two of them", () => {
+  test("give every node and every edge of a graph its own id, and every edge two nodes", () => {
     for (const graph of sample) {
       const ids = listed(graph.nodes).map(({ node }) => node.id);
       expect(new Set(ids).size).toBe(ids.length);
+      expect(new Set(graph.edges.map(({ id }) => id)).size).toBe(graph.edges.length);
       expect(
         graph.edges.filter((edge) => !ids.includes(edge.from) || !ids.includes(edge.to)),
       ).toEqual([]);
