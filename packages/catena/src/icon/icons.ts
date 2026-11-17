@@ -1,10 +1,12 @@
 import {
+  arc,
   circle,
   closedCurve,
   cubic,
   curve,
   dot,
   ellipse,
+  onCircle,
   polygon,
   polyline,
   quarter,
@@ -22,6 +24,9 @@ export const iconStroke = {
   "stroke-linecap": "round",
   "stroke-linejoin": "round",
 } as const;
+
+/** The SVG attributes every filled icon's path is drawn with, besides its `fill`. */
+export const filledIconPaint = { stroke: "none" } as const;
 
 const icon = (...paths: readonly string[]) => paths.join(" ");
 
@@ -134,3 +139,27 @@ export type IconName = keyof typeof iconPathData;
 const isIconName = (name: string): name is IconName => Object.hasOwn(iconPathData, name);
 
 export const iconNames: readonly IconName[] = Object.keys(iconPathData).filter(isIconName);
+
+/**
+ * The outline of the clock's hands, `width` wide with round ends: from `top` down to the centre, then to
+ * `end` down and to the right at 45 degrees. It winds against `circle`, so it is cut out of a disc under
+ * either fill rule.
+ */
+function clockHands(top: number, end: number, width: number): string {
+  const half = width / 2;
+  const centre: Point = [12, 12];
+  return closedCurve(
+    [12 + half, top],
+    ...arc([12, top], half, 360, 180),
+    onCircle(centre, half, 180),
+    ...arc(centre, half, 180, 135),
+    onCircle([end, end], half, 135),
+    ...arc([end, end], half, 135, -45),
+    [12 + half, 12 - half * (Math.SQRT2 - 1)],
+  );
+}
+
+/** Each filled icon's path data on the grid, drawn with `filledIconPaint`. */
+export const filledIconPathData = {
+  clock: icon(circle(12, 12, 10), clockHands(8.5, 14.75, 1.75)),
+} satisfies Record<string, string>;
