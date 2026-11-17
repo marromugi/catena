@@ -1,10 +1,10 @@
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import type { PlacedNode } from "../layout";
+import type { Layout, PlacedNode, Spacing } from "../layout";
 import { verify } from "../verify";
 import { graphs } from "./graph.arbitrary";
-import { InvalidGraphError, placeNodes } from "./index";
-import type { Cell, Direction, Graph, GraphNode, NodePlacement } from "./index";
+import { InvalidGraphError, placeGraph } from "./index";
+import type { Cell, Direction, Graph, GraphNode } from "./index";
 
 const spacing = { nodeGap: 20, padding: 10, edgeToNode: 5, edgeGap: 5, minSegment: 8 };
 
@@ -24,26 +24,35 @@ const group = (
 const graph = (direction: Direction, nodes: GraphNode[], links: string[] = []): Graph => ({
   direction,
   nodes,
-  edges: links.map((link) => {
+  edges: links.map((link, index) => {
     const [from = "", to = ""] = link.split(">");
-    return { from, to };
+    return { id: `${link} #${index}`, from, to };
   }),
 });
 
 const flat = (nodes: readonly PlacedNode[]): PlacedNode[] =>
   nodes.flatMap((node) => [node, ...flat(node.children)]);
 
-const boxes = (placement: NodePlacement): Record<string, number[]> =>
+const boxes = (placement: Pick<Layout, "nodes">): Record<string, number[]> =>
   Object.fromEntries(
     flat(placement.nodes).map(({ id, box }) => [id, [box.x, box.y, box.width, box.height]]),
   );
 
-const place = (direction: Direction, nodes: GraphNode[], links: string[] = []) =>
-  placeNodes(graph(direction, nodes, links), spacing);
+const paths = (placement: Pick<Layout, "edges">): Record<string, number[][]> =>
+  Object.fromEntries(
+    placement.edges.map(({ id, points }) => [id, points.map(({ x, y }) => [x, y])]),
+  );
 
-describe("placeNodes: the canvas", () => {
+const place = (
+  direction: Direction,
+  nodes: GraphNode[],
+  links: string[] = [],
+  kept: Spacing = spacing,
+) => placeGraph(graph(direction, nodes, links), kept);
+
+describe("placeGraph: the canvas", () => {
   test("is only its padding when the graph has no nodes", () => {
-    expect(place("down", [])).toEqual({ width: 20, height: 20, nodes: [] });
+    expect(place("down", [])).toEqual({ width: 20, height: 20, nodes: [], edges: [] });
   });
 
   test("keeps the padding around a single node", () => {
@@ -51,11 +60,12 @@ describe("placeNodes: the canvas", () => {
       width: 70,
       height: 50,
       nodes: [{ id: "A", box: { x: 10, y: 10, width: 50, height: 30 }, children: [] }],
+      edges: [],
     });
   });
 });
 
-describe("placeNodes: order along the flow", () => {
+describe("placeGraph: order along the flow", () => {
   const chain = [leaf("A", 50, 30), leaf("B", 80, 40), leaf("C", 50, 30)];
 
   test("puts each node below the one that leads to it, in the middle of the column", () => {
@@ -111,26 +121,26 @@ describe("placeNodes: order along the flow", () => {
   });
 
   test.each([
-    ["an edge that goes back to an earlier node", ["A>B", "B>A"]],
-    ["an edge from a node to itself", ["A>B", "A>A", "B>B"]],
-    ["the same edge twice", ["A>B", "A>B"]],
-  ])("is not moved by %s", (_, links) => {
+    ["an edge that goes back to an earlier node", ["A>B", "B>A"], [16, 66]],
+    ["an edge from a node to itself", ["A>B", "A>A", "B>B"], [16, 70]],
+    ["the same edge twice", ["A>B", "A>B"], [10, 60]],
+  ])("keeps the order with %s", (_, links, [top = 0, below = 0]) => {
     expect(boxes(place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], links))).toEqual({
-      A: [10, 10, 50, 30],
-      B: [10, 60, 50, 30],
+      A: [10, top, 50, 30],
+      B: [10, below, 50, 30],
     });
   });
 
   test("leaves a node where it is when only later nodes lead to it", () => {
     expect(boxes(place("down", chain, ["C>A", "B>A"]))).toEqual({
-      A: [10, 15, 50, 30],
-      B: [80, 10, 80, 40],
-      C: [180, 15, 50, 30],
+      A: [10, 21, 50, 30],
+      B: [80, 16, 80, 40],
+      C: [180, 21, 50, 30],
     });
   });
 });
 
-describe("placeNodes: a node that names its cell", () => {
+describe("placeGraph: a node that names its cell", () => {
   test("is put there, and rows and columns that hold nothing take no room", () => {
     expect(
       boxes(
@@ -255,13 +265,13 @@ describe("placeNodes: a node that names its cell", () => {
     expect(
       boxes(place("down", [leaf("A", 50, 30), leaf("P", 50, 30, { row: 0, column: 1 })], ["A>P"])),
     ).toEqual({
-      A: [10, 10, 50, 30],
-      P: [80, 10, 50, 30],
+      A: [10, 16, 50, 30],
+      P: [80, 16, 50, 30],
     });
   });
 });
 
-describe("placeNodes: a node with very many edges", () => {
+describe("placeGraph: a node with very many edges", () => {
   test("is placed like a node with one", () => {
     const links = Array.from({ length: 200_000 }, () => "A>B");
     expect(boxes(place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], links))).toEqual({
@@ -271,14 +281,14 @@ describe("placeNodes: a node with very many edges", () => {
   });
 });
 
-describe("placeNodes: a group", () => {
+describe("placeGraph: a group", () => {
   test("is its grid plus the padding, with its children inside", () => {
     const placement = place(
       "down",
       [group("G", "down", [leaf("A", 50, 30), leaf("B", 50, 30)])],
       ["A>B"],
     );
-    expect(placement).toEqual({
+    expect({ ...placement, edges: paths(placement) }).toEqual({
       width: 90,
       height: 120,
       nodes: [
@@ -291,6 +301,12 @@ describe("placeNodes: a group", () => {
           ],
         },
       ],
+      edges: {
+        "A>B #0": [
+          [45, 50],
+          [45, 70],
+        ],
+      },
     });
   });
 
@@ -423,7 +439,451 @@ describe("placeNodes: a group", () => {
   });
 });
 
-describe("placeNodes: a graph that cannot be laid out", () => {
+describe("placeGraph: an edge to the next row", () => {
+  const chain = [leaf("A", 50, 30), leaf("B", 80, 40), leaf("C", 50, 30)];
+
+  test("runs straight down the middle of a column", () => {
+    expect(paths(place("down", chain, ["A>B", "B>C"]))).toEqual({
+      "A>B #0": [
+        [50, 40],
+        [50, 60],
+      ],
+      "B>C #1": [
+        [50, 100],
+        [50, 120],
+      ],
+    });
+  });
+
+  test("runs straight along the middle of a row when the flow is to the right", () => {
+    expect(paths(place("right", chain, ["A>B", "B>C"]))).toEqual({
+      "A>B #0": [
+        [60, 30],
+        [80, 30],
+      ],
+      "B>C #1": [
+        [160, 30],
+        [180, 30],
+      ],
+    });
+  });
+
+  test("shares a lane halfway to the next row with the other edges that leave its node", () => {
+    const fork = place(
+      "down",
+      [leaf("A", 50, 30), leaf("B", 50, 30), leaf("C", 50, 30), leaf("D", 50, 30)],
+      ["A>B", "A>C", "A>D"],
+    );
+
+    expect(paths(fork)).toEqual({
+      "A>B #0": [
+        [35, 40],
+        [35, 60],
+      ],
+      "A>C #1": [
+        [35, 40],
+        [35, 50],
+        [105, 50],
+        [105, 60],
+      ],
+      "A>D #2": [
+        [35, 40],
+        [35, 50],
+        [175, 50],
+        [175, 60],
+      ],
+    });
+  });
+
+  test("drops into its node along the edges that enter it from straight before", () => {
+    const merge = place(
+      "down",
+      [
+        leaf("A", 50, 30, { row: 0, column: 0 }),
+        leaf("B", 50, 30, { row: 0, column: 1 }),
+        leaf("C", 50, 30, { row: 1, column: 0 }),
+      ],
+      ["A>C", "B>C"],
+    );
+
+    expect(paths(merge)).toEqual({
+      "A>C #0": [
+        [35, 40],
+        [35, 60],
+      ],
+      "B>C #1": [
+        [105, 40],
+        [105, 50],
+        [35, 50],
+        [35, 60],
+      ],
+    });
+  });
+
+  test("is drawn over the same edge listed again", () => {
+    const twice = paths(place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], ["A>B", "A>B"]));
+
+    expect(twice["A>B #1"]).toEqual(twice["A>B #0"]);
+  });
+});
+
+describe("placeGraph: lanes between two rows", () => {
+  const square = [
+    leaf("A", 50, 30, { row: 0, column: 0 }),
+    leaf("Y", 50, 30, { row: 0, column: 1 }),
+    leaf("B", 50, 30, { row: 1, column: 0 }),
+    leaf("X", 50, 30, { row: 1, column: 1 }),
+  ];
+
+  test("put the lane of the node before a target nearer that node than the lane of an edge that drops into the target", () => {
+    const crossing = place(
+      "down",
+      [
+        leaf("A", 50, 30, { row: 0, column: 0 }),
+        leaf("U", 50, 30, { row: 0, column: 1 }),
+        leaf("T", 50, 30, { row: 1, column: 1 }),
+        leaf("Z", 50, 30, { row: 1, column: 2 }),
+      ],
+      ["A>T", "U>Z"],
+    );
+
+    expect(boxes(crossing)).toMatchObject({ U: [80, 10, 50, 30], T: [80, 61, 50, 30] });
+    expect(paths(crossing)).toEqual({
+      "A>T #0": [
+        [35, 40],
+        [35, 53],
+        [105, 53],
+        [105, 61],
+      ],
+      "U>Z #1": [
+        [105, 40],
+        [105, 48],
+        [175, 48],
+        [175, 61],
+      ],
+    });
+  });
+
+  test("send the later of two edges that would each run along the start of the other around", () => {
+    expect(paths(place("down", square, ["A>X", "Y>B"]))).toEqual({
+      "A>X #0": [
+        [35, 40],
+        [35, 53],
+        [105, 53],
+        [105, 69],
+      ],
+      "Y>B #1": [
+        [105, 40],
+        [105, 48],
+        [70, 48],
+        [70, 61],
+        [35, 61],
+        [35, 69],
+      ],
+    });
+  });
+
+  test("send the other one around when the two edges are listed the other way round", () => {
+    expect(paths(place("down", square, ["Y>B", "A>X"]))).toEqual({
+      "Y>B #0": [
+        [105, 40],
+        [105, 53],
+        [35, 53],
+        [35, 69],
+      ],
+      "A>X #1": [
+        [35, 40],
+        [35, 48],
+        [70, 48],
+        [70, 61],
+        [105, 61],
+        [105, 69],
+      ],
+    });
+  });
+});
+
+describe("placeGraph: an edge that goes around", () => {
+  test("goes back beside its source, in a corridor made wide enough, and enters its target from before", () => {
+    const loop = place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], ["A>B", "B>A"]);
+
+    expect([loop.width, loop.height]).toEqual([76, 112]);
+    expect(paths(loop)).toEqual({
+      "A>B #0": [
+        [35, 46],
+        [35, 66],
+      ],
+      "B>A #1": [
+        [35, 96],
+        [35, 104],
+        [68, 104],
+        [68, 8],
+        [35, 8],
+        [35, 16],
+      ],
+    });
+  });
+
+  test("leaves a node and comes back to it", () => {
+    expect(paths(place("down", [leaf("A", 50, 30)], ["A>A"]))).toEqual({
+      "A>A #0": [
+        [35, 46],
+        [35, 54],
+        [68, 54],
+        [68, 8],
+        [35, 8],
+        [35, 16],
+      ],
+    });
+  });
+
+  test("leaves a node and comes back to it when the flow is to the right", () => {
+    const loop = place("right", [leaf("A", 50, 30)], ["A>A"]);
+
+    expect([loop.width, loop.height]).toEqual([82, 56]);
+    expect(paths(loop)).toEqual({
+      "A>A #0": [
+        [66, 25],
+        [74, 25],
+        [74, 48],
+        [8, 48],
+        [8, 25],
+        [16, 25],
+      ],
+    });
+  });
+
+  test("passes a row beside its source, then turns to its target", () => {
+    const skipping = place(
+      "down",
+      [leaf("A", 50, 30), leaf("B", 50, 30), leaf("C", 50, 30)],
+      ["A>B", "B>C", "A>C"],
+    );
+
+    expect(paths(skipping)["A>C #2"]).toEqual([
+      [35, 40],
+      [35, 50],
+      [68, 50],
+      [68, 100],
+      [35, 100],
+      [35, 110],
+    ]);
+  });
+
+  test("passes its source on the side of a target in an earlier column", () => {
+    const skipping = place(
+      "down",
+      [
+        leaf("A", 50, 30, { row: 0, column: 1 }),
+        leaf("B", 50, 30, { row: 1, column: 1 }),
+        leaf("C", 50, 30, { row: 2, column: 0 }),
+      ],
+      ["A>C"],
+    );
+
+    expect(paths(skipping)).toEqual({
+      "A>C #0": [
+        [105, 40],
+        [105, 50],
+        [70, 50],
+        [70, 100],
+        [35, 100],
+        [35, 110],
+      ],
+    });
+  });
+
+  test("goes between two nodes of one row, each way in a lane of its own", () => {
+    const pair = place(
+      "down",
+      [leaf("A", 50, 30, { row: 0, column: 0 }), leaf("B", 50, 30, { row: 0, column: 1 })],
+      ["A>B", "B>A"],
+    );
+
+    expect(boxes(pair)).toEqual({ A: [10, 21, 50, 30], B: [81, 21, 50, 30] });
+    expect(paths(pair)).toEqual({
+      "A>B #0": [
+        [35, 51],
+        [35, 59],
+        [68, 59],
+        [68, 13],
+        [106, 13],
+        [106, 21],
+      ],
+      "B>A #1": [
+        [106, 51],
+        [106, 64],
+        [73, 64],
+        [73, 8],
+        [35, 8],
+        [35, 21],
+      ],
+    });
+  });
+
+  test("shares the lane beside its source with the edges that leave it, and the lane before its target with the edges that enter it", () => {
+    const loops = place(
+      "down",
+      [
+        leaf("A", 50, 30, { row: 0, column: 0 }),
+        leaf("B", 50, 30, { row: 0, column: 1 }),
+        leaf("C", 50, 30, { row: 1, column: 0 }),
+      ],
+      ["C>A", "C>B", "A>A"],
+    );
+
+    expect(paths(loops)).toEqual({
+      "C>A #0": [
+        [35, 101],
+        [35, 109],
+        [73, 109],
+        [73, 8],
+        [35, 8],
+        [35, 21],
+      ],
+      "C>B #1": [
+        [35, 101],
+        [35, 109],
+        [73, 109],
+        [73, 13],
+        [106, 13],
+        [106, 21],
+      ],
+      "A>A #2": [
+        [35, 51],
+        [35, 61],
+        [68, 61],
+        [68, 8],
+        [35, 8],
+        [35, 21],
+      ],
+    });
+  });
+
+  test("keeps the lanes that leave a row before the lanes that enter the next, a shortest stretch apart", () => {
+    const loops = place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], ["A>B", "A>A", "B>B"]);
+
+    expect(paths(loops)).toMatchObject({
+      "A>A #1": [
+        [35, 46],
+        [35, 54],
+        [68, 54],
+        [68, 8],
+        [35, 8],
+        [35, 16],
+      ],
+      "B>B #2": [
+        [35, 100],
+        [35, 108],
+        [73, 108],
+        [73, 62],
+        [35, 62],
+        [35, 70],
+      ],
+    });
+  });
+});
+
+describe("placeGraph: a corridor", () => {
+  const tight = { ...spacing, nodeGap: 2, padding: 2 };
+  const narrow = [
+    leaf("A", 10, 30, { row: 0, column: 0 }),
+    leaf("B", 10, 30, { row: 0, column: 1 }),
+    leaf("C", 10, 30, { row: 1, column: 0 }),
+  ];
+
+  test("is the gap between nodes, or the padding, in a grid without edges", () => {
+    expect(boxes(place("down", narrow, [], tight))).toEqual({
+      A: [2, 2, 10, 30],
+      B: [14, 2, 10, 30],
+      C: [2, 34, 10, 30],
+    });
+  });
+
+  test("keeps the middle of each row and column clear of the next in a grid with edges", () => {
+    const placement = place("down", narrow, ["A>C"], tight);
+
+    expect(boxes(placement)).toEqual({ A: [3, 2, 10, 30], B: [16, 2, 10, 30], C: [3, 40, 10, 30] });
+    expect([placement.width, placement.height]).toEqual([29, 72]);
+  });
+
+  test("is as long as the shortest stretch where an edge runs straight through it", () => {
+    const through = place("down", [leaf("A", 50, 30), leaf("B", 50, 30)], ["A>B"], {
+      ...tight,
+      minSegment: 12,
+    });
+
+    expect(paths(through)).toEqual({
+      "A>B #0": [
+        [27, 32],
+        [27, 44],
+      ],
+    });
+  });
+});
+
+describe("placeGraph: edges and groups", () => {
+  const nested = place(
+    "down",
+    [group("G", "right", [leaf("A", 50, 30), leaf("B", 50, 30)]), leaf("C", 50, 30)],
+    ["A>C", "A>B", "G>C", "C>G"],
+  );
+
+  test("draws an edge between two nodes of a group inside the group, and an edge to the group at its border", () => {
+    expect(boxes(nested)).toEqual({
+      G: [10, 16, 140, 50],
+      A: [20, 26, 50, 30],
+      B: [90, 26, 50, 30],
+      C: [55, 86, 50, 30],
+    });
+    expect(paths(nested)).toEqual({
+      "A>B #1": [
+        [70, 41],
+        [90, 41],
+      ],
+      "G>C #2": [
+        [80, 66],
+        [80, 86],
+      ],
+      "C>G #3": [
+        [80, 116],
+        [80, 124],
+        [158, 124],
+        [158, 8],
+        [80, 8],
+        [80, 16],
+      ],
+    });
+  });
+
+  test("lists the edges it draws in the order of the graph, whichever grid each is in", () => {
+    expect(nested.edges.map(({ id }) => id)).toEqual(["A>B #1", "G>C #2", "C>G #3"]);
+  });
+
+  test("makes a group larger by the lanes inside it", () => {
+    const looping = place(
+      "down",
+      [group("G", "down", [leaf("A", 50, 30), leaf("B", 50, 30)])],
+      ["A>B", "B>A"],
+    );
+
+    expect(boxes(looping)).toEqual({
+      G: [10, 10, 76, 112],
+      A: [20, 26, 50, 30],
+      B: [20, 76, 50, 30],
+    });
+    expect(paths(looping)["B>A #1"]).toEqual([
+      [45, 106],
+      [45, 114],
+      [78, 114],
+      [78, 18],
+      [45, 18],
+      [45, 26],
+    ]);
+  });
+});
+
+describe("placeGraph: a graph that cannot be laid out", () => {
   test.each([
     ["two nodes with one id", graph("down", [leaf("A", 50, 30), leaf("A", 50, 30)]), '"A"'],
     [
@@ -484,22 +944,25 @@ describe("placeNodes: a graph that cannot be laid out", () => {
       'height of node "A"',
     ],
   ])("refuses %s", (_, broken, said) => {
-    expect(() => placeNodes(broken, spacing)).toThrow(InvalidGraphError);
-    expect(() => placeNodes(broken, spacing)).toThrow(said);
+    expect(() => placeGraph(broken, spacing)).toThrow(InvalidGraphError);
+    expect(() => placeGraph(broken, spacing)).toThrow(said);
   });
 
   test.each([
-    ["a negative gap between nodes", { nodeGap: -1 }, "gap between nodes is -1"],
-    ["a gap between nodes that is not a number", { nodeGap: Number.NaN }, "gap between nodes"],
+    ["a negative gap between nodes", { nodeGap: -1 }, "nodeGap is -1"],
+    ["a gap between nodes that is not a number", { nodeGap: Number.NaN }, "nodeGap is NaN"],
     ["a negative padding", { padding: -1 }, "padding is -1"],
     ["a padding without end", { padding: Number.POSITIVE_INFINITY }, "padding is Infinity"],
+    ["a negative clearance around nodes", { edgeToNode: -1 }, "edgeToNode is -1"],
+    ["a negative gap between edges", { edgeGap: -1 }, "edgeGap is -1"],
+    ["a negative shortest stretch", { minSegment: -1 }, "minSegment is -1"],
   ])("refuses %s", (_, wrong, said) => {
-    expect(() => placeNodes(graph("down", []), { ...spacing, ...wrong })).toThrow(said);
+    expect(() => placeGraph(graph("down", []), { ...spacing, ...wrong })).toThrow(said);
   });
 
-  test("accepts a node of no size and a spacing of nothing", () => {
+  test("accepts a node of no size that no edge meets, and a spacing of nothing", () => {
     expect(
-      placeNodes(graph("down", [leaf("A", 0, 0), leaf("B", 50, 30)], ["A>B"]), {
+      placeGraph(graph("down", [leaf("A", 0, 0), leaf("B", 50, 30)]), {
         ...spacing,
         nodeGap: 0,
         padding: 0,
@@ -508,26 +971,125 @@ describe("placeNodes: a graph that cannot be laid out", () => {
       width: 50,
       height: 30,
       nodes: [
-        { id: "A", box: { x: 25, y: 0, width: 0, height: 0 }, children: [] },
+        { id: "A", box: { x: 0, y: 15, width: 0, height: 0 }, children: [] },
         { id: "B", box: { x: 0, y: 0, width: 50, height: 30 }, children: [] },
       ],
+      edges: [],
     });
+  });
+
+  test("refuses two edges with one id", () => {
+    const twice: Graph = {
+      direction: "down",
+      nodes: [leaf("A", 50, 30), leaf("B", 50, 30)],
+      edges: [
+        { id: "E", from: "A", to: "B" },
+        { id: "E", from: "B", to: "A" },
+      ],
+    };
+
+    expect(() => placeGraph(twice, spacing)).toThrow(InvalidGraphError);
+    expect(() => placeGraph(twice, spacing)).toThrow('"E"');
   });
 });
 
-describe("placeNodes: any graph", () => {
+describe("placeGraph: a node too small for its edges", () => {
+  test.each([
+    ["down", leaf("N", 9, 30)],
+    ["right", leaf("N", 30, 9)],
+  ] as const)(
+    "is refused when it is narrower across a flow %s than twice the clearance",
+    (direction, narrow) => {
+      const meeting = () => place(direction, [leaf("A", 50, 30), narrow], ["A>N"]);
+
+      expect(meeting).toThrow(InvalidGraphError);
+      expect(meeting).toThrow('"N" is 9 across');
+    },
+  );
+
+  test("is refused when the edge it is too narrow for leaves it", () => {
+    expect(() => place("down", [leaf("N", 9, 30), leaf("B", 50, 30)], ["N>B"])).toThrow(
+      '"N" is 9 across',
+    );
+  });
+
+  test.each([
+    ["down", leaf("N", 50, 4)],
+    ["right", leaf("N", 4, 50)],
+  ] as const)(
+    "is refused when it is shorter along a flow %s than the gap between the edges on both its sides",
+    (direction, short) => {
+      const through = () =>
+        place(direction, [leaf("A", 50, 30), short, leaf("C", 50, 30)], ["A>N", "N>C"]);
+
+      expect(through).toThrow(InvalidGraphError);
+      expect(through).toThrow('"N" is 4 long');
+    },
+  );
+
+  test("is accepted at exactly twice the clearance across and the gap between edges along", () => {
+    const exact = place(
+      "down",
+      [leaf("A", 10, 5), leaf("B", 10, 5), leaf("C", 10, 5)],
+      ["A>B", "B>C"],
+    );
+
+    expect(boxes(exact)).toEqual({ A: [10, 10, 10, 5], B: [10, 35, 10, 5], C: [10, 60, 10, 5] });
+  });
+
+  test("is accepted however short when edges only enter it, or only leave it", () => {
+    const ends = place("down", [leaf("A", 50, 2), leaf("B", 50, 2)], ["A>B"]);
+
+    expect(paths(ends)).toEqual({
+      "A>B #0": [
+        [35, 12],
+        [35, 32],
+      ],
+    });
+  });
+
+  test("is accepted however small when no edge of its own grid meets it", () => {
+    const apart = place(
+      "down",
+      [group("G", "down", [leaf("N", 1, 1)]), leaf("B", 50, 30)],
+      ["N>B", "B>N"],
+    );
+
+    expect(paths(apart)).toEqual({});
+  });
+});
+
+/** The node with every leaf in it made `by` wider and taller. */
+const widenedNode = (node: GraphNode, by: number): GraphNode => {
+  if (!("children" in node)) {
+    return { ...node, size: { width: node.size.width + by, height: node.size.height + by } };
+  }
+  const [first, ...rest] = node.children;
+  return {
+    ...node,
+    children: [widenedNode(first, by), ...rest.map((child) => widenedNode(child, by))],
+  };
+};
+
+/** The graph with room on every leaf for edges `edgeGap` apart that keep `edgeToNode` from its corners. */
+const roomy = (any: Graph, { edgeGap, edgeToNode }: Spacing): Graph => ({
+  ...any,
+  nodes: any.nodes.map((node) => widenedNode(node, Math.max(edgeGap, edgeToNode * 2))),
+});
+
+describe("placeGraph: any graph", () => {
   const spacings = fc.record({
     nodeGap: fc.double({ min: 0, max: 60, noNaN: true }),
     padding: fc.double({ min: 0, max: 40, noNaN: true }),
-    edgeToNode: fc.constant(5),
-    edgeGap: fc.constant(5),
-    minSegment: fc.constant(8),
+    edgeToNode: fc.double({ min: 0.5, max: 30, noNaN: true }),
+    edgeGap: fc.double({ min: 0.5, max: 30, noNaN: true }),
+    minSegment: fc.double({ min: 0.5, max: 30, noNaN: true }),
   });
 
   test("is laid out with nothing broken", () => {
     fc.assert(
       fc.property(graphs, spacings, (any, anySpacing) => {
-        expect(verify({ ...placeNodes(any, anySpacing), edges: [] }, anySpacing)).toEqual([]);
+        expect(verify(placeGraph(roomy(any, anySpacing), anySpacing), anySpacing)).toEqual([]);
       }),
       { numRuns: 500 },
     );
@@ -545,7 +1107,10 @@ describe("placeNodes: any graph", () => {
 
     fc.assert(
       fc.property(graphs, (any) => {
-        expect(placeNodes(any, spacing).nodes.map(placedShapeOf)).toEqual(any.nodes.map(shapeOf));
+        const sized = roomy(any, spacing);
+        expect(placeGraph(sized, spacing).nodes.map(placedShapeOf)).toEqual(
+          sized.nodes.map(shapeOf),
+        );
       }),
     );
   });
@@ -556,7 +1121,7 @@ describe("placeNodes: any graph", () => {
 
     fc.assert(
       fc.property(graphs, (any) => {
-        const placed = placeNodes(any, spacing).nodes;
+        const placed = placeGraph(roomy(any, spacing), spacing).nodes;
         const top = any.nodes.map((node, index) => ({
           pinned: node.cell !== undefined,
           index,
@@ -583,6 +1148,24 @@ describe("placeNodes: any graph", () => {
             : [after.x - (before.x + before.width)];
         });
         expect(gaps.filter((gap) => gap < spacing.nodeGap - 1e-6)).toEqual([]);
+      }),
+    );
+  });
+
+  test("draws the edges between two nodes of one grid, and no others, in the order they are listed", () => {
+    const gridsOf = (nodes: readonly GraphNode[]): string[][] => [
+      nodes.map(({ id }) => id),
+      ...nodes.flatMap((node) => ("children" in node ? gridsOf(node.children) : [])),
+    ];
+
+    fc.assert(
+      fc.property(graphs, (any) => {
+        const grids = gridsOf(any.nodes);
+        const inOneGrid = any.edges.filter(({ from, to }) =>
+          grids.some((ids) => ids.includes(from) && ids.includes(to)),
+        );
+        const drawn = placeGraph(roomy(any, spacing), spacing).edges;
+        expect(drawn.map(({ id, from, to }) => ({ id, from, to }))).toEqual(inOneGrid);
       }),
     );
   });
