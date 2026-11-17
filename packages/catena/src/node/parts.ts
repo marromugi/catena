@@ -115,8 +115,8 @@ export function badgePart(lookOf: (theme: Theme) => BadgeLook): Part<typeof TEXT
       };
       return {
         size,
-        draw: (box) => [
-          outlinedRect({ x: box.x, y: box.y, ...size }, size.height / 2, look),
+        draw: (box, newId) => [
+          ...outlinedRect({ x: box.x, y: box.y, ...size }, size.height / 2, look, newId),
           element("path", {
             d: textPathData(text, box.x + look.paddingX, box.y + look.paddingY),
             fill: look.color,
@@ -215,7 +215,7 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
   return {
     schema: ICON,
     layout(content, theme) {
-      const { size, strokeWidth, color, colors } = lookOf(theme);
+      const { size, strokeWidth, fill, color, colors } = lookOf(theme);
       const { pathData, viewBox, paint }: OwnIcon =
         typeof content === "string"
           ? { pathData: iconPathData[content], viewBox: BUILT_IN_VIEW_BOX, paint: "stroke" }
@@ -233,7 +233,7 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
             transform: `translate(${box.x + left} ${box.y + top}) scale(${scale})`,
             ...(paint === "fill"
               ? { fill: ink }
-              : { ...iconStroke, stroke: ink, "stroke-width": strokeWidth / scale }),
+              : { ...iconStroke, fill, stroke: ink, "stroke-width": strokeWidth / scale }),
           }),
         ],
       };

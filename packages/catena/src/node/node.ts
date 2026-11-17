@@ -86,11 +86,17 @@ export const iconTitleCard = frame(row({ icon, title }, { grow: "title" }));
 
 /** A card with an icon before a title over wrapping body text, the icon set beside the title. */
 export const iconTitleBodyCard = frame(
-  row({ icon, text: stack({ title, body: bodyText }) }, { grow: "text", align: "start" }),
+  row(
+    { icon, text: stack({ title, body: bodyText }, { gap: (theme) => theme.iconTextGap }) },
+    { grow: "text", align: "start" },
+  ),
 );
 
-/** A panel holding two icon-and-title cards side by side, each as wide as a node and both as high. */
-export const iconTitleCardPair = panel(
+/**
+ * A card in the theme's pair panel look holding two icon-and-title cards side by side, each as wide as
+ * a node and both as high.
+ */
+export const iconTitleCardPair = frame(
   row(
     {
       first: atWidth(iconTitleCard, (theme) => theme.nodeWidth),
@@ -98,6 +104,7 @@ export const iconTitleCardPair = panel(
     },
     { align: "stretch" },
   ),
+  (theme) => theme.pairPanel,
 );
 
 /**

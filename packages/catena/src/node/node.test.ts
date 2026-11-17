@@ -44,7 +44,9 @@ import {
   titleBodyBadgeCard,
   titleBodyCard,
   titleBodyItemsSectionCard,
+  NO_SHADOW,
   type Part,
+  type ThemeOverrides,
   writeSvg,
 } from "./index";
 
@@ -60,7 +62,98 @@ const fonts = {
 
 // A Japanese character is as wide as its size, so 60 of them at 11 fill 25 to a line of 280.
 const BODY = "あ".repeat(60);
-const theme = defineTheme(fonts);
+
+/**
+ * The looks these tests measure and draw with, fixed here so that they check how parts lay out and draw
+ * rather than the default looks, which `picture.test.ts` checks against the picture on #20.
+ */
+const TESTED_LOOKS: ThemeOverrides = {
+  card: { radius: 8, stroke: "#e6e6e6", shadow: NO_SHADOW },
+  selectedCard: {
+    radius: 8,
+    fill: "#fdeee2",
+    stroke: "#eda866",
+    strokeWidth: 1,
+    shadow: NO_SHADOW,
+  },
+  itemCard: { padding: 12, radius: 8, stroke: "#ebebeb", strokeWidth: 1, shadow: NO_SHADOW },
+  panel: { radius: 10, stroke: "#ebebeb", strokeWidth: 1, shadow: NO_SHADOW },
+  pairPanel: {
+    padding: 12,
+    radius: 10,
+    fill: "#ffffff",
+    stroke: "#ebebeb",
+    strokeWidth: 1,
+    shadow: NO_SHADOW,
+  },
+  badges: {
+    plain: { size: 10, lineHeight: 1.4, paddingX: 16, stroke: "#e6e6e6" },
+    red: {
+      size: 10,
+      lineHeight: 1.4,
+      paddingX: 16,
+      color: "#e5484d",
+      fill: "#fde4e4",
+      stroke: "#fbd0d0",
+    },
+  },
+  dot: { diameter: 16, colors: { red: "#e5484d" } },
+  icon: { size: 20, strokeWidth: 1.5, colors: { spark: "#d97757" } },
+  iconTextGap: 12,
+  tileIcon: { strokeWidth: 2, colors: { spark: "#d97757" } },
+  button: { padding: 8, stroke: "#e6e6e6", strokeWidth: 1 },
+  buttonIcon: { size: 14, strokeWidth: 1.5, colors: { spark: "#d97757" } },
+  activeButton: { padding: 8, fill: "#edf1fe", stroke: "#3e63dd", strokeWidth: 2 },
+  activeButtonIcon: { size: 14, strokeWidth: 1.5, fill: "none", color: "#3e63dd" },
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** `over` laid over `under` key by key, `levels` deep; below that, `over`'s value replaces `under`'s. */
+function laidOver(under: unknown, over: unknown, levels: number): unknown {
+  if (levels === 0 || !isRecord(under) || !isRecord(over)) return over ?? under;
+  const keys = new Set([...Object.keys(under), ...Object.keys(over)]);
+  return Object.fromEntries(
+    [...keys].map((key) => [key, laidOver(under[key], over[key], levels - 1)]),
+  );
+}
+
+/**
+ * A theme with the tested looks and `overrides` laid over them, as `defineTheme` lays overrides over
+ * its defaults: each look field by field, and a badge's tones and a dot's colours one by one.
+ */
+function themeWith(overrides: ThemeOverrides = {}) {
+  const under: Record<string, unknown> = { ...TESTED_LOOKS };
+  const over: Record<string, unknown> = { ...overrides };
+  const looks = Object.fromEntries(
+    Object.keys({ ...under, ...over }).map((key) => [
+      key,
+      laidOver(under[key], over[key], key === "badges" || key === "dot" ? 2 : 1),
+    ]),
+  );
+  return defineTheme(fonts, looks);
+}
+
+const theme = themeWith();
+
+const textOutline = (
+  content: string,
+  look: { weight: "regular" | "bold"; size: number; lineHeight: number },
+  maxWidth: number,
+  x: number,
+  y: number,
+) =>
+  textPathData(
+    layoutText(content, {
+      fonts: fonts[look.weight],
+      size: look.size,
+      lineHeight: look.lineHeight,
+      maxWidth,
+    }),
+    x,
+    y,
+  );
 
 describe("the title-and-body card", () => {
   test("gives a leaf of the node width, as high as its padding, title, gap and wrapped body", () => {
@@ -107,7 +200,7 @@ describe("the title-and-body card", () => {
 
 describe("the theme", () => {
   test("keeps the defaults it is not given and wraps the body at the width it is given", () => {
-    const narrow = defineTheme(fonts, { nodeWidth: 140, card: { radius: 4 } });
+    const narrow = themeWith({ nodeWidth: 140, card: { radius: 4 } });
     const node = buildNode(titleBodyCard, narrow, "card", { title: "ここで", body: BODY });
 
     // 9 characters to a line of 100: seven lines of 17.6.
@@ -118,7 +211,7 @@ describe("the theme", () => {
   });
 
   test("lays the looks it is given over the defaults, keeping a default given as undefined", () => {
-    const changed = defineTheme(fonts, {
+    const changed = themeWith({
       gap: 0,
       title: { weight: "regular", size: 20, color: "navy" },
       body: { lineHeight: 2, color: undefined },
@@ -138,7 +231,7 @@ describe("the theme", () => {
   });
 
   test("writes a colour into the SVG as one attribute value, whatever it holds", () => {
-    const quoted = defineTheme(fonts, { card: { fill: `"/><script/>&` } });
+    const quoted = themeWith({ card: { fill: `"/><script/>&` } });
     const node = buildNode(titleBodyCard, quoted, "card", { title: "", body: "" });
 
     expect(node.draw({ x: 0, y: 0, ...node.leaf.size })).toContain(
@@ -276,7 +369,7 @@ describe("badges and the status dot", () => {
   });
 
   test("the theme changes a badge's and a dot's looks, keeping the defaults it is not given", () => {
-    const changed = defineTheme(fonts, {
+    const changed = themeWith({
       badges: { red: { paddingX: 4, paddingY: 0, fill: "pink" } },
       dot: { diameter: 6, colors: { red: "crimson" } },
     });
@@ -503,7 +596,7 @@ describe("what review found", () => {
   });
 
   test("a frame holds a row grown past its width", () => {
-    const narrow = defineTheme(fonts, { nodeWidth: 60 });
+    const narrow = themeWith({ nodeWidth: 60 });
     const node = buildNode(statusTitleCard, narrow, "n", { status: "red", title: "ここで" });
 
     // The title is laid out at 0, one character of 14 a line: 16 + 12 + 14 inside 2 × 20 of padding.
@@ -548,7 +641,7 @@ describe("what review found", () => {
   });
 
   test("the theme changes the plain badge's and the plain dot's looks", () => {
-    const changed = defineTheme(fonts, {
+    const changed = themeWith({
       badges: { plain: { fill: "ivory", color: "navy" } },
       dot: { colors: { plain: "gray" } },
     });
@@ -621,7 +714,7 @@ describe("the image and the card with an image", () => {
   });
 
   test("takes its aspect ratio and corners from the theme, and writes the href as given, escaped", () => {
-    const square = defineTheme(fonts, { image: { aspectRatio: 1, radius: 0 } });
+    const square = themeWith({ image: { aspectRatio: 1, radius: 0 } });
     const block = image.layout(`a.png?b=1&c="2"`, square, 100);
 
     expect(block.size).toEqual({ width: 100, height: 100 });
@@ -688,7 +781,7 @@ describe("the image and the card with an image", () => {
   });
 
   test("draws at its own size at the top-left of a larger box", () => {
-    const square = defineTheme(fonts, { image: { aspectRatio: 1, radius: 0 } });
+    const square = themeWith({ image: { aspectRatio: 1, radius: 0 } });
     const block = image.layout(SUNSET, square, 100);
     const drawn = block.draw({ x: 10, y: 20, width: 300, height: 300 }, () => "i").map(writeSvg);
 
@@ -744,7 +837,7 @@ describe("lists, the divider and sections", () => {
   });
 
   test("a divider with no dash is a solid line", () => {
-    const solid = defineTheme(fonts, { divider: { dash: [], color: "red", width: 2 } });
+    const solid = themeWith({ divider: { dash: [], color: "red", width: 2 } });
 
     expect(
       divider.layout(undefined, solid, 100).draw({ x: 0, y: 0, width: 100, height: 2 }, noId),
@@ -787,7 +880,7 @@ describe("lists, the divider and sections", () => {
 
   test("the card draws its item cards, the divider, the heading and the panel holding its own item cards", () => {
     // Lines of 22, so every position is a whole number.
-    const even = defineTheme(fonts, { body: { lineHeight: 2 } });
+    const even = themeWith({ body: { lineHeight: 2 } });
     const node = buildNode(titleBodyItemsSectionCard, even, "card", {
       title: "ここで",
       body: BODY,
@@ -796,36 +889,19 @@ describe("lists, the divider and sections", () => {
     });
     expect(node.leaf.size).toEqual({ width: 320, height: 422 });
 
-    const text = (
-      content: string,
-      look: { weight: "regular" | "bold"; size: number; lineHeight: number },
-      maxWidth: number,
-      x: number,
-      y: number,
-    ) =>
-      textPathData(
-        layoutText(content, {
-          fonts: fonts[look.weight],
-          size: look.size,
-          lineHeight: look.lineHeight,
-          maxWidth,
-        }),
-        x,
-        y,
-      );
     const sub = { weight: "bold", size: 12, lineHeight: 1.5 } as const;
     const item = (y: number, x: number, width: number, content: string) =>
       `<rect x="${x + 0.5}" y="${y + 0.5}" width="${width - 1}" height="41" rx="8" fill="#ffffff" stroke="#ebebeb" stroke-width="1"/>` +
-      `<path d="${text(content, sub, width - 24, x + 12, y + 12)}" fill="#1f1f1f"/>`;
+      `<path d="${textOutline(content, sub, width - 24, x + 12, y + 12)}" fill="#1f1f1f"/>`;
 
     expect(node.draw({ x: 10, y: 20, width: 320, height: 422 })).toBe(
       `<g><rect x="10.5" y="20.5" width="319" height="421" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
-        `<path d="${text("ここで", { weight: "bold", size: 14, lineHeight: 1.5 }, 280, 30, 40)}" fill="#1f1f1f"/>` +
-        `<path d="${text(BODY, { weight: "regular", size: 11, lineHeight: 2 }, 280, 30, 73)}" fill="#8c8c8c"/>` +
+        `<path d="${textOutline("ここで", { weight: "bold", size: 14, lineHeight: 1.5 }, 280, 30, 40)}" fill="#1f1f1f"/>` +
+        `<path d="${textOutline(BODY, { weight: "regular", size: 11, lineHeight: 2 }, 280, 30, 73)}" fill="#8c8c8c"/>` +
         item(151, 30, 280, "い") +
         item(205, 30, 280, "う") +
         `<line x1="30" y1="259.5" x2="310" y2="259.5" stroke="#e0e0e0" stroke-width="1" stroke-dasharray="3 3"/>` +
-        `<path d="${text("セクション名", sub, 280, 30, 272)}" fill="#1f1f1f"/>` +
+        `<path d="${textOutline("セクション名", sub, 280, 30, 272)}" fill="#1f1f1f"/>` +
         `<rect x="30.5" y="302.5" width="279" height="119" rx="10" fill="#ffffff" stroke="#ebebeb" stroke-width="1"/>` +
         item(314, 42, 256, "え") +
         item(368, 42, 256, "お") +
@@ -834,7 +910,7 @@ describe("lists, the divider and sections", () => {
   });
 
   test("the theme's item card, panel, subtitle and divider looks reach every part drawn with them", () => {
-    const changed = defineTheme(fonts, {
+    const changed = themeWith({
       itemCard: { stroke: "teal", padding: 4 },
       panel: { fill: "ivory", radius: undefined },
       subtitle: { color: "navy" },
@@ -905,7 +981,7 @@ describe("lists, the divider and sections", () => {
   });
 
   test("a divider is as high as the theme's line, and takes no negative width", () => {
-    const thick = defineTheme(fonts, { divider: { width: 3 } });
+    const thick = themeWith({ divider: { width: 3 } });
 
     expect(divider.layout(undefined, thick, 100).size).toEqual({ width: 100, height: 3 });
     expect(divider.layout(undefined, theme, -10).size).toEqual({ width: 0, height: 1 });
@@ -1212,7 +1288,7 @@ describe("icons and the kinds that carry one", () => {
   });
 
   test("a round button stays round when its looks change its size", () => {
-    const larger = defineTheme(fonts, { buttonIcon: { size: 24 }, activeButton: { padding: 4 } });
+    const larger = themeWith({ buttonIcon: { size: 24 }, activeButton: { padding: 4 } });
 
     const plus = buildNode(roundButton, larger, "b", "plus");
     expect(plus.leaf.size).toEqual({ width: 40, height: 40 });
@@ -1295,7 +1371,7 @@ describe("icons and the kinds that carry one", () => {
   });
 
   test("overrides of the icon, tile, caption and button looks reach what is drawn with them", () => {
-    const custom = defineTheme(fonts, {
+    const custom = themeWith({
       icon: { size: 24, colors: {} },
       tileIcon: { size: 40 },
       selectedCard: { fill: "orange" },
@@ -1342,7 +1418,83 @@ describe("icons and the kinds that carry one", () => {
   test("an icon look given as undefined keeps its default", () => {
     const custom = defineTheme(fonts, { icon: { size: undefined }, captionGap: undefined });
 
-    expect(custom.icon.size).toBe(20);
+    expect(custom.icon.size).toBe(22);
     expect(custom.captionGap).toBe(2);
+  });
+});
+
+describe("shadows, filled icons, the pair's panel and the gap beside an icon", () => {
+  test("a look with a shadow draws its rectangle through a filter reaching past the box by the offset and three blurs", () => {
+    const shadowed = themeWith({
+      card: { shadow: { dx: 1, dy: -2, blur: 4, color: "#000000", opacity: 0.1 } },
+    });
+    const block = frame(fixed(10, 10)).layout(null, shadowed, 100);
+    let count = 0;
+
+    expect(
+      block.draw({ x: 10, y: 20, width: 100, height: 50 }, () => `s-${++count}`).map(writeSvg),
+    ).toEqual([
+      `<filter id="s-1" filterUnits="userSpaceOnUse" x="-2" y="6" width="125" height="76">` +
+        `<feDropShadow dx="1" dy="-2" stdDeviation="4" flood-color="#000000" flood-opacity="0.1"/></filter>`,
+      `<rect x="10.5" y="20.5" width="99" height="49" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1" filter="url(#s-1)"/>`,
+      `<rect x="30" y="40" width="60" height="10"/>`,
+    ]);
+  });
+
+  test("a look whose shadow is at opacity 0 draws no filter and takes no id", () => {
+    const block = badge.layout("Badge", themeWith(), 100);
+
+    expect(block.draw({ x: 0, y: 0, width: 100, height: 20 }, noId).map(writeSvg)[0]).toMatch(
+      /^<rect /,
+    );
+  });
+
+  test("a stroked icon's shapes are filled with the look's fill; a user's own filled icon keeps its ink", () => {
+    const filled = themeWith({ icon: { fill: "blue", color: "white" } });
+    const info = icon.layout("info", filled, 100).draw({ x: 0, y: 0, width: 20, height: 20 }, noId);
+    const own = icon
+      .layout(
+        { pathData: "M0 0 L1 1 Z", viewBox: { x: 0, y: 0, width: 1, height: 1 }, paint: "fill" },
+        filled,
+        100,
+      )
+      .draw({ x: 0, y: 0, width: 20, height: 20 }, noId);
+
+    expect(info.map(writeSvg)[0]).toContain(`fill="blue"`);
+    expect(info.map(writeSvg)[0]).toContain(`stroke="white"`);
+    expect(own.map(writeSvg)[0]).toContain(`fill="white"`);
+  });
+
+  test("the pair is drawn in the pair panel's look, apart from a section's panel", () => {
+    const changed = themeWith({ pairPanel: { padding: 4, fill: "ivory" } });
+    const node = buildNode(iconTitleCardPair, changed, "p", {
+      first: { icon: "spark", title: "ここで" },
+      second: { icon: "plus", title: "ここで" },
+    });
+
+    // 4 + 320 + 12 + 320 + 4 across, 4 + 61 + 4 down
+    expect(node.leaf.size).toEqual({ width: 660, height: 69 });
+    expect(node.draw({ x: 0, y: 0, width: 660, height: 69 })).toContain(
+      `<rect x="0.5" y="0.5" width="659" height="68" rx="10" fill="ivory"`,
+    );
+  });
+
+  test("the body beside an icon sits the icon text gap under the title", () => {
+    const body = "あ".repeat(25);
+    const node = buildNode(iconTitleBodyCard, themeWith({ iconTextGap: 2 }), "c", {
+      icon: "spark",
+      text: { title: "ここで", body },
+    });
+    // 20 + 21 + 2 + 35.2 + 20
+    expect(node.leaf.size.height).toBeCloseTo(98.2, 6);
+
+    const bodyData = textPathData(
+      layoutText(body, { fonts: fonts.regular, size: 11, lineHeight: 1.6, maxWidth: 248 }),
+      62,
+      63,
+    );
+    expect(node.draw({ x: 10, y: 20, ...node.leaf.size })).toContain(
+      `<path d="${bodyData}" fill="#8c8c8c"/>`,
+    );
   });
 });
