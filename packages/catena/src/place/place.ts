@@ -3,13 +3,16 @@ import { assignSpots } from "./cells";
 import { frameOf, type FlowPoint, type Frame, type Item } from "./frame";
 import type { Direction, EdgeEnds, Graph, GraphEdge, GraphNode, Size } from "./graph";
 import { InvalidGraphError } from "./graph";
-import { assignLanes, type Route } from "./lanes";
+import { assignLanes, outside, type Route, type Run } from "./lanes";
 
 /** A grid laid out on its own, measured from the top-left corner of the box around it. */
 interface Arrangement {
   readonly size: Size;
   readonly nodes: readonly PlacedNode[];
+  /** The edges drawn from end to end inside the grid. */
   readonly edges: readonly PlacedEdge[];
+  /** The part inside the grid of each edge that crosses its border, by the edge's id, measured from the point where the edge crosses. */
+  readonly crossings: ReadonlyMap<string, readonly Point[]>;
 }
 
 function idsIn(node: GraphNode): string[] {
@@ -59,13 +62,70 @@ function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]):
 }
 
 /**
+ * The edges one grid draws, in the order they are listed. An end of an edge is drawn to the node of the
+ * grid that is that end, or that holds it as a child and flows as the grid does. An edge whose ends are
+ * drawn to two nodes, or which connects a node to itself, runs between them. An edge in `crossing` runs
+ * between its end in the grid and the outside.
+ *
+ * @param crossing The ids of the edges that the grid around this one draws across this grid's border.
+ */
+function runsOf(
+  nodes: readonly GraphNode[],
+  direction: Direction,
+  edges: readonly GraphEdge[],
+  crossing: ReadonlySet<string>,
+): Run[] {
+  const nodeAt = new Map<string, string>();
+  for (const node of nodes) {
+    nodeAt.set(node.id, node.id);
+    if ("children" in node && node.direction === direction) {
+      for (const child of node.children) {
+        nodeAt.set(child.id, node.id);
+      }
+    }
+  }
+  return edges.flatMap((edge): Run[] => {
+    const from = nodeAt.get(edge.from);
+    const to = nodeAt.get(edge.to);
+    if (from !== undefined && to !== undefined) {
+      const startsInside = from !== edge.from;
+      const endsInside = to !== edge.to;
+      return from !== to || (!startsInside && !endsInside)
+        ? [{ id: edge.id, from, to, startsInside, endsInside }]
+        : [];
+    }
+    if (!crossing.has(edge.id)) {
+      return [];
+    }
+    return [
+      to === edge.to
+        ? { id: edge.id, from: outside, to }
+        : { id: edge.id, from: edge.from, to: outside },
+    ];
+  });
+}
+
+/** The ids of the edges among `runs` that start or end inside the node `id`. */
+function crossingInto(id: string, runs: readonly Run[]): Set<string> {
+  return new Set(
+    runs.flatMap((run) =>
+      run.from !== outside &&
+      run.to !== outside &&
+      ((run.from === id && run.startsInside) || (run.to === id && run.endsInside))
+        ? [run.id]
+        : [],
+    ),
+  );
+}
+
+/**
  * Refuses a node that edges cannot meet soundly: one too narrow for an edge to meet the middle of its
  * side clear of its corners, or too short for the edges that enter it and the edges that leave it to
  * keep apart.
  */
 function requireRoomForEdges(
   items: ReadonlyMap<string, Item>,
-  edges: readonly GraphEdge[],
+  edges: readonly Run[],
   spacing: Spacing,
 ): void {
   const entered = new Set(edges.map((edge) => edge.to));
@@ -84,17 +144,18 @@ function requireRoomForEdges(
   }
 }
 
-/** The points of an edge of a grid, from its source to its target. */
-function pathOf(edge: GraphEdge, route: Route, frame: Frame): FlowPoint[] {
-  const start = frame.exitOf(edge.from);
-  const end = frame.entryOf(edge.to);
+/** The points of an edge of a grid, from its source to its target. Two that follow each other may be the same. */
+function pathOf(edge: Run, route: Route, frame: Frame): FlowPoint[] {
+  const start = edge.from === outside ? frame.entry : frame.exitOf(edge.from);
+  const end = edge.to === outside ? frame.exit : frame.entryOf(edge.to);
   if (route.kind === "straight") {
     return [start, end];
   }
-  const out = frame.laneAfter(edge.from);
-  if (route.kind === "direct") {
-    return [start, { ...start, along: out }, { ...end, along: out }, end];
+  if (route.kind === "direct" || route.kind === "joining") {
+    const lane = route.kind === "direct" ? frame.laneAfter(edge.from) : frame.laneBefore(edge.to);
+    return [start, { ...start, along: lane }, { ...end, along: lane }, end];
   }
+  const out = frame.laneAfter(edge.from);
   const beside = frame.laneBeside(route.beside, edge.from);
   const back = frame.laneBefore(edge.to);
   return [
@@ -107,13 +168,34 @@ function pathOf(edge: GraphEdge, route: Route, frame: Frame): FlowPoint[] {
   ];
 }
 
+/** The path without the points that lie on a straight run between their neighbours, as a point that repeats its neighbour does. */
+function withoutPointsOnRuns(points: readonly Point[]): Point[] {
+  const kept: Point[] = [];
+  for (const point of points) {
+    const last = kept.at(-1);
+    const before = kept.at(-2);
+    if (
+      last !== undefined &&
+      before !== undefined &&
+      ((before.x === last.x && last.x === point.x) || (before.y === last.y && last.y === point.y))
+    ) {
+      kept.pop();
+    }
+    kept.push(point);
+  }
+  return kept;
+}
+
 function arrange(
   nodes: readonly GraphNode[],
   direction: Direction,
   edges: readonly GraphEdge[],
   spacing: Spacing,
+  crossing: ReadonlySet<string>,
 ): Arrangement {
   const spots = assignSpots(nodes, direction, edgesBetween(nodes, edges));
+  const runs = runsOf(nodes, direction, edges, crossing);
+  const edgesById = new Map(edges.map((edge) => [edge.id, edge]));
   const arranged = nodes.map((node) => {
     const spot = spots.get(node.id);
     if (spot === undefined) {
@@ -121,8 +203,8 @@ function arrange(
     }
     const inner: Arrangement =
       "children" in node
-        ? arrange(node.children, node.direction, edges, spacing)
-        : { size: node.size, nodes: [], edges: [] };
+        ? arrange(node.children, node.direction, edges, spacing, crossingInto(node.id, runs))
+        : { size: node.size, nodes: [], edges: [], crossings: new Map() };
     const item: Item = {
       ...spot,
       across: direction === "down" ? inner.size.width : inner.size.height,
@@ -132,10 +214,9 @@ function arrange(
   });
   const items = new Map(arranged.map(({ id, item }) => [id, item]));
 
-  const own = edges.filter((edge) => items.has(edge.from) && items.has(edge.to));
-  requireRoomForEdges(items, own, spacing);
-  const lanes = assignLanes(items, own);
-  const frame = frameOf(items, own, lanes, spacing);
+  requireRoomForEdges(items, runs, spacing);
+  const lanes = assignLanes(items, runs);
+  const frame = frameOf(items, runs, lanes, spacing);
 
   const turned = (point: FlowPoint): Point =>
     direction === "down"
@@ -152,23 +233,54 @@ function arrange(
       edges: inner.edges.map((edge) => movedEdge(edge, corner.x, corner.y)),
     };
   });
-  const drawn = own.map((edge): PlacedEdge => {
-    const route = lanes.routes.get(edge.id);
-    if (route === undefined) {
-      throw new Error(`Edge "${edge.id}" was given no route.`);
+  const inners = new Map(arranged.map(({ id, inner }) => [id, inner]));
+  /** The part of an edge inside the node at one of its ends, from the point `at` where it crosses the node's border. */
+  const insideOf = (end: string, edge: string, at: Point): Point[] =>
+    (inners.get(end)?.crossings.get(edge) ?? []).map((point) => movedPoint(point, at.x, at.y));
+
+  const drawn: PlacedEdge[] = [];
+  const crossings = new Map<string, Point[]>();
+  for (const run of runs) {
+    const route = lanes.routes.get(run.id);
+    const edge = edgesById.get(run.id);
+    if (route === undefined || edge === undefined) {
+      throw new Error(`Edge "${run.id}" was given no route.`);
     }
-    const [first, second, ...rest] = pathOf(edge, route, frame).map(turned);
-    if (first === undefined || second === undefined) {
-      throw new Error(`Edge "${edge.id}" was given a path of fewer than two points.`);
+    const between = pathOf(run, route, frame).map(turned);
+    const first = between[0];
+    const last = between.at(-1);
+    if (first === undefined || last === undefined) {
+      throw new Error(`Edge "${run.id}" was given a path of no points.`);
     }
-    return { ...edge, points: [first, second, ...rest], labels: [] };
-  });
+    if (run.from === outside) {
+      crossings.set(
+        run.id,
+        between.map((point) => movedPoint(point, -first.x, -first.y)),
+      );
+    } else if (run.to === outside) {
+      crossings.set(
+        run.id,
+        between.map((point) => movedPoint(point, -last.x, -last.y)),
+      );
+    } else {
+      const [start, second, ...rest] = withoutPointsOnRuns([
+        ...insideOf(run.from, run.id, first),
+        ...between,
+        ...insideOf(run.to, run.id, last),
+      ]);
+      if (start === undefined || second === undefined) {
+        throw new Error(`Edge "${run.id}" was given a path of fewer than two points.`);
+      }
+      drawn.push({ ...edge, points: [start, second, ...rest], labels: [] });
+    }
+  }
   const corner = turned(frame.size);
 
   return {
     size: { width: corner.x, height: corner.y },
     nodes: placed.map((each) => each.node),
     edges: [...drawn, ...placed.flatMap((each) => each.edges)],
+    crossings,
   };
 }
 
@@ -221,7 +333,8 @@ function requireSound(graph: Graph, spacing: Spacing): void {
 }
 
 /**
- * Places the nodes of a graph, each grid in rows and columns, and draws the edges between two nodes of one grid.
+ * Places the nodes of a graph, each grid in rows and columns, and draws the edges whose two ends are
+ * nodes of one grid or children of groups of that grid.
  *
  * The edges decide the order along the flow: a node goes after every node listed before it that leads to
  * it, unless it names its cell. In a grid, an edge counts between the two nodes that hold its ends, so an
@@ -233,7 +346,13 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * edges that leave a node run as one until they part, and so do the edges that enter a node once they
  * have met. A corridor is at least the gap between nodes, or the padding at the outside, and wider where
  * edges need the room: for their lanes, to keep clear of the next row or column, or for a straight stretch.
- * An edge between nodes of different grids orders them but is left out of the layout.
+ *
+ * An edge with an end that is a child of a group runs to the group as an edge to the group itself does,
+ * through the middle of the group's side, and on inside the group to the child, when the group flows the
+ * way the grid around it does. A group is made wider, on one side, where that keeps such an edge sound.
+ * Any other edge between nodes of different grids orders them but is left out of the layout: one with an
+ * end deeper than a child of a group, one through a group that flows the other way, and one between a
+ * group and a node inside it.
  *
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of
  * `graph.edges`, in canvas coordinates.
@@ -249,7 +368,13 @@ export function placeGraph(graph: Graph, spacing: Spacing): Layout {
   if (graph.nodes.length === 0) {
     return { width: spacing.padding * 2, height: spacing.padding * 2, nodes: [], edges: [] };
   }
-  const { size, nodes, edges } = arrange(graph.nodes, graph.direction, graph.edges, spacing);
+  const { size, nodes, edges } = arrange(
+    graph.nodes,
+    graph.direction,
+    graph.edges,
+    spacing,
+    new Set(),
+  );
   const drawn = new Map(edges.map((edge) => [edge.id, edge]));
   return {
     ...size,
