@@ -49,7 +49,6 @@ interface Line {
   readonly length: number;
 }
 
-/** The room the lanes of one corridor take, and how many there are. */
 interface Stack {
   readonly lanes: number;
   readonly height: number;

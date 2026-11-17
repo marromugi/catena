@@ -158,7 +158,6 @@ function spanOf(segment: Segment, horizontal: boolean): Span {
   return { low: Math.min(from, to), high: Math.max(from, to) };
 }
 
-/** How long two parallel segments run side by side, or zero when they are not parallel. */
 function sharedRun(a: Segment, b: Segment): number {
   const horizontal = isHorizontal(a) && isHorizontal(b);
   if (!horizontal && !(isVertical(a) && isVertical(b))) {
@@ -252,7 +251,6 @@ function pointAlong(segment: Segment, distance: number): Point {
   };
 }
 
-/** How far two paths run as one from their first points. */
 export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
   const [start] = a;
   if (start === undefined || b[0] === undefined || !isSamePoint(start, b[0])) {
@@ -340,7 +338,6 @@ export interface Stretch {
   readonly tail: number;
 }
 
-/** The same stretch on the path taken the other way. */
 export function reversedStretch(stretch: Stretch): Stretch {
   return { lead: stretch.tail, tail: stretch.lead };
 }
@@ -372,7 +369,6 @@ function continues(segment: Segment, next: Segment): boolean {
   return along(segment) * along(next) > 0;
 }
 
-/** The stretches of a path, with each run of them that goes straight on made one stretch. */
 export function straightened(segments: readonly Segment[]): Segment[] {
   const runs: Segment[] = [];
   for (const segment of segments) {
