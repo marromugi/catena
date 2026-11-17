@@ -344,6 +344,22 @@ describe("verify: an edge and the nodes in its way", () => {
     expect(verify(clear, spacing)).toEqual([]);
   });
 
+  test("accepts an edge that passes a node a hair more than the tolerance past the clearance", () => {
+    const fine = { nodeGap: 0, padding: 0, edgeToNode: 0.5, edgeGap: 0.5, minSegment: 0.5 };
+    const lane = 2.500001;
+    const passing = layout(
+      [node("T", 1, 0, 3, 1), node("B", 1, 9, 3, 1), node("M", lane + 0.500001, 4, 2, 2)],
+      [
+        edge("T-B", "T", "B", [
+          [lane, 1],
+          [lane, 9],
+        ]),
+      ],
+    );
+
+    expect(verify(passing, fine)).toEqual([]);
+  });
+
   test("reports an edge through a group it does not connect", () => {
     const inner = node("I", 140, 90, 20, 20);
     const blocked = layout([left, right, node("M", 120, 70, 60, 60, [inner])], [straight]);
