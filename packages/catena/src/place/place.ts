@@ -106,6 +106,7 @@ function runsOf(
   });
 }
 
+/** The ids of the edges among `runs` that start or end inside the node `id`. */
 function crossingInto(id: string, runs: readonly Run[]): Set<string> {
   return new Set(
     runs.flatMap((run) =>

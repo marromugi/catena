@@ -234,6 +234,7 @@ export function areTooClose(a: Segment, b: Segment, gap: number): boolean {
   return !crossCleanly(a, b, gap) && separation(boundsOf(a), boundsOf(b)) < gap - TOLERANCE;
 }
 
+/** Whether two parallel segments lie on the same line and share a stretch of it. */
 export function doubleBack(a: Segment, b: Segment): boolean {
   return sharedRun(a, b) > TOLERANCE && distanceBetweenParallels(a, b) <= TOLERANCE;
 }
