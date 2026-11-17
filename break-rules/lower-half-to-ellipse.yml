@@ -1,0 +1,5 @@
+id: lower-half-to-ellipse
+language: TypeScript
+rule:
+  pattern: lowerHalf($X, $Y, $RX, $RY)
+fix: ellipse($X, $Y, $RX, $RY)

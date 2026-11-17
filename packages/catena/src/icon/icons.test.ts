@@ -1,17 +1,31 @@
 import { expect, test } from "vitest";
-import { iconGrid, iconNames, iconPathData, iconStroke } from "./index";
+import { iconGrid, iconNames, iconPathData, iconStroke, type IconName } from "./index";
 
 // Half the stroke on every side of the grid, so nothing is cut off at the edge.
-const inside = (value: number) =>
-  value >= iconStroke.width / 2 && value <= iconGrid - iconStroke.width / 2;
+const halfStroke = iconStroke["stroke-width"] / 2;
+const outsideTheGrid = (pathData: string) =>
+  pathData
+    .match(/-?[\d.]+/g)!
+    .map(Number)
+    .filter((value) => value < halfStroke || value > iconGrid - halfStroke);
 
-test.each(iconNames)("%s keeps its ink inside the grid", (name) => {
-  const values = iconPathData[name].match(/-?[\d.]+/g)!.map(Number);
-
-  expect(values.filter((value) => !inside(value))).toEqual([]);
+test("a coordinate is outside the grid when it leaves less than half the stroke to the edge", () => {
+  expect(outsideTheGrid("M1 23 L12 12")).toEqual([]);
+  expect(outsideTheGrid("M0.9 12 L12 23.1 L-12 5")).toEqual([0.9, 23.1, -12]);
 });
 
-const columns = [16, 20, 24, 48, 96];
+test.each(iconNames)("%s keeps its ink inside the grid", (name) => {
+  expect(outsideTheGrid(iconPathData[name])).toEqual([]);
+});
+
+test("IconName is only the names in the set", () => {
+  // @ts-expect-error a name outside the set is not an IconName
+  const notAnIcon: IconName = "not-an-icon";
+
+  expect(iconNames).not.toContain(notAnIcon);
+});
+
+const columns = [12, 16, 20, 24, 48, 96];
 const rowHeight = 112;
 const nameWidth = 120;
 const gap = 24;
@@ -38,7 +52,9 @@ function sheet(): string {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
     `<rect width="100%" height="100%" fill="#fff"/>`,
     `<g font-family="sans-serif" font-size="14">`,
-    `<g fill="none" stroke="#1f1f1f" stroke-width="${iconStroke.width}" stroke-linecap="${iconStroke.linecap}" stroke-linejoin="${iconStroke.linejoin}">`,
+    `<g stroke="#1f1f1f" ${Object.entries(iconStroke)
+      .map(([name, value]) => `${name}="${value}"`)
+      .join(" ")}>`,
     ...rows,
     `</g></g></svg>`,
     "",

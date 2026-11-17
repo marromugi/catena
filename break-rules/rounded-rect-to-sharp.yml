@@ -1,0 +1,5 @@
+id: rounded-rect-to-sharp
+language: TypeScript
+rule:
+  pattern: roundedRect($X, $Y, $W, $H, $R)
+fix: roundedRect($X, $Y, $W, $H, 0)

@@ -15,8 +15,13 @@ import {
 /** Icons are drawn on a square grid this many units wide. */
 export const iconGrid = 24;
 
-/** Every icon is stroked like this, with no fill. Widths are in grid units. */
-export const iconStroke = { width: 2, linecap: "round", linejoin: "round" } as const;
+/** The SVG attributes every icon's path is drawn with. Widths are in grid units. */
+export const iconStroke = {
+  fill: "none",
+  "stroke-width": 2,
+  "stroke-linecap": "round",
+  "stroke-linejoin": "round",
+} as const;
 
 const icon = (...paths: readonly string[]) => paths.join(" ");
 

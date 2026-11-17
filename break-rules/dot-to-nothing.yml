@@ -1,0 +1,5 @@
+id: dot-to-nothing
+language: TypeScript
+rule:
+  pattern: dot($X, $Y)
+fix: polyline([$X, $Y], [$X, $Y + 0.001])
