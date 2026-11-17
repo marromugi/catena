@@ -33,7 +33,7 @@ const LOOK = {
   stroke: "#ebebeb",
   strokeWidth: 1,
   shadow: { dx: 0, dy: 4, blur: 8, color: "#000000", opacity: 0.08 },
-  title: { weight: "bold", size: 12, lineHeight: 1.5, color: "#1f1f1f" },
+  title: { weight: "bold", size: 13, lineHeight: 1.5, color: "#1f1f1f" },
   detail: { weight: "regular", size: 13, lineHeight: 1.5, color: "#8c8c8c" },
   /** The filled clock's box; its disc is 20 of the grid's 24 across. */
   clock: { size: 21, color: "#b3b3b3" },

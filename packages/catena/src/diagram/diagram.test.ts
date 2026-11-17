@@ -235,11 +235,11 @@ const titleAlone = (width: number) => (title: string) =>
 
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
 
-/** `text` set on one line in the fonts of `weight`: 12 high in bold, as the title is, else 13. */
+/** `text` set on one line, 13 high, in the fonts of `weight`. */
 const setIn = (text: string, weight: "regular" | "bold") =>
   layoutText(text, {
     fonts: fonts[weight],
-    size: weight === "bold" ? 12 : 13,
+    size: 13,
     lineHeight: 1.5,
     maxWidth: Infinity,
   });
@@ -383,6 +383,18 @@ describe("drawDiagram with a header", () => {
     }
   });
 
+  test("sets the time 40 from the right, the clock 9 before it, and the repository 40 before the clock", () => {
+    const time = setIn(header.capturedAt ?? "", "regular");
+    const repository = setIn(header.repository?.name ?? "", "regular");
+    const svg = drawDiagram(empty(800), new Map(), { header });
+    const clockLeft = 760 - time.width - 9 - 21;
+    expect(clockBox(svg)?.left).toBeCloseTo(clockLeft, 9);
+    expect(details(svg)).toEqual([
+      textPathData(time, 760 - time.width, 26.25),
+      textPathData(repository, clockLeft - 40 - repository.width, 26.25),
+    ]);
+  });
+
   test("draws each of the title, the repository and the time only when given", () => {
     const onlyTitle = headerOf({ title: "Title" });
     expect([titles(onlyTitle).length, details(onlyTitle).length, clockBox(onlyTitle)]).toEqual([
@@ -426,9 +438,9 @@ describe("drawDiagram with a header", () => {
     expect(blank).toBe(headerOf({}));
   });
 
-  test("sets the title 12 bold and the repository and the time 13 regular, centred in the band", () => {
+  test("sets the title 13 bold and the repository and the time 13 regular, centred in the band", () => {
     expect(titles(headerOf({ title: "Title" }))).toEqual([
-      textPathData(setIn("Title", "bold"), 40, 27),
+      textPathData(setIn("Title", "bold"), 40, 26.25),
     ]);
     const repository = setIn("repo", "regular");
     expect(details(headerOf({ repository: { name: "repo" } }))).toEqual([
@@ -557,7 +569,7 @@ describe("drawDiagram with a header: any texts at any width", () => {
     capturedAt: text,
   });
 
-  test("keeps every text and the clock in the band, left to right without touching", () => {
+  test("keeps every text and the clock in the band, left to right without touching; the title as if alone, and the time whole while the repository is drawn", () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 900 }), headers, (width, given) => {
         const svg = drawDiagram(empty(width), new Map(), { header: { fonts, ...given } });
@@ -574,6 +586,13 @@ describe("drawDiagram with a header: any texts at any width", () => {
           expect(span.bottom).toBeLessThanOrEqual(72);
         }
         expect(apart(spans)).toBe(true);
+        expect(titles(svg)).toEqual(titleAlone(width)(given.title ?? ""));
+        if (repository !== undefined && time !== undefined) {
+          const timeAlone = drawDiagram(empty(width), new Map(), {
+            header: { fonts, capturedAt: given.capturedAt },
+          });
+          expect(details(svg)[0]).toBe(details(timeAlone)[0]);
+        }
       }),
       { numRuns: 300 },
     );
