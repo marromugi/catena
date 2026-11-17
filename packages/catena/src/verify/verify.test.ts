@@ -2093,18 +2093,20 @@ const rising = (id: string, x: number, turn: number, fork: number, end: number) 
     [end, 40],
   ]);
 
-const scaled = (whole: Layout, by: number): Layout => {
+/** A layout with every length times `by`, moved right and down by `shift`. */
+const scaled = (whole: Layout, by: number, shift = 0): Layout => {
+  const at = (value: number) => value * by + shift;
   const sized = ({ id, box, children }: PlacedNode): PlacedNode => ({
     id,
-    box: { x: box.x * by, y: box.y * by, width: box.width * by, height: box.height * by },
+    box: { x: at(box.x), y: at(box.y), width: box.width * by, height: box.height * by },
     children: children.map(sized),
   });
   return {
-    width: whole.width * by,
-    height: whole.height * by,
+    width: at(whole.width),
+    height: at(whole.height),
     nodes: whole.nodes.map(sized),
     edges: whole.edges.map((each) => {
-      const [start, next, ...rest] = each.points.map(({ x, y }) => ({ x: x * by, y: y * by }));
+      const [start, next, ...rest] = each.points.map(({ x, y }) => ({ x: at(x), y: at(y) }));
       if (start === undefined || next === undefined) {
         throw new Error("An edge in a test needs two points.");
       }
@@ -2112,6 +2114,28 @@ const scaled = (whole: Layout, by: number): Layout => {
     }),
   };
 };
+
+/** An edge down from `x` on a node in a group to `end`, by way of the middle. */
+const down = (id: string, x: number, end: number) =>
+  edge(id, id.slice(0, 2), id.slice(3), [
+    [x, 50],
+    [x, 70],
+    [150, 70],
+    [150, 130],
+    [end, 130],
+    [end, 160],
+  ]);
+
+/** An edge to the left from `y` on a node in a group to `end`, by way of the middle. */
+const leftwards = (id: string, y: number, end: number) =>
+  edge(id, id.slice(0, 2), id.slice(3), [
+    [150, y],
+    [130, y],
+    [130, 150],
+    [70, 150],
+    [70, end],
+    [40, end],
+  ]);
 
 const edgesTooClose = (checked: Layout) =>
   verify(checked, spacing).filter(({ kind }) => kind === "edges-too-close");
@@ -2178,16 +2202,132 @@ describe.each([
     expect(verify(fork, spacing)).toEqual([]);
   });
 
-  test("may run as one with an edge whose end is the group itself", () => {
-    const ofGroup = edge("G-T2", "G", "T2", [
-      [150, 100],
-      [150, 70],
-      [240, 70],
-      [240, 40],
-    ]);
-    const merged = drawnLayout([around, left, right], [toLeft, ofGroup]);
+  test.each([
+    { order: "second", groupFirst: false },
+    { order: "first", groupFirst: true },
+  ])(
+    "may run as one with an edge whose end is the group itself, listed $order",
+    ({ groupFirst }) => {
+      const ofGroup = edge("G-T2", "G", "T2", [
+        [150, 100],
+        [150, 70],
+        [240, 70],
+        [240, 40],
+      ]);
+      const merged = drawnLayout(
+        [around, left, right],
+        groupFirst ? [ofGroup, toLeft] : [toLeft, ofGroup],
+      );
 
-    expect(verify(merged, spacing)).toEqual([]);
+      expect(verify(merged, spacing)).toEqual([]);
+    },
+  );
+
+  test("are reported when an edge of the group itself comes too close beyond the stretch they share", () => {
+    const justAbove = edge("G-TX", "G", "TX", [
+      [150, 100],
+      [150, 68],
+      [140, 68],
+      [140, 40],
+    ]);
+    const crowded = drawnLayout([around, left, node("TX", 115, 10, 50, 30)], [toLeft, justAbove]);
+
+    expect(edgesTooClose(crowded)).toEqual([{ kind: "edges-too-close", edges: ["K1-T1", "G-TX"] }]);
+  });
+
+  test("are reported with an edge of the group itself that meets its border elsewhere and runs in under it", () => {
+    const fromTheSide = edge("G-T2", "G", "T2", [
+      [240, 120],
+      [150, 120],
+      [150, 70],
+      [250, 70],
+      [250, 40],
+    ]);
+    const under = drawnLayout([around, left, right], [toLeft, fromTheSide]);
+
+    expect(edgesTooClose(under)).toEqual([{ kind: "edges-too-close", edges: ["K1-T1", "G-T2"] }]);
+  });
+
+  test("may run as one through the bottom of it", () => {
+    const below = drawnLayout(
+      [
+        node("G", 60, 10, 180, 90, [node("K1", 70, 20, 60, 30), node("K2", 170, 20, 60, 30)]),
+        node("T1", 35, 160, 50, 30),
+        node("T2", 215, 160, 50, 30),
+      ],
+      [down("K1-T1", 100, 60), down("K2-T2", 210, 250)],
+    );
+
+    expect(verify(below, spacing)).toEqual([]);
+  });
+
+  test("may run as one through the left of it", () => {
+    const beside = {
+      ...drawnLayout(
+        [
+          node("G", 100, 60, 90, 180, [node("K1", 150, 70, 30, 60), node("K2", 150, 170, 30, 60)]),
+          node("T1", 10, 35, 30, 50),
+          node("T2", 10, 215, 30, 50),
+        ],
+        [leftwards("K1-T1", 100, 60), leftwards("K2-T2", 210, 240)],
+      ),
+      height: 300,
+    };
+
+    expect(verify(beside, spacing)).toEqual([]);
+  });
+
+  test("are cut where they part however small the edge gap is", () => {
+    const hairpin = edge("K1-T3", "K1", "T3", [
+      [100, 150],
+      [100, 130],
+      [150, 130],
+      [150, 70],
+      [149.7, 70],
+      [149.7, 40],
+    ]);
+    const fine = { ...spacing, edgeGap: 0.4, minSegment: 0.1 };
+    const fork = drawnLayout([around, node("T3", 125, 10, 50, 30), right], [hairpin, toRight]);
+
+    expect(verify(fork, fine).filter(({ kind }) => kind === "edges-too-close")).toEqual([
+      { kind: "edges-too-close", edges: ["K1-T3", "K1-T3"] },
+      { kind: "edges-too-close", edges: ["K1-T3", "K2-T2"] },
+    ]);
+  });
+
+  test.each([
+    { numbers: "whole numbers", by: 1, shift: 0 },
+    { numbers: "numbers that are not", by: 1.89, shift: 84.6 },
+  ])("part at a bend on its border the same way on $numbers", ({ by, shift }) => {
+    const through = edge("K1-T1", "K1", "T1", [
+      [100, 140],
+      [100, 160],
+      [150, 160],
+      [150, 205],
+      [60, 205],
+      [60, 220],
+    ]);
+    const bending = edge("K2-T2", "K2", "T2", [
+      [210, 140],
+      [210, 160],
+      [150, 160],
+      [150, 190],
+      [250, 190],
+      [250, 220],
+    ]);
+    const onTheBorder = {
+      ...drawnLayout(
+        [
+          node("G", 60, 100, 180, 90, [node("K1", 70, 110, 60, 30), node("K2", 170, 110, 60, 30)]),
+          node("T1", 35, 220, 50, 30),
+          node("T2", 215, 220, 50, 30),
+        ],
+        [through, bending],
+      ),
+      height: 260,
+    };
+
+    expect(edgesTooClose(scaled(onTheBorder, by, shift))).toEqual([]);
   });
 
   test.each([1, 1.017])(
@@ -2410,6 +2550,33 @@ describe.each([
     ]);
   });
 
+  test("are reported on one stretch across its box when their nodes lie outside it", () => {
+    const astray = node("G", 150, 60, 80, 80, [
+      node("K1", 20, 40, 40, 30),
+      node("K2", 20, 130, 40, 30),
+    ]);
+    const fromAbove = edge("K1-T1", "K1", "T1", [
+      [60, 55],
+      [100, 55],
+      [100, 100],
+      [250, 100],
+      [250, 40],
+    ]);
+    const fromBelow = edge("K2-T2", "K2", "T2", [
+      [60, 145],
+      [100, 145],
+      [100, 100],
+      [250, 100],
+      [250, 160],
+    ]);
+    const across = drawnLayout(
+      [astray, node("T1", 225, 10, 50, 30), node("T2", 225, 160, 50, 30)],
+      [fromAbove, fromBelow],
+    );
+
+    expect(edgesTooClose(across)).toEqual([{ kind: "edges-too-close", edges: ["K1-T1", "K2-T2"] }]);
+  });
+
   test("are compared as any two edges of one node when that node lies outside its group", () => {
     const astray = node("G", 10, 60, 80, 80, [node("K", 150, 85, 40, 30)]);
     const up = edge("K-T1", "K", "T1", [
@@ -2429,5 +2596,61 @@ describe.each([
     );
 
     expect(edgesTooClose(crowded)).toEqual([{ kind: "edges-too-close", edges: ["K-T1", "K-T2"] }]);
+  });
+});
+
+describe("verify: an edge that bends just short of the border of the group it leaves", () => {
+  // G's top border is the line y = 0, so that a millionth is a millionth.
+  const inside = [node("K1", 70, 50, 60, 30), node("K2", 170, 50, 60, 30)];
+  const nodes = [
+    node("G", 60, 0, 180, 90, inside),
+    node("T1", 35, -90, 50, 30),
+    node("U", 165, -90, 50, 30),
+  ];
+  const through = edge("K1-T1", "K1", "T1", [
+    [100, 50],
+    [100, 30],
+    [150, 30],
+    [150, -30],
+    [60, -30],
+    [60, -60],
+  ]);
+  const bendingAt = (short: number) =>
+    edge("K2-U", "K2", "U", [
+      [200, 50],
+      [200, 30],
+      [150, 30],
+      [150, short],
+      [190, short],
+      [190, -60],
+    ]);
+
+  test("goes on to the group's side when it runs that close under the border from its start", () => {
+    const flush = node("K", 70, 0, 60, 30);
+    const under = edge("K-L", "K", "L", [
+      [70, 5e-7],
+      [20, 5e-7],
+    ]);
+    const ofGroup = edge("G-U", "G", "U", [
+      [60, 5e-7],
+      [40, 5e-7],
+      [40, -40],
+    ]);
+    const stacked = layout(
+      [node("G", 60, 0, 180, 90, [flush]), node("L", 0, -15, 20, 30), node("U", 15, -70, 50, 30)],
+      [under, ofGroup],
+    );
+
+    expect(edgesTooClose(stacked)).toEqual([]);
+  });
+
+  test("has come to the border a millionth short of it", () => {
+    expect(edgesTooClose(layout(nodes, [through, bendingAt(1e-6)]))).toEqual([]);
+  });
+
+  test("has not come to it any shorter than that", () => {
+    expect(edgesTooClose(layout(nodes, [through, bendingAt(1.5e-6)]))).toEqual([
+      { kind: "edges-too-close", edges: ["K1-T1", "K2-U"] },
+    ]);
   });
 });

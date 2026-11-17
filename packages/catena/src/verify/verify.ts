@@ -1,8 +1,10 @@
-import type { Layout, PlacedEdge, PlacedNode, Rect, Spacing } from "../layout";
+import type { Layout, PlacedEdge, PlacedNode, Point, Rect, Spacing } from "../layout";
 import {
   areTooClose,
   contains,
   containsPoint,
+  cutAtBorder,
+  cutAtStart,
   doubleBack,
   inflate,
   isAttached,
@@ -14,7 +16,7 @@ import {
   segmentsOf,
   separation,
   sharedLead,
-  sharedThroughBorder,
+  sharedThroughCuts,
   sidesAlong,
   straightened,
   TOLERANCE,
@@ -57,8 +59,8 @@ export type Violation =
    * starts at it or at a node inside it. Two that both arrive at a node, or both depart from it, and meet
    * its border at one point may run as one through that point, as far each way as their paths are the
    * same; the two stretches that meet where they part, or where they join, do not count. An edge meets
-   * the border where it first reaches it, followed from its end at or inside the node; at a node both
-   * edges end at, or both start from, that is the end itself.
+   * the border of the node at its end at that end, and the border of a group around that end where it
+   * first comes to it from there, a millionth short counting as there.
    */
   | { readonly kind: "edges-too-close"; readonly edges: readonly [string, string] }
   /** Two labels cover part of each other. Labels that only touch do not. */
@@ -259,23 +261,33 @@ function isTooCloseToItself(edge: PlacedEdge, spacing: Spacing): boolean {
 
 /** The stretches two edges may share through the border of a node that is not the end of both. */
 function sharedThroughBorders(a: PlacedEdge, b: PlacedEdge, index: Index): SharedStretch[] {
-  const boxesAt = (end: "from" | "to"): Rect[] => {
+  const through = (end: "from" | "to"): SharedStretch[] => {
     const isAt = (edge: PlacedEdge, id: string) =>
       edge[end] === id || entryOf(index, edge, end).groups.includes(id);
+    const fromThatEnd = (edge: PlacedEdge): readonly Point[] =>
+      end === "from" ? edge.points : edge.points.toReversed();
+    const cutOf = (edge: PlacedEdge, node: PlacedNode) =>
+      edge[end] === node.id
+        ? cutAtStart(fromThatEnd(edge))
+        : cutAtBorder(fromThatEnd(edge), node.box);
     return [...index.values()]
       .filter(({ node }) => isAt(a, node.id) && isAt(b, node.id))
       .filter(({ node }) => a[end] !== node.id || b[end] !== node.id)
-      .map(({ node }) => node.box);
+      .flatMap(({ node }) => {
+        const cutOfA = cutOf(a, node);
+        const cutOfB = cutOf(b, node);
+        const shared =
+          cutOfA === undefined || cutOfB === undefined
+            ? undefined
+            : sharedThroughCuts(cutOfA, cutOfB);
+        return shared === undefined ? [] : [shared];
+      });
   };
-  const departing = boxesAt("from").flatMap((box): SharedStretch[] => {
-    const shared = sharedThroughBorder(a.points, b.points, box);
-    return shared === undefined ? [] : [shared];
-  });
-  const arriving = boxesAt("to").flatMap((box): SharedStretch[] => {
-    const shared = sharedThroughBorder(a.points.toReversed(), b.points.toReversed(), box);
-    return shared === undefined ? [] : [[reversedStretch(shared[0]), reversedStretch(shared[1])]];
-  });
-  return [...departing, ...arriving];
+  const reversed = ([onA, onB]: SharedStretch): SharedStretch => [
+    reversedStretch(onA),
+    reversedStretch(onB),
+  ];
+  return [...through("from"), ...through("to").map(reversed)];
 }
 
 /** The stretches two edges may share, each as it lies on the first edge and on the second. */
