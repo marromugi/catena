@@ -52,7 +52,7 @@ import {
   type ThemeOverrides,
   writeSvg,
 } from "./index";
-import type { LogoShape, Node, OwnLogo } from "./index";
+import type { LogoShape, Node, OwnImage, OwnLogo } from "./index";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -1287,7 +1287,7 @@ describe("icons and the kinds that carry one", () => {
   describe("logos registered on the theme", () => {
     const registered = themeWith({ logos: { mark: madeUpLogo, picture: { href: madeUpImage } } });
 
-    test("a registered logo or image named in an icon draws as the same one given inline does, in every kind with an icon", () => {
+    test("a registered logo or image named in an icon draws as the same one given inline does, in a card, a tile and a button", () => {
       for (const [name, inline] of [
         ["mark", madeUpLogo],
         ["picture", { href: madeUpImage }],
@@ -1326,6 +1326,9 @@ describe("icons and the kinds that carry one", () => {
           }),
         );
       }
+      expect(() => icon.layout({ logo: "marks" }, registered, 100)).toThrow(
+        expect.objectContaining({ name: "UnknownLogoError", logo: "marks" }),
+      );
       expect(() => buildNode(iconTile, theme, "t", { icon: { logo: "mark" } })).toThrow(
         expect.objectContaining({ name: "InvalidNodeContentError" }),
       );
@@ -1367,6 +1370,51 @@ describe("icons and the kinds that carry one", () => {
           }),
         );
       }
+    });
+
+    test("the logos are given as an object holding each under its name, and nothing else", () => {
+      const notLogos: unknown[] = [new Map([["mark", madeUpLogo]]), [madeUpLogo], 5, "ab"];
+      for (const bad of notLogos) {
+        // @ts-expect-error not logos by name
+        expect(() => defineTheme(fonts, { logos: bad })).toThrow(
+          expect.objectContaining({
+            name: "InvalidThemeError",
+            message: "The logos are not an object holding each logo under its name.",
+          }),
+        );
+      }
+      const json: unknown = JSON.parse(`{ "picture": { "href": "a.png" } }`);
+      const bareObject: unknown = Object.create(null);
+      const bare: Record<string, OwnImage> = Object.assign(Object(bareObject), {
+        picture: { href: "a.png" },
+      });
+      // @ts-expect-error untyped, as read from JSON
+      const fromJson = defineTheme(fonts, { logos: json });
+      const made = defineTheme(fonts, { logos: bare });
+      expect(fromJson.logos).toEqual({ picture: { href: "a.png" } });
+      expect(Object.getPrototypeOf(bare)).toBeNull();
+      expect(made.logos).toEqual({ picture: { href: "a.png" } });
+    });
+
+    test("a theme holds the logos as they were when it was made", () => {
+      const mine = { picture: { href: "a.png" }, mark: structuredClone(madeUpLogo) };
+      const made = defineTheme(fonts, { logos: mine });
+      mine.picture.href = "b.png";
+      mine.mark.shapes[0]!.color = "#000000";
+      delete (mine as Partial<typeof mine>).mark;
+
+      expect(made.logos).toEqual({ picture: { href: "a.png" }, mark: madeUpLogo });
+    });
+
+    test("buildNode lets any other error from laying a node out through as it is", () => {
+      const failure = new RangeError("not a logo");
+      const failing: Part = {
+        schema: v.string(),
+        layout() {
+          throw failure;
+        },
+      };
+      expect(() => buildNode(failing, registered, "n", "")).toThrow(failure);
     });
 
     test("a theme made with no logos holds none", () => {

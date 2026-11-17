@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import type { IconName } from "../icon";
 import type { FontStack } from "../text";
-import { REGISTRABLE_LOGO, type OwnImage, type OwnLogo } from "./logo";
+import { REGISTRABLE_LOGO, type RegistrableLogo } from "./logo";
 import { NO_SHADOW, type Outline, type Shadow } from "./svg";
 
 /** How a piece of text looks. `lineHeight` is a multiple of `size`. */
@@ -66,7 +66,10 @@ export interface DotLook {
   readonly colors: Readonly<Record<Tone, string>>;
 }
 
-/** The looks parts share. A part reads the ones it draws with, so a change here reaches every kind. */
+/**
+ * The looks parts share, and the logos an icon can name. A part reads the ones it draws with, so a change
+ * here reaches every kind.
+ */
 export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
   /** How wide a node is laid out. */
@@ -118,7 +121,7 @@ export interface Theme {
  * Logos and images by the names an icon's content gives them as `{ logo: "<name>" }`. catena ships none:
  * each is the caller's to use, following that brand's own guidelines.
  */
-export type Logos = Readonly<Record<string, OwnLogo | OwnImage>>;
+export type Logos = Readonly<Record<string, RegistrableLogo>>;
 
 /** Any look of a {@link Theme} but its fonts, each given in part, and the logos it holds. */
 export interface ThemeOverrides {
@@ -281,6 +284,11 @@ function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T 
 
 /** Each logo checked against the schemas an icon's inline content is checked against. */
 function checkedLogos(logos: Logos): Logos {
+  const prototype: unknown =
+    typeof logos === "object" && logos !== null ? Object.getPrototypeOf(logos) : undefined;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new InvalidThemeError("The logos are not an object holding each logo under its name.");
+  }
   return Object.fromEntries(
     Object.entries(logos).map(([name, logo]) => {
       const parsed = v.safeParse(REGISTRABLE_LOGO, logo);
@@ -296,8 +304,9 @@ function checkedLogos(logos: Logos): Logos {
 }
 
 /**
- * The default looks with `overrides` laid over them. A look given as `undefined` keeps its default.
- * @throws InvalidThemeError when a logo in `overrides.logos` is neither an {@link OwnLogo} nor an {@link OwnImage}.
+ * The default looks with `overrides` laid over them, and the logos `overrides` gives, each checked. A look
+ * given as `undefined` keeps its default.
+ * @throws InvalidThemeError when a logo in `overrides.logos` is neither an `OwnLogo` nor an `OwnImage`.
  */
 export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {}): Theme {
   return {

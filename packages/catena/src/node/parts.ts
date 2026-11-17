@@ -3,9 +3,8 @@ import { iconGrid, iconNames, iconPathData, iconStroke } from "../icon";
 import type { Rect } from "../layout";
 import { layoutText, textPathData, type TextLayout } from "../text";
 import {
-  OWN_IMAGE,
-  OWN_LOGO,
   REGISTERED_LOGO,
+  REGISTRABLE_LOGO,
   UnknownLogoError,
   VIEW_BOX,
   type OwnImage,
@@ -209,7 +208,7 @@ const OWN_ICON = v.strictObject({
 });
 export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
 
-const ICON = v.union([v.picklist(iconNames), OWN_ICON, OWN_LOGO, OWN_IMAGE, REGISTERED_LOGO]);
+const ICON = v.union([v.picklist(iconNames), OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO]);
 
 const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
 
@@ -220,7 +219,7 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - the user's own icon ({@link OwnIcon}), in the look's colour;
  * - the user's own logo of shapes ({@link OwnLogo}), each in the colour it gives;
  * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square;
- * - the name of a logo or image registered on the theme ({@link RegisteredLogo}), drawn as that logo or
+ * - a logo or image registered on the theme, named ({@link RegisteredLogo}), drawn as that logo or
  *   image given here would be.
  * An icon or logo has its view box scaled to fit the square and centred in it.
  *
