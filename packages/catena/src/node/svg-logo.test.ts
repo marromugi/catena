@@ -15,6 +15,9 @@ const svg = (body: string, root = 'viewBox="0 0 48 48"') =>
 
 const ROUND = 'stroke-linecap="round" stroke-linejoin="round"';
 
+const fill = (style: string) =>
+  readSvgLogo(svg(`<path d="M0 0" style="${style}"/>`)).shapes[0]?.color;
+
 describe("readSvgLogo", () => {
   test("a logo written as SVG paths reads back as itself", () => {
     const text = fc.string({ minLength: 1 }).filter((s) => s.trim() === s && !/[\t\n\r]/.test(s));
@@ -150,6 +153,34 @@ describe("readSvgLogo", () => {
     expect(logo.shapes).toEqual([{ pathData: "M5 5", paint: "fill", color: "#0f0" }]);
   });
 
+  test("inline style reads as CSS: comments are skipped and an important declaration wins", () => {
+    expect(fill("/* fill:red; */ fill:blue")).toBe("blue");
+    expect(fill("fill:red !important; fill:blue")).toBe("red");
+    expect(fill("fill:red; fill:blue !important")).toBe("blue");
+  });
+
+  test("an opacity of inherit, or of 1, draws the shape whole", () => {
+    expect(
+      readSvgLogo(svg('<path d="M0 0" fill-opacity="inherit" opacity="1" stroke-opacity="100%"/>'))
+        .shapes,
+    ).toEqual([{ pathData: "M0 0", paint: "fill", color: "black" }]);
+  });
+
+  test("a hidden element is left out before what it holds is checked", () => {
+    expect(
+      readSvgLogo(svg('<path d="M1 1" display="none" visibility="hidden"/><path d="M0 0"/>'))
+        .shapes,
+    ).toEqual([{ pathData: "M0 0", paint: "fill", color: "black" }]);
+  });
+
+  test("a negative rx is not given, so the corners take ry", () => {
+    expect(
+      readSvgLogo(svg('<rect width="20" height="20" rx="-1" ry="5"/>')).shapes[0]?.pathData,
+    ).toBe(
+      "M 5 0 H 15 A 5 5 0 0 1 20 5 V 15 A 5 5 0 0 1 15 20 H 5 A 5 5 0 0 1 0 15 V 5 A 5 5 0 0 1 5 0 Z",
+    );
+  });
+
   test("with no viewBox the view box is the root's width and height", () => {
     expect(readSvgLogo(svg('<path d="M0 0"/>', 'width="32px" height="16"')).viewBox).toEqual({
       x: 0,
@@ -272,6 +303,86 @@ describe("readSvgLogo", () => {
       "an unclosed element",
       svg("<g>"),
       "The SVG is not well-formed XML: Expected </g> at offset 63.",
+    ],
+    [
+      "a <style> inside <defs>",
+      svg('<defs><style>path{fill:red}</style></defs><path d="M0 0"/>'),
+      "A logo cannot hold the SVG's <style>.",
+    ],
+    [
+      "an element named like an object's property",
+      svg("<toString/>"),
+      "A logo cannot hold the SVG's <toString>.",
+    ],
+    [
+      "an element named __proto__",
+      svg("<__proto__/>"),
+      "A logo cannot hold the SVG's <__proto__>.",
+    ],
+    [
+      "an entity named like an object's property",
+      svg('<path d="M0 0" fill="&constructor;"/>'),
+      "The SVG is not well-formed XML: &constructor; is not an entity XML predefines at offset 81.",
+    ],
+    [
+      "a character reference XML does not allow",
+      svg('<path d="M0 0" fill="&#0;"/>'),
+      "The SVG is not well-formed XML: &#0; is not a character XML allows at offset 81.",
+    ],
+    [
+      "elements nested too deep",
+      svg("<g>".repeat(300) + "</g>".repeat(300)),
+      "The SVG is not well-formed XML: Elements nest deeper than 256 at offset 828.",
+    ],
+    [
+      "translate in style",
+      svg('<path d="M0 0" style="translate: 10px 10px"/>'),
+      "A logo cannot hold the SVG's translate on <path>.",
+    ],
+    ["rotate", svg('<g style="rotate:45deg"/>'), "A logo cannot hold the SVG's rotate on <g>."],
+    ["scale", svg('<g style="scale:2"/>'), "A logo cannot hold the SVG's scale on <g>."],
+    [
+      "a radius in style",
+      svg('<circle cx="4" cy="4" r="2" style="r:20px"/>'),
+      "A logo cannot hold the SVG's r in the style of <circle>.",
+    ],
+    [
+      "path data in style",
+      svg("<path style=\"d:path('M0 0')\"/>"),
+      "A logo cannot hold the SVG's d in the style of <path>.",
+    ],
+    [
+      "a blend mode",
+      svg('<path d="M0 0" style="mix-blend-mode:multiply"/>'),
+      "A logo cannot hold the SVG's mix-blend-mode multiply on <path>.",
+    ],
+    [
+      "an opacity that is not a number",
+      svg('<path d="M0 0" fill-opacity="half"/>'),
+      'fill-opacity "half" on <path> is not a number.',
+    ],
+    [
+      "a stretched view box",
+      svg(
+        '<path d="M0 0"/>',
+        'viewBox="0 0 10 10" width="100" height="50" preserveAspectRatio="none"',
+      ),
+      "A logo cannot hold the SVG's preserveAspectRatio none on <svg>.",
+    ],
+    [
+      "a cropped view box",
+      svg('<path d="M0 0"/>', 'viewBox="0 0 10 10" preserveAspectRatio="xMinYMin slice"'),
+      "A logo cannot hold the SVG's preserveAspectRatio xMinYMin slice on <svg>.",
+    ],
+    [
+      "a hidden root",
+      svg('<path d="M0 0"/>', 'viewBox="0 0 4 4" style="display: none"'),
+      "The SVG draws no shape.",
+    ],
+    [
+      "coordinates past the largest number",
+      svg('<rect x="1e308" width="1e308" height="1"/>'),
+      "The coordinates of <rect> run past the largest number.",
     ],
   ];
 

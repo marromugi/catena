@@ -11,16 +11,21 @@ export class UnreadableSvgError extends Error {
  *
  * The view box is the root `<svg>`'s `viewBox`, or `0 0 width height` when it has none. Each `<path>`,
  * `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>` and `<polygon>` becomes path data, filled
- * and then stroked in the colours it gives or takes from its `<g>`s, as attributes or in an inline
- * `style`; a shape that draws nothing is left out. A stroke's caps and joins must both be round, as a
- * logo's strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
+ * and then stroked in the colours it gives or takes from its `<g>`s and the root, as attributes or in an
+ * inline `style`; a shape that draws nothing is left out. A stroke's caps and joins must both be round,
+ * as a logo's strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
  *
  * The logo is the caller's to use, following that brand's own guidelines.
- * @throws UnreadableSvgError naming the element or attribute when the file is not well-formed XML, its
- * root is not `<svg>` or gives no size, it draws nothing, or it holds what a logo cannot: `transform`,
- * `url(...)` paint, `currentColor`, `<use>`, `<text>`, `<image>`, `clip-path`, `mask`, `filter`,
- * `<style>` or `class`, an opacity below 1, an even-odd fill, dashes, markers, a stroke painted under its
- * fill, or any element not named above.
+ * @throws UnreadableSvgError naming the element or attribute when:
+ * - the file is not well-formed XML, or nests elements deeper than this reader follows;
+ * - its root is not `<svg>`, gives no size, or has `preserveAspectRatio` `none` or `slice`;
+ * - it draws nothing;
+ * - it holds `transform` (or `translate`, `rotate`, `scale`), `url(...)` paint, `currentColor`, `<use>`,
+ *   `<text>`, `<image>`, `clip-path`, `mask`, `filter`, `<style>` anywhere or `class`, an opacity below
+ *   1, an even-odd fill, dashes, markers, a stroke painted under its fill, a blend mode, a shape's
+ *   geometry in `style`, or any element not named above;
+ * - a length is in units other than user units or `px`, `points` are not pairs of numbers, or a shape's
+ *   coordinates run past the largest number.
  */
 export function readSvgLogo(svg: string): OwnLogo {
   let root: XmlElement;
@@ -36,8 +41,10 @@ export function readSvgLogo(svg: string): OwnLogo {
   }
   if (root.name !== "svg")
     throw new UnreadableSvgError(`The file's root is <${root.name}>, not <svg>.`);
+  if (holds(root, "style")) throw refused("<style>");
   const viewBox = viewBoxOf(root);
-  const shapes = shapesIn(root, paintOf(root, propertiesOf(root), INITIAL_PAINT));
+  const properties = propertiesOf(root);
+  const shapes = hidden(properties) ? [] : shapesIn(root, paintOf(root, properties, INITIAL_PAINT));
   if (shapes.length === 0) throw new UnreadableSvgError("The SVG draws no shape.");
   return { viewBox, shapes };
 }
@@ -62,34 +69,36 @@ const INITIAL_PAINT: Paint = {
 const SKIPPED = new Set(["defs", "title", "desc", "metadata"]);
 
 /** Turns a shape element into path data, or `undefined` when it has no area or length to draw. */
-const SHAPES: Readonly<Record<string, (shape: XmlElement) => string | undefined>> = {
-  path: (shape) => {
-    const d = shape.attributes.get("d")?.trim();
-    return d === undefined || d === "" ? undefined : d;
-  },
-  rect: rectPath,
-  circle: (shape) => {
-    const cx = lengthOr0(shape, "cx");
-    const cy = lengthOr0(shape, "cy");
-    const r = lengthOr0(shape, "r");
-    return r <= 0 ? undefined : ellipsePath(cx, cy, r, r);
-  },
-  ellipse: (shape) => {
-    const cx = lengthOr0(shape, "cx");
-    const cy = lengthOr0(shape, "cy");
-    const [rx, ry] = radii(shape);
-    return rx <= 0 || ry <= 0 ? undefined : ellipsePath(cx, cy, rx, ry);
-  },
-  line: (shape) => {
-    const x1 = lengthOr0(shape, "x1");
-    const y1 = lengthOr0(shape, "y1");
-    const x2 = lengthOr0(shape, "x2");
-    const y2 = lengthOr0(shape, "y2");
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
-  },
-  polyline: (shape) => pointsPath(shape, false),
-  polygon: (shape) => pointsPath(shape, true),
-};
+const SHAPES: ReadonlyMap<string, (shape: XmlElement) => string | undefined> = new Map(
+  Object.entries({
+    path: (shape: XmlElement) => {
+      const d = shape.attributes.get("d")?.trim();
+      return d === undefined || d === "" ? undefined : d;
+    },
+    rect: rectPath,
+    circle: (shape: XmlElement) => {
+      const cx = lengthOr0(shape, "cx");
+      const cy = lengthOr0(shape, "cy");
+      const r = lengthOr0(shape, "r");
+      return r <= 0 ? undefined : ellipsePath(cx, cy, r, r);
+    },
+    ellipse: (shape: XmlElement) => {
+      const cx = lengthOr0(shape, "cx");
+      const cy = lengthOr0(shape, "cy");
+      const [rx, ry] = radii(shape);
+      return rx <= 0 || ry <= 0 ? undefined : ellipsePath(cx, cy, rx, ry);
+    },
+    line: (shape: XmlElement) => {
+      const x1 = lengthOr0(shape, "x1");
+      const y1 = lengthOr0(shape, "y1");
+      const x2 = lengthOr0(shape, "x2");
+      const y2 = lengthOr0(shape, "y2");
+      return `M ${x1} ${y1} L ${x2} ${y2}`;
+    },
+    polyline: (shape: XmlElement) => pointsPath(shape, false),
+    polygon: (shape: XmlElement) => pointsPath(shape, true),
+  }),
+);
 
 /** A line has no inside to fill. */
 const UNFILLED = new Set(["line"]);
@@ -98,10 +107,10 @@ function shapesIn(parent: XmlElement, inherited: Paint): LogoShape[] {
   const shapes: LogoShape[] = [];
   for (const child of parent.children) {
     if (SKIPPED.has(child.name)) continue;
-    const toPath = SHAPES[child.name];
+    const toPath = SHAPES.get(child.name);
     if (child.name !== "g" && toPath === undefined) throw refused(`<${child.name}>`);
     const properties = propertiesOf(child);
-    if (properties.get("display")?.trim().toLowerCase() === "none") continue;
+    if (hidden(properties)) continue;
     const paint = paintOf(child, properties, inherited);
     if (toPath === undefined) {
       shapes.push(...shapesIn(child, paint));
@@ -110,7 +119,13 @@ function shapesIn(parent: XmlElement, inherited: Paint): LogoShape[] {
     const inside = child.children.find(({ name }) => !SKIPPED.has(name));
     if (inside !== undefined) throw refused(`<${inside.name}> inside <${child.name}>`);
     const pathData = toPath(child);
-    if (pathData !== undefined) shapes.push(...shapesOf(child.name, pathData, paint));
+    if (pathData === undefined) continue;
+    if (child.name !== "path" && /Infinity|NaN/.test(pathData)) {
+      throw new UnreadableSvgError(
+        `The coordinates of <${child.name}> run past the largest number.`,
+      );
+    }
+    shapes.push(...shapesOf(child.name, pathData, paint));
   }
   return shapes;
 }
@@ -132,20 +147,40 @@ function shapesOf(name: string, pathData: string, paint: Paint): LogoShape[] {
   return shapes;
 }
 
+function holds(element: XmlElement, name: string): boolean {
+  return element.children.some((child) => child.name === name || holds(child, name));
+}
+
+function hidden(properties: ReadonlyMap<string, string>): boolean {
+  return properties.get("display")?.trim().toLowerCase() === "none";
+}
+
+/** Geometry a shape takes from its attributes; given in `style` it would win over them. */
+const GEOMETRY = new Set(["x", "y", "cx", "cy", "r", "rx", "ry", "width", "height", "d"]);
+
 /** The element's presentation attributes, with its inline `style` given over them. */
 function propertiesOf(element: XmlElement): Map<string, string> {
   if (element.attributes.has("class")) throw refused(`class on <${element.name}>`);
   const properties = new Map(element.attributes);
   properties.delete("style");
-  for (const declaration of element.attributes.get("style")?.split(";") ?? []) {
+  const important = new Set<string>();
+  const style = element.attributes.get("style")?.replaceAll(/\/\*[\s\S]*?\*\//g, "") ?? "";
+  for (const declaration of style.split(";")) {
     const colon = declaration.indexOf(":");
     if (colon === -1) continue;
-    const value = declaration
-      .slice(colon + 1)
-      .replace(/!\s*important\s*$/i, "")
-      .trim();
-    properties.set(declaration.slice(0, colon).trim().toLowerCase(), value);
+    const property = declaration.slice(0, colon).trim().toLowerCase();
+    const given = declaration.slice(colon + 1);
+    const isImportant = /!\s*important\s*$/i.test(given);
+    if (important.has(property) && !isImportant) continue;
+    if (isImportant) important.add(property);
+    if (GEOMETRY.has(property)) throw refused(`${property} in the style of <${element.name}>`);
+    properties.set(property, given.replace(/!\s*important\s*$/i, "").trim());
   }
+  return properties;
+}
+
+/** Refuses what the element's properties give that a logo cannot hold. */
+function refuseUnheld(element: XmlElement, properties: ReadonlyMap<string, string>): void {
   noTransform(element, properties);
   for (const [property, allowed] of LIMITED) {
     const value = properties.get(property)?.trim().toLowerCase();
@@ -154,16 +189,18 @@ function propertiesOf(element: XmlElement): Map<string, string> {
     }
   }
   for (const property of ["opacity", "fill-opacity", "stroke-opacity"]) {
-    const value = properties.get(property);
-    if (value !== undefined && opacity(value) < 1) {
-      throw refused(`${property} ${value.trim()} on <${element.name}>`);
+    const value = properties.get(property)?.trim();
+    if (value === undefined || value.toLowerCase() === "inherit") continue;
+    if (opacity(element, property, value) < 1) {
+      throw refused(`${property} ${value} on <${element.name}>`);
     }
   }
-  return properties;
 }
 
 function noTransform(element: XmlElement, properties: ReadonlyMap<string, string>): void {
-  if (properties.has("transform")) throw refused(`transform on <${element.name}>`);
+  for (const property of ["transform", "translate", "rotate", "scale"]) {
+    if (properties.has(property)) throw refused(`${property} on <${element.name}>`);
+  }
 }
 
 const isNone = (value: string): boolean => value === "none";
@@ -182,6 +219,7 @@ const LIMITED: ReadonlyArray<readonly [string, (value: string) => boolean]> = [
   ["visibility", (value) => value === "visible" || value === "inherit"],
   ["paint-order", (value) => value === "normal" || value.startsWith("fill")],
   ["vector-effect", isNone],
+  ["mix-blend-mode", (value) => value === "normal"],
 ];
 
 function paintOf(
@@ -189,6 +227,7 @@ function paintOf(
   properties: ReadonlyMap<string, string>,
   inherited: Paint,
 ): Paint {
+  refuseUnheld(element, properties);
   const given = (property: string): string | undefined => {
     const value = properties.get(property)?.trim();
     return value === undefined || value === "" || value.toLowerCase() === "inherit"
@@ -220,6 +259,10 @@ function paintOf(
 }
 
 function viewBoxOf(root: XmlElement): OwnLogo["viewBox"] {
+  const aspect = root.attributes.get("preserveAspectRatio")?.trim();
+  if (aspect !== undefined && /\b(none|slice)\b/.test(aspect)) {
+    throw refused(`preserveAspectRatio ${aspect} on <svg>`);
+  }
   const given = root.attributes.get("viewBox");
   if (given !== undefined) {
     const numbers = given.trim().split(/[\s,]+/);
@@ -276,10 +319,13 @@ function rectPath(rect: XmlElement): string | undefined {
   ].join(" ");
 }
 
-/** `rx` and `ry`, each taking the other's value when it alone is not given. */
+const notNegative = (found: number | undefined): number | undefined =>
+  found === undefined || found < 0 ? undefined : found;
+
+/** `rx` and `ry`, each taking the other's value when it alone is not given or is negative. */
 function radii(shape: XmlElement): [number, number] {
-  const rx = optionalLength(shape, "rx");
-  const ry = optionalLength(shape, "ry");
+  const rx = notNegative(optionalLength(shape, "rx"));
+  const ry = notNegative(optionalLength(shape, "ry"));
   return [rx ?? ry ?? 0, ry ?? rx ?? 0];
 }
 
@@ -321,10 +367,11 @@ function length(element: XmlElement, name: string, given: string): number {
   return found;
 }
 
-function opacity(given: string): number {
-  const value = given.trim();
+function opacity(element: XmlElement, property: string, value: string): number {
   const found = value.endsWith("%") ? number(value.slice(0, -1)) : number(value);
-  if (found === undefined) throw new UnreadableSvgError(`The opacity "${given}" is not a number.`);
+  if (found === undefined) {
+    throw new UnreadableSvgError(`${property} "${value}" on <${element.name}> is not a number.`);
+  }
   return value.endsWith("%") ? found / 100 : found;
 }
 

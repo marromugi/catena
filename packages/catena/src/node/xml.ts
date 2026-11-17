@@ -17,13 +17,16 @@ export class MalformedXmlError extends Error {
   }
 }
 
-const PREDEFINED: Readonly<Record<string, string>> = {
-  lt: "<",
-  gt: ">",
-  amp: "&",
-  quot: '"',
-  apos: "'",
-};
+const PREDEFINED: ReadonlyMap<string, string> = new Map([
+  ["lt", "<"],
+  ["gt", ">"],
+  ["amp", "&"],
+  ["quot", '"'],
+  ["apos", "'"],
+]);
+
+/** How deep elements may nest; deeper ones are refused rather than read. */
+const DEEPEST = 256;
 
 const NAME = /[^\s/>=<"'!?]+/y;
 const SPACE = /\s*/y;
@@ -39,7 +42,7 @@ export function parseXml(text: string): XmlElement {
   const reader = new Reader(text.startsWith("﻿") ? text.slice(1) : text);
   reader.skipMisc(true);
   if (!reader.at("<")) reader.fail("Expected the root element");
-  const root = reader.element();
+  const root = reader.element(0);
   reader.skipMisc(false);
   if (!reader.done()) reader.fail("Expected nothing after the root element");
   return root;
@@ -73,8 +76,9 @@ class Reader {
     }
   }
 
-  /** Reads the element that starts here, through its end tag. */
-  element(): XmlElement {
+  /** Reads the element that starts here, `depth` elements deep, through its end tag. */
+  element(depth: number): XmlElement {
+    if (depth > DEEPEST) this.fail(`Elements nest deeper than ${DEEPEST}`);
     this.expect("<");
     const name = this.name();
     const attributes = new Map<string, string>();
@@ -86,7 +90,7 @@ class Reader {
       }
       if (this.at(">")) {
         this.offset += 1;
-        return { name, attributes, children: this.content(name) };
+        return { name, attributes, children: this.content(name, depth) };
       }
       if (!spaced) this.fail(`Expected space before an attribute of <${name}>`);
       const attribute = this.name();
@@ -98,7 +102,7 @@ class Reader {
     }
   }
 
-  private content(name: string): XmlElement[] {
+  private content(name: string, depth: number): XmlElement[] {
     const children: XmlElement[] = [];
     for (;;) {
       const next = this.text.indexOf("<", this.offset);
@@ -118,7 +122,7 @@ class Reader {
       if (this.at("<!--")) this.skipPast("-->", "comment");
       else if (this.at("<![CDATA[")) this.skipPast("]]>", "CDATA section");
       else if (this.at("<?")) this.skipPast("?>", "processing instruction");
-      else children.push(this.element());
+      else children.push(this.element(depth + 1));
     }
   }
 
@@ -184,7 +188,7 @@ class Reader {
 
 function decodeEntity(whole: string, entity: string, at: number): string {
   if (!whole.endsWith(";")) throw new MalformedXmlError("An & starts no entity", at);
-  const predefined = PREDEFINED[entity];
+  const predefined = PREDEFINED.get(entity);
   if (predefined !== undefined) return predefined;
   const code = /^#x[0-9a-fA-F]+$/.test(entity)
     ? Number.parseInt(entity.slice(2), 16)
@@ -193,6 +197,19 @@ function decodeEntity(whole: string, entity: string, at: number): string {
       : undefined;
   if (code === undefined)
     throw new MalformedXmlError(`&${entity}; is not an entity XML predefines`, at);
-  if (code > 0x10ffff) throw new MalformedXmlError(`&${entity}; is past the last character`, at);
+  if (!isXmlChar(code))
+    throw new MalformedXmlError(`&${entity}; is not a character XML allows`, at);
   return String.fromCodePoint(code);
+}
+
+/** XML 1.0's `Char`. */
+function isXmlChar(code: number): boolean {
+  return (
+    code === 0x9 ||
+    code === 0xa ||
+    code === 0xd ||
+    (code >= 0x20 && code <= 0xd7ff) ||
+    (code >= 0xe000 && code <= 0xfffd) ||
+    (code >= 0x10000 && code <= 0x10ffff)
+  );
 }
