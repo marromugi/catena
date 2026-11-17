@@ -438,6 +438,52 @@ describe("what review found", () => {
     });
   });
 
+  test("a row with no growing part gives its parts the whole width", () => {
+    // 18 characters of 11 fill one line of 200.
+    const { size } = row({ a: bodyText }).layout({ a: "あ".repeat(18) }, theme, 200);
+    expect(size.height).toBeCloseTo(17.6, 6);
+  });
+
+  test("a row's parts beside the growing one share half its width, each after the ones before and their gaps", () => {
+    const kind = row({ a: fixed(40, 10), b: bodyText, g: fixed(10, 10) }, { grow: "g" });
+
+    // `b` is laid out within 150 - 40 - 12 = 98: 8 characters of 11 to a line, three lines.
+    const { size } = kind.layout({ a: null, b: "あ".repeat(20), g: null }, theme, 300);
+    expect(size.height).toBeCloseTo(52.8, 6);
+  });
+
+  test("a row gives a part no less than 0 when the parts before it took more than their share", () => {
+    const widths: number[] = [];
+    const recording: Part<v.NullSchema<undefined>> = {
+      schema: v.null(),
+      layout: (_content, _theme, maxWidth) => {
+        widths.push(maxWidth);
+        return { size: { width: 10, height: 10 }, draw: () => [] };
+      },
+    };
+
+    row({ a: fixed(200, 10), b: recording, g: fixed(10, 10) }, { grow: "g" }).layout(
+      { a: null, b: null, g: null },
+      theme,
+      300,
+    );
+    row({ a: fixed(200, 10), b: fixed(200, 10), g: recording }, { grow: "g" }).layout(
+      { a: null, b: null, g: null },
+      theme,
+      300,
+    );
+    expect(widths).toEqual([0, 0]);
+  });
+
+  test("a frame holds a row grown past its width", () => {
+    const narrow = defineTheme(fonts, { nodeWidth: 60 });
+    const node = buildNode(statusTitleCard, narrow, "n", { status: "red", title: "ここで" });
+
+    // The title is laid out at 0, one character of 14 a line: 16 + 12 + 14 inside 2 × 20 of padding.
+    expect(node.leaf.size).toEqual({ width: 82, height: 103 });
+    expect(node.draw({ x: 0, y: 0, ...node.leaf.size })).toMatch(/^<g><rect [^>]*width="81"/);
+  });
+
   test("a row lays its growing part out once, after the others", () => {
     const kind = row({ end: bodyText, g: fixed(10, 10) }, { grow: "g" });
 

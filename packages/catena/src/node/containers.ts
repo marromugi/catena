@@ -2,7 +2,10 @@ import * as v from "valibot";
 import type { Block, Part } from "./part";
 import { outlinedRect } from "./svg";
 
-/** A card drawn around `child`, which is laid out inside the card's padding. The card fills the width it is given. */
+/**
+ * A card drawn around `child`, which is laid out inside the card's padding. The card fills the width it
+ * is given, and grows past it when `child` is wider than the width left inside the padding.
+ */
 export function frame<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
   return {
     schema: child.schema,
@@ -10,7 +13,10 @@ export function frame<TSchema extends v.GenericSchema>(child: Part<TSchema>): Pa
       const { padding, radius } = theme.card;
       const inner = child.layout(content, theme, maxWidth - 2 * padding);
       return {
-        size: { width: maxWidth, height: inner.size.height + 2 * padding },
+        size: {
+          width: Math.max(maxWidth, inner.size.width + 2 * padding),
+          height: inner.size.height + 2 * padding,
+        },
         draw: (box) => [
           outlinedRect(box, radius, theme.card),
           ...inner.draw({
