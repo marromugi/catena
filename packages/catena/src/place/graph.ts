@@ -1,4 +1,4 @@
-/** Which way a diagram or a group flows: a node goes further down, or further right, than the nodes listed before it that lead to it. */
+/** Which way a diagram or a group flows: a node goes further down, or further right, than the nodes listed before it that lead to it, unless it names its cell. */
 export type Direction = "down" | "right";
 
 /** How wide and how high a node is. */

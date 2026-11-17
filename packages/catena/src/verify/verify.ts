@@ -20,7 +20,7 @@ import {
   type Side,
 } from "./geometry";
 
-/** One way a layout is broken, naming what is involved by id. A label is named by its edge and its place in that edge's labels. */
+/** One way a layout is broken, naming what is involved by id. */
 export type Violation =
   /** Two nodes with the same parent are closer than `nodeGap`. */
   | { readonly kind: "nodes-overlap"; readonly nodes: readonly [string, string] }
@@ -40,7 +40,7 @@ export type Violation =
    * A node inside a group the edge connects is not checked: the group's border lies between them.
    */
   | { readonly kind: "edge-through-node"; readonly edge: string; readonly node: string }
-  /** Both ends of the edge are inside the group, and a stretch of the edge is outside it or on its border. */
+  /** Both ends of the edge are inside the group, and the edge is anything but a path that stays strictly inside it. */
   | { readonly kind: "edge-leaves-group"; readonly edge: string; readonly group: string }
   /** One end of the edge is inside the group, and the edge does not cross its border exactly once. */
   | { readonly kind: "edge-miscrosses-group"; readonly edge: string; readonly group: string }
