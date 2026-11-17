@@ -148,30 +148,25 @@ export function sidesAlong(segment: Segment, rect: Rect): Side[] {
   return start <= end ? sides : sides.toReversed();
 }
 
+function spanOf(segment: Segment, horizontal: boolean): Span {
+  const from = horizontal ? segment.from.x : segment.from.y;
+  const to = horizontal ? segment.to.x : segment.to.y;
+  return { low: Math.min(from, to), high: Math.max(from, to) };
+}
+
 /** How long two parallel segments run side by side, or zero when they are not parallel. */
 function sharedRun(a: Segment, b: Segment): number {
   const horizontal = isHorizontal(a) && isHorizontal(b);
   if (!horizontal && !(isVertical(a) && isVertical(b))) {
     return 0;
   }
-  const span = (segment: Segment): Span => {
-    const from = horizontal ? segment.from.x : segment.from.y;
-    const to = horizontal ? segment.to.x : segment.to.y;
-    return { low: Math.min(from, to), high: Math.max(from, to) };
-  };
-  const first = span(a);
-  const second = span(b);
+  const first = spanOf(a, horizontal);
+  const second = spanOf(b, horizontal);
   return Math.max(0, Math.min(first.high, second.high) - Math.max(first.low, second.low));
 }
 
 function distanceBetweenParallels(a: Segment, b: Segment): number {
   return isHorizontal(a) ? Math.abs(a.from.y - b.from.y) : Math.abs(a.from.x - b.from.x);
-}
-
-function spanOf(segment: Segment, horizontal: boolean): Span {
-  const from = horizontal ? segment.from.x : segment.from.y;
-  const to = horizontal ? segment.to.x : segment.to.y;
-  return { low: Math.min(from, to), high: Math.max(from, to) };
 }
 
 /**

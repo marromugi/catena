@@ -581,6 +581,26 @@ describe("verify: edges side by side", () => {
     expect(verify(chain, spacing)).toEqual([]);
   });
 
+  test("reports an edge that runs beside itself closer than the edge gap", () => {
+    const hairpin = layout(
+      [nodes[0]!, nodes[2]!],
+      [
+        edge("A-C", "A", "C", [
+          [50, 15],
+          [120, 15],
+          [120, 60],
+          [124, 60],
+          [124, 15],
+          [250, 15],
+        ]),
+      ],
+    );
+
+    expect(verify(hairpin, { ...spacing, minSegment: 2 })).toEqual([
+      { kind: "edges-too-close", edges: ["A-C", "A-C"] },
+    ]);
+  });
+
   test("reports an edge that doubles back on itself", () => {
     const back = layout(
       [nodes[0]!, nodes[2]!],
@@ -1455,8 +1475,43 @@ describe("verify: an edge that ends by turning straight back", () => {
   });
 });
 
+describe("verify: an edge that ends by turning straight back up", () => {
+  test("is reported, though no other stretch comes near", () => {
+    const back = layout(
+      [node("A", 0, 0, 50, 30)],
+      [
+        edge("A-A", "A", "A", [
+          [25, 30],
+          [25, 80],
+          [25, 30],
+        ]),
+      ],
+    );
+
+    expect(verify(back, spacing)).toEqual([{ kind: "edges-too-close", edges: ["A-A", "A-A"] }]);
+  });
+});
+
 describe("verify: a difference of exactly a millionth", () => {
   const exactly = 1e-6;
+
+  test("leaves a stretch along the near side of a node on that side", () => {
+    const grazing = layout(
+      [node("L", 0, 0, 50, 30), node("M", 100, 0, 50, 30), node("R", 250, 0, 50, 30)],
+      [
+        edge("L-R", "L", "R", [
+          [50, -exactly],
+          [250, -exactly],
+        ]),
+      ],
+    );
+
+    expect(verify(grazing, { ...spacing, edgeToNode: 0 })).toContainEqual({
+      kind: "edge-through-node",
+      edge: "L-R",
+      node: "M",
+    });
+  });
 
   test("leaves a stretch level", () => {
     const climbing = layout(
