@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import * as v from "valibot";
@@ -59,9 +59,9 @@ const CONFIG_KEYS = new Set(["icons"]);
 /**
  * The custom icons the user's config file defines, by name. The file is JSON,
  * `{ "icons": { "<name>": <icon> } }`, where an icon is either:
- * - a path to an SVG file, relative to the config file's directory, read as {@link readSvgLogo} reads it;
+ * - a path to an SVG file, relative to the directory the config file is in once links are followed, read as {@link readSvgLogo} reads it;
  * - an {@link OwnIcon}, {@link OwnLogo} or {@link OwnImage}, as an icon's content gives it inline.
- * A file that is not there means no custom icons.
+ * A byte order mark before the JSON is skipped. A file that is not there means no custom icons.
  *
  * catena ships no logos: a logo or image in the config is the user's to use, following that brand's own
  * guidelines.
@@ -79,7 +79,7 @@ export function readCustomIcons(file: string = configFile()): Readonly<Record<st
   }
   let config: unknown;
   try {
-    config = JSON.parse(text);
+    config = JSON.parse(text.replace(/^\uFEFF/, ""));
   } catch (error) {
     throw new InvalidConfigError(file, undefined, "is not JSON.", { cause: error });
   }
@@ -97,16 +97,17 @@ export function readCustomIcons(file: string = configFile()): Readonly<Record<st
   if (!isPlainObject(icons))
     throw new InvalidConfigError(file, undefined, `holds "icons" that is not an object.`);
   const builtIn = new Set<string>(iconNames);
+  const base = dirname(realpathSync(file));
   return Object.fromEntries(
     Object.entries(icons).map(([name, given]) => {
       if (builtIn.has(name)) throw new InvalidConfigError(file, name, "is a built-in icon's name.");
-      return [name, customIcon(file, name, given)];
+      return [name, customIcon(file, base, name, given)];
     }),
   );
 }
 
-function customIcon(file: string, name: string, given: unknown): CustomIcon {
-  if (typeof given === "string") return svgFileIcon(file, name, given);
+function customIcon(file: string, base: string, name: string, given: unknown): CustomIcon {
+  if (typeof given === "string") return svgFileIcon(file, resolve(base, given), name);
   const parsed = v.safeParse(iconContent.schema, given);
   if (parsed.success && typeof parsed.output === "object" && !("logo" in parsed.output)) {
     return parsed.output;
@@ -118,8 +119,7 @@ function customIcon(file: string, name: string, given: unknown): CustomIcon {
   );
 }
 
-function svgFileIcon(file: string, name: string, path: string): OwnLogo {
-  const svgFile = resolve(dirname(file), path);
+function svgFileIcon(file: string, svgFile: string, name: string): OwnLogo {
   let svg: string;
   try {
     svg = readFileSync(svgFile, "utf8");

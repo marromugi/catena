@@ -1,7 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { iconNames } from "../icon";
 import { UnreadableSvgError } from "../node";
 import { configFile, InvalidConfigError, readCustomIcons } from "./index";
 
@@ -22,7 +24,7 @@ const OWN_IMAGE = { href: "data:image/png;base64,AAAA" };
 let dir: string;
 let file: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "catena-config-"));
+  dir = realpathSync(mkdtempSync(join(tmpdir(), "catena-config-")));
   file = join(dir, "config.json");
 });
 afterEach(() => {
@@ -106,10 +108,79 @@ describe("readCustomIcons", () => {
     expect(Object.getPrototypeOf(icons)).toBe(Object.prototype);
   });
 
+  test("skips a byte order mark before the JSON", () => {
+    write(`\uFEFF${JSON.stringify({ icons: { photo: OWN_IMAGE } })}`);
+    expect(readCustomIcons(file)).toEqual({ photo: OWN_IMAGE });
+  });
+
+  test("reads an SVG file relative to where a linked config file really is", () => {
+    mkdirSync(join(dir, "real"));
+    mkdirSync(join(dir, "link"));
+    writeFileSync(join(dir, "real", "square.svg"), SQUARE_SVG);
+    writeFileSync(
+      join(dir, "real", "config.json"),
+      JSON.stringify({ icons: { near: "square.svg" } }),
+    );
+    symlinkSync(join(dir, "real", "config.json"), join(dir, "link", "config.json"));
+    expect(readCustomIcons(join(dir, "link", "config.json"))).toEqual({ near: SQUARE_LOGO });
+  });
+
+  test("throws what Node throws for a config it cannot read, other than a missing one", () => {
+    mkdirSync(file);
+    expect(() => readCustomIcons(file)).toThrow(expect.objectContaining({ code: "EISDIR" }));
+    writeFileSync(join(dir, "plain"), "");
+    expect(() => readCustomIcons(join(dir, "plain", "config.json"))).toThrow(
+      expect.objectContaining({ code: "ENOTDIR" }),
+    );
+  });
+
+  test("gives icons or InvalidConfigError for any text in the file", () => {
+    const text = fc.oneof(
+      fc.string(),
+      fc.json(),
+      fc.jsonValue().map((icons) => JSON.stringify({ icons })),
+    );
+    fc.assert(
+      fc.property(text, (given) => {
+        write(given);
+        let outcome: unknown;
+        try {
+          outcome = readCustomIcons(file);
+        } catch (error) {
+          outcome = error;
+        }
+        expect(outcome instanceof InvalidConfigError || !(outcome instanceof Error)).toBe(true);
+      }),
+    );
+  });
+
+  test("reads any icons under names that are not built in, and refuses each built-in name", () => {
+    const ICON = fc.constantFrom<unknown>(OWN_ICON, SQUARE_LOGO, OWN_IMAGE);
+    const notBuiltIn = fc
+      .string()
+      .filter((name) => !(iconNames as readonly string[]).includes(name));
+    fc.assert(
+      fc.property(fc.dictionary(notBuiltIn, ICON), (icons) => {
+        write({ icons });
+        expect(readCustomIcons(file)).toEqual(icons);
+      }),
+    );
+    fc.assert(
+      fc.property(fc.dictionary(notBuiltIn, ICON), fc.constantFrom(...iconNames), (icons, name) => {
+        write({ icons: { ...icons, [name]: OWN_IMAGE } });
+        expect(refusal()).toMatchObject({ file, icon: name });
+      }),
+    );
+  });
+
   test("refuses a built-in icon's name, naming it", () => {
     write({ icons: { mine: OWN_IMAGE, user: OWN_IMAGE } });
-    expect(refusal()).toMatchObject({ file, icon: "user" });
-    expect(refusal().message).toContain('icon "user"');
+    expect(refusal()).toMatchObject({
+      name: "InvalidConfigError",
+      file,
+      icon: "user",
+      message: `The catena config ${file}: icon "user" is a built-in icon's name.`,
+    });
   });
 
   test.each([
@@ -123,35 +194,65 @@ describe("readCustomIcons", () => {
     ["a logo without shapes", { ...SQUARE_LOGO, shapes: [] }],
   ])("refuses %s as an icon, naming the entry", (_, given) => {
     write({ icons: { mine: OWN_IMAGE, odd: given } });
-    expect(refusal()).toMatchObject({ file, icon: "odd" });
+    expect(refusal()).toMatchObject({
+      file,
+      icon: "odd",
+      message: `The catena config ${file}: icon "odd" is none of: a path to an SVG file, an OwnIcon, an OwnLogo, an OwnImage.`,
+    });
   });
 
   test("refuses an SVG file readSvgLogo refuses, naming the entry and keeping the cause", () => {
     writeFileSync(join(dir, "text.svg"), '<svg viewBox="0 0 1 1"><text>A</text></svg>');
     write({ icons: { lettered: "text.svg" } });
     const error = refusal();
-    expect(error).toMatchObject({ file, icon: "lettered" });
     expect(error.cause).toBeInstanceOf(UnreadableSvgError);
+    const reason = error.cause instanceof Error ? error.cause.message : "";
+    expect(error).toMatchObject({
+      file,
+      icon: "lettered",
+      message: `The catena config ${file}: icon "lettered" names ${join(dir, "text.svg")}: ${reason}`,
+    });
   });
 
-  test("refuses an SVG file that is not there, naming the entry", () => {
+  test("refuses an SVG file that is not there, naming the entry and keeping the cause", () => {
     write({ icons: { gone: "gone.svg" } });
-    expect(refusal()).toMatchObject({ file, icon: "gone" });
-    expect(refusal().message).toContain(join(dir, "gone.svg"));
+    const error = refusal();
+    expect(error.cause).toMatchObject({ code: "ENOENT" });
+    expect(error).toMatchObject({
+      file,
+      icon: "gone",
+      message: `The catena config ${file}: icon "gone" names ${join(dir, "gone.svg")}, which cannot be read.`,
+    });
   });
 
   test.each([
-    ["not JSON", "{ icons: }"],
-    ["empty", ""],
-    ["an array", "[]"],
-    ["a string", '"icons"'],
-    ["null", "null"],
-    ["holding another key", { icons: {}, icon: {} }],
-    ["holding icons that are an array", { icons: [OWN_IMAGE] }],
-    ["holding icons that are a string", { icons: "square.svg" }],
-  ])("refuses a file %s, naming the file", (_, config) => {
+    ["not JSON", "{ icons: }", "is not JSON."],
+    ["empty", "", "is not JSON."],
+    ["an array", "[]", "is not an object."],
+    ["a string", '"icons"', "is not an object."],
+    ["null", "null", "is not an object."],
+    ["holding another key", { icons: {}, icon: {} }, 'holds "icon", not a setting.'],
+    [
+      "holding icons that are an array",
+      { icons: [OWN_IMAGE] },
+      'holds "icons" that is not an object.',
+    ],
+    [
+      "holding icons that are a string",
+      { icons: "square.svg" },
+      'holds "icons" that is not an object.',
+    ],
+  ])("refuses a file %s, naming the file", (_, config, reason) => {
     write(config);
-    expect(refusal()).toMatchObject({ file, icon: undefined });
-    expect(refusal().message).toContain(file);
+    expect(refusal()).toMatchObject({
+      file,
+      icon: undefined,
+      message: `The catena config ${file} ${reason}`,
+    });
+  });
+
+  test("keeps JSON's own error as the cause of a file that is not JSON", () => {
+    write("{");
+    expect(refusal().cause).toBeInstanceOf(SyntaxError);
   });
 });
