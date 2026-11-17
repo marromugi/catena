@@ -34,6 +34,30 @@ test.each(Object.entries(filledIconPathData))("filled %s keeps its ink inside th
   expect(outside).toEqual([]);
 });
 
+/** Twice the signed area of each contour, from the points its steps end at. */
+const windings = (pathData: string) =>
+  pathData
+    .split("M")
+    .filter((contour) => contour.trim() !== "")
+    .map((contour) => {
+      const points = contour.split(/[LC]/).map((step) =>
+        step
+          .match(/-?[\d.]+/g)!
+          .map(Number)
+          .slice(-2),
+      );
+      return points.reduce((sum, [x = 0, y = 0], index) => {
+        const [nextX = 0, nextY = 0] = points[(index + 1) % points.length] ?? [];
+        return sum + x * nextY - nextX * y;
+      }, 0);
+    });
+
+test("the filled clock's hands wind against its disc, so they are cut out under either fill rule", () => {
+  const [disc = 0, hands = 0, ...rest] = windings(filledIconPathData.clock);
+  expect(rest).toEqual([]);
+  expect(Math.sign(disc) * Math.sign(hands)).toBe(-1);
+});
+
 test("IconName is only the names in the set", () => {
   // @ts-expect-error a name outside the set is not an IconName
   const notAnIcon: IconName = "not-an-icon";

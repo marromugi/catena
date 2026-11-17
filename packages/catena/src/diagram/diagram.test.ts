@@ -402,6 +402,14 @@ describe("drawDiagram with a header", () => {
     expect(none).toContain('filter="url(#catena-header-shadow)"');
   });
 
+  test("gives the right side the whole room when there is no title", () => {
+    const repository = setIn("repo name", "regular").width;
+    const svg = drawDiagram(empty(40 + repository + 40), new Map(), {
+      header: { fonts, repository: { name: "repo name" } },
+    });
+    expect(details(svg).map((d) => endsInEllipsis(d))).toEqual([false]);
+  });
+
   test("draws each run of spaces and line breaks as one space, and adds none where there is none", () => {
     const draw = titleAlone(800);
     expect(draw("このシーケンス図の\nタイトル")).toEqual(draw("このシーケンス図の タイトル"));
@@ -431,7 +439,7 @@ describe("drawDiagram with a header", () => {
   test("draws the filled clock in a box 21 across, filled light grey with its hands cut out", () => {
     const svg = headerOf({ capturedAt: "14:00" });
     expect(clockBox(svg)).toMatchObject({ top: 25.5, bottom: 46.5 });
-    expect(svg).toContain(' scale(0.875)" stroke="none" fill-rule="evenodd" fill="#b3b3b3"/>');
+    expect(svg).toContain(' scale(0.875)" stroke="none" fill="#b3b3b3"/>');
   });
 
   test("gives every document the same shadow filter, so each band keeps its whole shadow on a shared page", () => {

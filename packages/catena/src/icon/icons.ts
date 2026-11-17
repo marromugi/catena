@@ -26,7 +26,7 @@ export const iconStroke = {
 } as const;
 
 /** The SVG attributes every filled icon's path is drawn with, besides its `fill`. */
-export const filledIconPaint = { stroke: "none", "fill-rule": "evenodd" } as const;
+export const filledIconPaint = { stroke: "none" } as const;
 
 const icon = (...paths: readonly string[]) => paths.join(" ");
 
@@ -142,19 +142,20 @@ export const iconNames: readonly IconName[] = Object.keys(iconPathData).filter(i
 
 /**
  * The outline of the clock's hands, `width` wide with round ends: from `top` down to the centre, then to
- * `end` down and to the right at 45 degrees.
+ * `end` down and to the right at 45 degrees. It winds against `circle`, so it is cut out of a disc under
+ * either fill rule.
  */
 function clockHands(top: number, end: number, width: number): string {
   const half = width / 2;
   const centre: Point = [12, 12];
   return closedCurve(
-    [12 - half, top],
-    ...arc([12, top], half, 180, 360),
+    [12 + half, top],
+    ...arc([12, top], half, 360, 180),
+    onCircle(centre, half, 180),
+    ...arc(centre, half, 180, 135),
+    onCircle([end, end], half, 135),
+    ...arc([end, end], half, 135, -45),
     [12 + half, 12 - half * (Math.SQRT2 - 1)],
-    onCircle([end, end], half, 315),
-    ...arc([end, end], half, 315, 495),
-    onCircle(centre, half, 135),
-    ...arc(centre, half, 135, 180),
   );
 }
 
