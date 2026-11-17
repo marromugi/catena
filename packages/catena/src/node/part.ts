@@ -1,14 +1,14 @@
 import type * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Size } from "../place";
-import type { SvgElement } from "./svg";
+import type { NewId, SvgElement } from "./svg";
 import type { Theme } from "./theme";
 
 /** A part laid out for some content: the size it takes, and how it draws itself. */
 export interface Block {
   readonly size: Size;
   /** The elements drawing the part in `box`, which is at least as large as `size`. */
-  draw(box: Rect): readonly SvgElement[];
+  draw(box: Rect, newId: NewId): readonly SvgElement[];
 }
 
 /**

@@ -23,6 +23,12 @@ export interface BadgeLook extends TextLook, Outline {
   readonly paddingY: number;
 }
 
+/** How an image looks. It fills the width it is given, cut to `aspectRatio` (width over height). */
+export interface ImageLook {
+  readonly aspectRatio: number;
+  readonly radius: number;
+}
+
 /** The names a badge's or a status dot's colouring is chosen by. */
 export const TONES = ["plain", "red"] as const;
 export type Tone = (typeof TONES)[number];
@@ -44,6 +50,7 @@ export interface Theme {
   readonly body: TextLook;
   readonly badges: Readonly<Record<Tone, BadgeLook>>;
   readonly dot: DotLook;
+  readonly image: ImageLook;
 }
 
 /** Any look of a {@link Theme} but its fonts, each given in part. */
@@ -58,6 +65,7 @@ export interface ThemeOverrides {
     readonly diameter?: number;
     readonly colors?: Partial<Record<Tone, string>>;
   };
+  readonly image?: Partial<ImageLook>;
 }
 
 const DEFAULT_CARD: CardLook = {
@@ -82,6 +90,7 @@ const DEFAULT_BADGES: Record<Tone, BadgeLook> = {
   red: { ...BADGE_TEXT, color: "#e5484d", fill: "#fde4e4", stroke: "#fbd0d0", strokeWidth: 1 },
 };
 const DEFAULT_DOT_COLORS: Record<Tone, string> = { plain: "#8c8c8c", red: "#e5484d" };
+const DEFAULT_IMAGE: ImageLook = { aspectRatio: 3 / 2, radius: 6 };
 
 function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T {
   const given = Object.entries(overrides).filter(([, value]) => value !== undefined);
@@ -105,5 +114,6 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
       diameter: overrides.dot?.diameter ?? 16,
       colors: laidOver(DEFAULT_DOT_COLORS, overrides.dot?.colors),
     },
+    image: laidOver(DEFAULT_IMAGE, overrides.image),
   };
 }

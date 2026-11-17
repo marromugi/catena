@@ -2,7 +2,7 @@ import * as v from "valibot";
 import { layoutText, textPathData, type TextLayout } from "../text";
 import type { Part } from "./part";
 import { element, outlinedRect } from "./svg";
-import { TONES, type BadgeLook, type TextLook, type Theme } from "./theme";
+import { TONES, type BadgeLook, type ImageLook, type TextLook, type Theme } from "./theme";
 
 const TEXT = v.string();
 
@@ -86,3 +86,39 @@ export const statusDot: Part<typeof TONE> = {
     };
   },
 };
+
+const HREF = v.string();
+
+/**
+ * An image whose content is its href, written into the SVG as given: catena never fetches it. It fills
+ * the width it is given at the look's aspect ratio, cut to that shape about its centre, with round
+ * corners, and draws at the top-left of its box.
+ */
+export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF> {
+  return {
+    schema: HREF,
+    layout(href, theme, maxWidth) {
+      const { aspectRatio, radius } = lookOf(theme);
+      const width = Math.max(0, maxWidth);
+      const size = { width, height: width / aspectRatio };
+      return {
+        size,
+        draw: (box, newId) => {
+          const area = { x: box.x, y: box.y, ...size };
+          const clip = newId();
+          return [
+            element("clipPath", { id: clip }, [element("rect", { ...area, rx: radius })]),
+            element("image", {
+              ...area,
+              href,
+              preserveAspectRatio: "xMidYMid slice",
+              "clip-path": `url(#${clip})`,
+            }),
+          ];
+        },
+      };
+    },
+  };
+}
+
+export const image = imagePart((theme) => theme.image);

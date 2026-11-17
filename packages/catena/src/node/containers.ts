@@ -17,14 +17,17 @@ export function frame<TSchema extends v.GenericSchema>(child: Part<TSchema>): Pa
           width: Math.max(maxWidth, inner.size.width + 2 * padding),
           height: inner.size.height + 2 * padding,
         },
-        draw: (box) => [
+        draw: (box, newId) => [
           outlinedRect(box, radius, theme.card),
-          ...inner.draw({
-            x: box.x + padding,
-            y: box.y + padding,
-            width: box.width - 2 * padding,
-            height: box.height - 2 * padding,
-          }),
+          ...inner.draw(
+            {
+              x: box.x + padding,
+              y: box.y + padding,
+              width: box.width - 2 * padding,
+              height: box.height - 2 * padding,
+            },
+            newId,
+          ),
         ],
       };
     },
@@ -100,9 +103,12 @@ export function stack<const TParts extends Record<string, Part>>(
           width: Math.max(0, ...placed.map(({ block }) => block.size.width)),
           height: Math.max(0, next - theme.gap),
         },
-        draw: (box) =>
+        draw: (box, newId) =>
           placed.flatMap(({ block, top }) =>
-            block.draw({ x: box.x, y: box.y + top, width: box.width, height: block.size.height }),
+            block.draw(
+              { x: box.x, y: box.y + top, width: box.width, height: block.size.height },
+              newId,
+            ),
           ),
       };
     },
@@ -157,12 +163,15 @@ export function row<const TParts extends Record<string, Part>>(
           width: grown === undefined ? fixedWidth + gaps : fixedWidth + gaps + growWidth(maxWidth),
           height: Math.max(0, ...shown.map(({ block }) => block.size.height)),
         },
-        draw: (box) => {
+        draw: (box, newId) => {
           let x = box.x;
           return shown.flatMap(({ key, block }) => {
             const width = key === grow ? growWidth(box.width) : block.size.width;
             const { height } = block.size;
-            const drawn = block.draw({ x, y: box.y + (box.height - height) / 2, width, height });
+            const drawn = block.draw(
+              { x, y: box.y + (box.height - height) / 2, width, height },
+              newId,
+            );
             x += width + theme.gap;
             return drawn;
           });

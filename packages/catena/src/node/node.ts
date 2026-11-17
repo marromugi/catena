@@ -3,8 +3,8 @@ import type { Rect } from "../layout";
 import type { Leaf } from "../place";
 import type { Part } from "./part";
 import { frame, optional, row, stack } from "./containers";
-import { bodyText, redBadge, statusDot, title } from "./parts";
-import { element, writeSvg } from "./svg";
+import { bodyText, image, redBadge, statusDot, title } from "./parts";
+import { element, idsOfNode, writeSvg } from "./svg";
 import type { Theme } from "./theme";
 
 /** The content given for a node is not what its kind shows. */
@@ -15,7 +15,10 @@ export class InvalidNodeContentError extends Error {
 /** A node of some kind, measured: the `Leaf` to give `placeGraph`, and how to draw it at its placed box. */
 export interface Node {
   readonly leaf: Leaf;
-  /** The node as SVG elements, in a `<g>`. */
+  /**
+   * The node as SVG elements, in a `<g>`. The ids its elements carry are unique among the nodes of one
+   * graph; the same node drawn twice into one document repeats them.
+   */
   draw(box: Rect): string;
 }
 
@@ -29,6 +32,9 @@ export const titleBadgeCard = frame(row({ title, badge: optional(redBadge) }, { 
 export const titleBodyBadgeCard = frame(
   stack({ title, body: bodyText, badge: optional(redBadge) }),
 );
+
+/** A card with an image over a title over wrapping body text. */
+export const imageTitleBodyCard = frame(stack({ image, title, body: bodyText }));
 
 /** A card with a title, and a status dot before it on the nodes that have a status. */
 export const statusTitleCard = frame(
@@ -56,6 +62,6 @@ export function buildNode<TSchema extends v.GenericSchema>(
   const block = kind.layout(parsed.output, theme, theme.nodeWidth);
   return {
     leaf: { id, size: block.size },
-    draw: (box) => writeSvg(element("g", {}, block.draw(box))),
+    draw: (box) => writeSvg(element("g", {}, block.draw(box, idsOfNode(id)))),
   };
 }
