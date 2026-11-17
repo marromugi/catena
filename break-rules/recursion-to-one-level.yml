@@ -1,0 +1,5 @@
+id: recursion-to-one-level
+language: TypeScript
+rule:
+  pattern: "[$NODE, ...$WALK($NODE.children)]"
+fix: "[$NODE, ...$NODE.children]"
