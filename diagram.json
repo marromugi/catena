@@ -1,0 +1,1 @@
+{"direction":"right","nodes":[{"id":"app","kind":"iconTitleCard","content":{"icon":"cross","title":"Custom OwnIcon"}},{"id":"mk","kind":"iconTile","content":{"icon":"tealmark","label":{"caption":"Custom SVG"}}},{"id":"b","kind":"iconTitleCard","content":{"icon":"spark","title":"Built-in"}}],"edges":[{"id":"e1","from":"app","to":"mk"},{"id":"e2","from":"mk","to":"b"}]}
