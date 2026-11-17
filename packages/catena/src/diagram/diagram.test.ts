@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
@@ -9,6 +10,7 @@ import type { Layout, Rect } from "../layout";
 import { writeSvg, type Node } from "../node";
 import { placeGraph } from "../place";
 import { layoutText, textPathData, Typeface } from "../text";
+import { GITHUB_MARK } from "./github-mark";
 import { DEFAULT_DOT_GRID, DEFAULT_EDGE_PAINT, drawDiagram, type DiagramHeader } from "./index";
 
 const spacing = { nodeGap: 40, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 16 };
@@ -281,6 +283,25 @@ function clockBox(svg: string): Span | undefined {
   return { left: x, right: x + 24 * scale, top: y, bottom: y + 24 * scale };
 }
 
+/** The box the GitHub mark is drawn in, when it is: its path as it is, scaled evenly, filled black, nothing else. */
+function markBox(svg: string): Span | undefined {
+  const drawn = Array.from(
+    svg.matchAll(
+      new RegExp(
+        `<path d="${GITHUB_MARK.pathData}" transform="translate\\(([^ ]+) ([^ ]+)\\) scale\\(([^)]+)\\)" fill="#000000"/>`,
+        "g",
+      ),
+    ),
+  );
+  if (svg.split(GITHUB_MARK.pathData).length - 1 !== drawn.length) {
+    throw new Error("The mark is drawn in some other way.");
+  }
+  const [match] = drawn;
+  if (match === undefined) return undefined;
+  const [x = 0, y = 0, scale = 0] = match.slice(1).map(Number);
+  return { left: x, right: x + 24 * scale, top: y, bottom: y + 24 * scale };
+}
+
 /** Whether the last three contours of `pathData` are three small dots on one line, as `…` is. */
 function endsInEllipsis(pathData: string): boolean {
   const dots = pathData
@@ -405,10 +426,10 @@ describe("drawDiagram with a header", () => {
     expect(draw("A\nB")).not.toEqual(draw("AB"));
   });
 
-  test("draws no text holding only spaces or drawing nothing, and no clock for such a time", () => {
+  test("draws no text holding only spaces or drawing nothing, and no clock or mark for such a text", () => {
     const blank = headerOf({
       title: " \n ",
-      repository: { name: ZERO_WIDTH_SPACE },
+      repository: { name: ZERO_WIDTH_SPACE, mark: "github" },
       capturedAt: ZERO_WIDTH_SPACE,
     });
     expect(blank).toBe(headerOf({}));
@@ -431,6 +452,70 @@ describe("drawDiagram with a header", () => {
       ' scale(0.75)" fill="none" stroke-width="2.3333333333333335" stroke-linecap="round" ' +
         'stroke-linejoin="round" stroke="#b3b3b3"/>',
     );
+  });
+
+  test("draws the GitHub mark only when the repository asks for it", () => {
+    expect(markBox(headerOf({ repository: { name: "repo" } }))).toBeUndefined();
+    expect(markBox(headerOf({ title: "Title", capturedAt: "14:00" }))).toBeUndefined();
+    expect(markBox(headerOf({ repository: { name: "repo", mark: "github" } }))).toBeDefined();
+  });
+
+  test("draws the GitHub mark's path from Octicons unchanged", () => {
+    expect(createHash("sha256").update(GITHUB_MARK.pathData).digest("hex")).toBe(
+      "fd34a5c2908d8dfb0c72c06ccb7de99c7085c2070d1c22682cd4073c960d9873",
+    );
+  });
+
+  test("draws the GitHub mark 22 across in black, centred in the band, 10 before the repository", () => {
+    const svg = drawDiagram(empty(800), new Map(), {
+      header: { ...header, repository: { name: "repo name", mark: "github" } },
+    });
+    const mark = markBox(svg);
+    expect(mark).toEqual({
+      left: expect.any(Number),
+      right: expect.any(Number),
+      top: 25,
+      bottom: 47,
+    });
+    const [time = "", repository = ""] = details(svg);
+    expect(details(svg)).toEqual(details(drawDiagram(empty(800), new Map(), { header })));
+    expect(mark?.right).toBeCloseTo((mark?.left ?? 0) + 22, 10);
+    expect(startsAt(spanOf(repository), (mark?.right ?? 0) + 10)).toBe(true);
+    const [title = ""] = titles(svg);
+    const spans = [
+      spanOf(title),
+      mark ?? spanOf(""),
+      spanOf(repository),
+      clockBox(svg) ?? spanOf(""),
+      spanOf(time),
+    ];
+    expect(apart(spans)).toBe(true);
+  });
+
+  test("cuts the repository after its mark and keeps the mark whole", () => {
+    const svg = drawDiagram(empty(330), new Map(), {
+      header: { ...header, repository: { name: "marromugi/catena", mark: "github" } },
+    });
+    const [, repository = ""] = details(svg);
+    expect(endsInEllipsis(repository)).toBe(true);
+    const mark = markBox(svg);
+    expect((mark?.right ?? 0) - (mark?.left ?? 0)).toBeCloseTo(22, 10);
+    // The longest start that fits: one more letter of 12 at most would pass the room's end.
+    expect(mark?.left).toBeGreaterThanOrEqual(40);
+    expect(mark?.left).toBeLessThan(40 + 12);
+  });
+
+  test("leaves the mark out with the repository when the mark, one character and … don't fit", () => {
+    const room = (setIn("…", "regular").width + setIn("W…", "regular").width) / 2;
+    const width = 40 + 40 + 22 + 10 + room;
+    const marked = drawDiagram(empty(width), new Map(), {
+      header: { fonts, repository: { name: "WWW", mark: "github" } },
+    });
+    expect([details(marked).length, markBox(marked)]).toEqual([0, undefined]);
+    const unmarked = drawDiagram(empty(width), new Map(), {
+      header: { fonts, repository: { name: "WWW" } },
+    });
+    expect(details(unmarked)).toHaveLength(1);
   });
 
   test("gives every document the same shadow filter, so each band keeps its whole shadow on a shared page", () => {
@@ -534,18 +619,25 @@ describe("drawDiagram with a header: any texts at any width", () => {
   );
   const headers = fc.record({
     title: text,
-    repository: text.map((name) => (name === undefined ? undefined : { name })),
+    repository: fc
+      .tuple(text, fc.option(fc.constant("github" as const), { nil: undefined }))
+      .map(([name, mark]) => (name === undefined ? undefined : { name, mark })),
     capturedAt: text,
   });
 
-  test("keeps every text and the clock in the band, left to right without touching", () => {
+  test("keeps every text, the clock and the mark in the band, left to right without touching", () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 900 }), headers, (width, given) => {
         const svg = drawDiagram(empty(width), new Map(), { header: { fonts, ...given } });
         const clock = clockBox(svg);
         const [first, second] = details(svg).map(spanOf);
         const [time, repository] = clock === undefined ? [undefined, first] : [first, second];
-        const spans = [...titles(svg).map(spanOf), repository, clock, time].filter(
+        const mark = markBox(svg);
+        expect(mark !== undefined).toBe(
+          given.repository?.mark === "github" && repository !== undefined,
+        );
+        expect(mark === undefined ? 22 : mark.right - mark.left).toBeCloseTo(22, 10);
+        const spans = [...titles(svg).map(spanOf), mark, repository, clock, time].filter(
           (span) => span !== undefined,
         );
         for (const span of spans) {

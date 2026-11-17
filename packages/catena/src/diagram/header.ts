@@ -1,10 +1,16 @@
 import { iconGrid, iconPathData, iconStroke } from "../icon";
 import { element, type SvgElement, type TextLook, type Theme } from "../node";
 import { layoutText, textPathData, type TextLayout } from "../text";
+import { GITHUB_MARK } from "./github-mark";
 
 /** The repository a diagram was drawn from, as its header names it. */
 export interface HeaderRepository {
   readonly name: string;
+  /**
+   * `"github"` draws the GitHub mark before `name`, for a repository on GitHub. The mark is GitHub's
+   * trademark: use it only for that, following https://brand.github.com/foundations/logo.
+   */
+  readonly mark?: "github";
 }
 
 /**
@@ -16,7 +22,7 @@ export interface HeaderRepository {
  * When they don't all fit, the capture time keeps its whole width first, then the repository, then the
  * title, each from what the one before left. A text wider than its room is cut to the longest start that
  * fits with `…` after it, and left out when no start that draws something fits with `…`; the clock goes
- * with its time.
+ * with its time, and the repository's mark with its name, each kept whole.
  */
 export interface DiagramHeader {
   readonly fonts: Theme["fonts"];
@@ -38,6 +44,8 @@ const LOOK = {
   clock: { size: 18, strokeWidth: 1.75, color: "#b3b3b3" },
   /** Between the clock and the time after it. */
   iconGap: 8,
+  /** Black on the white band: the brand allows the mark black or white only. */
+  githubMark: { size: 22, gap: 10, color: "#000000" },
   /** Between the title, the repository and the clock, next to each other. */
   itemGap: 40,
 } as const;
@@ -88,7 +96,13 @@ export function drawHeader(width: number, header: DiagramHeader): SvgElement[] {
     drawn.push(...time.drawn);
     end = time.left - itemGap;
   }
-  const repository = endingAt(end, header.repository?.name, LOOK.detail, header);
+  const repository = endingAt(
+    end,
+    header.repository?.name,
+    LOOK.detail,
+    header,
+    header.repository?.mark === "github" ? GITHUB_MARK_ICON : undefined,
+  );
   if (repository !== undefined) {
     drawn.push(...repository.drawn);
     end = repository.left - itemGap;
@@ -168,6 +182,18 @@ const CLOCK: LeadingIcon = {
       "stroke-width": strokeWidth / scale,
     });
   },
+};
+
+/** The mark as it is, scaled evenly into its box, filled in one colour, with no stroke or filter. */
+const GITHUB_MARK_ICON: LeadingIcon = {
+  size: LOOK.githubMark.size,
+  gap: LOOK.githubMark.gap,
+  draw: (x, y) =>
+    element("path", {
+      d: GITHUB_MARK.pathData,
+      transform: `translate(${x} ${y}) scale(${LOOK.githubMark.size / GITHUB_MARK.grid})`,
+      fill: LOOK.githubMark.color,
+    }),
 };
 
 const drawsNothing = (text: TextLayout) => textPathData(text, 0, 0) === "";
