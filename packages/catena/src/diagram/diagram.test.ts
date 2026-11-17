@@ -236,6 +236,22 @@ const headerOf = (given: Omit<DiagramHeader, "fonts">) =>
 const titleAlone = (width: number) => (title: string) =>
   titles(drawDiagram(empty(width), new Map(), { header: { fonts, title } }));
 
+/** The repository `WWWW` drawn in a header holding only it, `width` wide. */
+const repositoryAt = (width: number, mark?: "github") =>
+  details(
+    drawDiagram(empty(width), new Map(), {
+      header: { fonts, repository: { name: "WWWW", mark } },
+    }),
+  );
+
+/** The title `WWWW` drawn beside the repository `repo` and the time `14:00`, `width` wide. */
+const titleBesideAll = (width: number, mark?: "github") =>
+  titles(
+    drawDiagram(empty(width), new Map(), {
+      header: { fonts, title: "WWWW", repository: { name: "repo", mark }, capturedAt: "14:00" },
+    }),
+  );
+
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
 
 /** `text` set on one line, 12 high, in the fonts of `weight`. */
@@ -283,7 +299,22 @@ function clockBox(svg: string): Span | undefined {
   return { left: x, right: x + 24 * scale, top: y, bottom: y + 24 * scale };
 }
 
-/** The box the GitHub mark is drawn in, when it is: its path as it is, scaled evenly, filled black, nothing else. */
+/** The elements still open at `index` in `svg`, outermost first. */
+function openAt(svg: string, index: number): string[] {
+  const open: string[] = [];
+  for (const [, close, name = "", selfClosing] of svg
+    .slice(0, index)
+    .matchAll(/<(\/?)([a-zA-Z]+)[^>]*?(\/?)>/g)) {
+    if (close === "/") open.pop();
+    else if (selfClosing !== "/") open.push(name);
+  }
+  return open;
+}
+
+/**
+ * The box the GitHub mark is drawn in, when it is: its path as it is, scaled evenly, filled black,
+ * nothing else, and inside no element but the document.
+ */
 function markBox(svg: string): Span | undefined {
   const drawn = Array.from(
     svg.matchAll(
@@ -295,6 +326,9 @@ function markBox(svg: string): Span | undefined {
   );
   if (svg.split(GITHUB_MARK.pathData).length - 1 !== drawn.length) {
     throw new Error("The mark is drawn in some other way.");
+  }
+  if (drawn.some(({ index }) => openAt(svg, index).join() !== "svg")) {
+    throw new Error("The mark is drawn inside another element.");
   }
   const [match] = drawn;
   if (match === undefined) return undefined;
@@ -516,6 +550,55 @@ describe("drawDiagram with a header", () => {
       header: { fonts, repository: { name: "WWW" } },
     });
     expect(details(unmarked)).toHaveLength(1);
+  });
+
+  test("draws the GitHub mark inside no element but the document, so no group's effect reaches it", () => {
+    const svg = headerOf({ repository: { name: "repo", mark: "github" } });
+    const index = svg.indexOf(`<path d="${GITHUB_MARK.pathData}"`);
+    expect(index).toBeGreaterThan(-1);
+    expect(openAt(svg, index)).toEqual(["svg"]);
+  });
+
+  test("draws the clock before its time and the mark before its name", () => {
+    const svg = drawDiagram(empty(800), new Map(), {
+      header: { ...header, repository: { name: "repo name", mark: "github" } },
+    });
+    const [time = "", repository = ""] = details(svg);
+    const at = (d: string) => svg.indexOf(`<path d="${d}"`);
+    expect(at(iconPathData.clock)).toBeLessThan(at(time));
+    expect(at(GITHUB_MARK.pathData)).toBeLessThan(at(repository));
+  });
+
+  test("draws a header with a title, a repository and a time and no mark as these exact bytes", () => {
+    const svg = drawDiagram(empty(800), new Map(), { header });
+    expect(createHash("sha256").update(svg).digest("hex")).toBe(
+      "5a63d60af24499cd1a13bf1b3a4211cbc9895538a1cc1790ac6a456629ebe3f8",
+    );
+  });
+
+  test("draws a repository exactly as wide as its room whole, with or without its mark", () => {
+    const name = setIn("WWWW", "regular").width;
+    for (const [width, mark] of [
+      [80 + name, undefined],
+      [80 + 22 + 10 + name, "github"],
+    ] as const) {
+      expect(repositoryAt(width, mark).map(endsInEllipsis)).toEqual([false]);
+      expect(repositoryAt(width - 0.5, mark).map(endsInEllipsis)).toEqual([true]);
+    }
+  });
+
+  test("gives the title exactly the room the repository, its mark, the clock and the time leave", () => {
+    const title = setIn("WWWW", "bold").width;
+    const repository = setIn("repo", "regular").width;
+    const time = setIn("14:00", "regular").width;
+    const leftByRest = repository + 40 + 18 + 8 + time + 40;
+    for (const [width, mark] of [
+      [40 + title + 40 + leftByRest, undefined],
+      [40 + title + 40 + 22 + 10 + leftByRest, "github"],
+    ] as const) {
+      expect(titleBesideAll(width, mark).map(endsInEllipsis)).toEqual([false]);
+      expect(titleBesideAll(width - 0.5, mark).map(endsInEllipsis)).toEqual([true]);
+    }
   });
 
   test("gives every document the same shadow filter, so each band keeps its whole shadow on a shared page", () => {
