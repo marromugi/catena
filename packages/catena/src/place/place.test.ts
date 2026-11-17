@@ -357,7 +357,7 @@ describe("placeGraph: a group", () => {
   test.each([
     ["out of the group", "A>C", [10, 10, 96, 126], [33, 156, 50, 30]],
     ["from the group itself", "G>C", [10, 10, 90, 120], [30, 150, 50, 30]],
-    ["out of a group inside it", "B>C", [10, 10, 90, 120], [30, 150, 50, 30]],
+    ["out of a group inside it", "B>C", [10, 10, 102, 132], [36, 162, 50, 30]],
   ])("is put before a node that an edge %s leads to", (_, link, groupBox, nodeBox) => {
     const placement = place(
       "down",
@@ -1605,8 +1605,15 @@ describe("placeGraph: an edge into or out of a group that flows as the grid arou
 
     expect(paths(placement)).toEqual({
       "C>H #0": [
-        [55, 40],
-        [55, 76],
+        [58, 40],
+        [58, 76],
+      ],
+      "C>A #1": [
+        [58, 40],
+        [58, 84],
+        [28, 84],
+        [28, 107],
+        [36, 107],
       ],
     });
   });
@@ -4030,6 +4037,397 @@ describe("placeGraph: a node too small for an edge that crosses the border of it
   });
 });
 
+describe("placeGraph: an edge whose end lies in a group inside a group", () => {
+  test("comes in through the middle of the side of each group, when every group flows as the grid around it does", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "down", [group("H", "down", [leaf("A", 50, 30)])])],
+        ["X>A"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [30, 10, 50, 30],
+      G: [10, 60, 90, 82],
+      H: [20, 76, 70, 56],
+      A: [30, 92, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [55, 40],
+        [55, 92],
+      ],
+    });
+  });
+
+  test("comes in through the middle of the side of each group, when their flows alternate", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "right", [group("H", "down", [leaf("A", 50, 30)])])],
+        ["X>A"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [36, 10, 50, 30],
+      G: [10, 60, 102, 82],
+      H: [26, 76, 76, 56],
+      A: [42, 92, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [61, 40],
+        [61, 68],
+        [18, 68],
+        [18, 104],
+        [34, 104],
+        [34, 84],
+        [67, 84],
+        [67, 92],
+      ],
+    });
+  });
+
+  test("goes out through the middle of the side of each group, when their flows alternate", () => {
+    const placement = checked(
+      place(
+        "down",
+        [group("G", "right", [group("H", "down", [leaf("A", 50, 30)])]), leaf("Y", 50, 30)],
+        ["A>Y"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 102, 82],
+      H: [20, 20, 76, 56],
+      A: [30, 30, 50, 30],
+      Y: [36, 112, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [55, 60],
+        [55, 68],
+        [88, 68],
+        [88, 48],
+        [104, 48],
+        [104, 84],
+        [61, 84],
+        [61, 112],
+      ],
+    });
+  });
+
+  test("comes in through groups whose flows alternate in a grid that flows right", () => {
+    const placement = checked(
+      place(
+        "right",
+        [leaf("X", 50, 30), group("G", "down", [group("H", "right", [leaf("A", 50, 30)])])],
+        ["X>A"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [10, 36, 50, 30],
+      G: [80, 10, 102, 82],
+      H: [96, 26, 76, 56],
+      A: [112, 42, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [60, 51],
+        [88, 51],
+        [88, 18],
+        [134, 18],
+        [134, 34],
+        [104, 34],
+        [104, 57],
+        [112, 57],
+      ],
+    });
+  });
+
+  test("runs out of two groups and into two others", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          group("G", "down", [group("H", "right", [leaf("A", 50, 30)])]),
+          group("K", "right", [group("L", "down", [leaf("B", 50, 30)])]),
+        ],
+        ["A>B"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [13, 10, 96, 82],
+      H: [23, 20, 76, 56],
+      A: [33, 30, 50, 30],
+      K: [10, 112, 102, 82],
+      L: [26, 128, 76, 56],
+      B: [42, 144, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>B #0": [
+        [83, 45],
+        [91, 45],
+        [91, 68],
+        [61, 68],
+        [61, 120],
+        [18, 120],
+        [18, 156],
+        [34, 156],
+        [34, 136],
+        [67, 136],
+        [67, 144],
+      ],
+    });
+  });
+
+  test("comes in through three groups", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          leaf("X", 50, 30),
+          group("G", "right", [group("H", "down", [group("K", "right", [leaf("A", 50, 30)])])]),
+        ],
+        ["X>A"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [49, 10, 50, 30],
+      G: [10, 60, 128, 108],
+      H: [26, 76, 102, 82],
+      K: [42, 92, 76, 56],
+      A: [58, 108, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [74, 40],
+        [74, 68],
+        [18, 68],
+        [18, 117],
+        [34, 117],
+        [34, 84],
+        [80, 84],
+        [80, 100],
+        [50, 100],
+        [50, 123],
+        [58, 123],
+      ],
+    });
+  });
+
+  test("runs from a node of a group into two groups inside it", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          group("G", "down", [
+            leaf("A", 50, 30),
+            group("H", "right", [group("K", "down", [leaf("B", 50, 30)])]),
+          ]),
+        ],
+        ["A>B"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [10, 10, 122, 152],
+      A: [46, 20, 50, 30],
+      H: [20, 70, 102, 82],
+      K: [36, 86, 76, 56],
+      B: [52, 102, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>B #0": [
+        [71, 50],
+        [71, 78],
+        [28, 78],
+        [28, 114],
+        [44, 114],
+        [44, 94],
+        [77, 94],
+        [77, 102],
+      ],
+    });
+  });
+
+  test("goes back out of two groups to a node before them", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("G", "right", [group("H", "down", [leaf("A", 50, 30)])])],
+        ["X>A", "A>X"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [42, 16, 50, 30],
+      G: [10, 66, 114, 94],
+      H: [26, 82, 82, 62],
+      A: [42, 98, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [67, 46],
+        [67, 74],
+        [18, 74],
+        [18, 113],
+        [34, 113],
+        [34, 90],
+        [67, 90],
+        [67, 98],
+      ],
+      "A>X #1": [
+        [67, 128],
+        [67, 136],
+        [100, 136],
+        [100, 113],
+        [116, 113],
+        [116, 152],
+        [67, 152],
+        [67, 168],
+        [132, 168],
+        [132, 8],
+        [67, 8],
+        [67, 16],
+      ],
+    });
+  });
+
+  test("shares the stretch through the border with an edge to another node of the outer group", () => {
+    const placement = checked(
+      place(
+        "down",
+        [
+          leaf("X", 50, 30),
+          group("G", "right", [group("H", "down", [leaf("A", 50, 30)]), leaf("B", 50, 30)]),
+        ],
+        ["X>A", "X>B"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      X: [38.5, 10, 50, 30],
+      G: [10, 60, 107, 132],
+      H: [31, 76, 76, 56],
+      A: [47, 92, 50, 30],
+      B: [44, 152, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "X>A #0": [
+        [63.5, 40],
+        [63.5, 68],
+        [18, 68],
+        [18, 104],
+        [39, 104],
+        [39, 84],
+        [72, 84],
+        [72, 92],
+      ],
+      "X>B #1": [
+        [63.5, 40],
+        [63.5, 68],
+        [23, 68],
+        [23, 167],
+        [44, 167],
+      ],
+    });
+  });
+
+  test("goes out of and comes back into three groups whose flows alternate", () => {
+    const placement = checked(
+      place(
+        "right",
+        [
+          group("G", "down", [
+            group("H", "right", [group("K", "down", [leaf("A", 50, 30), leaf("C", 50, 30)])]),
+          ]),
+          leaf("Y", 50, 30),
+        ],
+        ["A>Y", "Y>C"],
+      ),
+    );
+
+    expect(boxes(placement)).toEqual({
+      G: [16, 10, 216, 126],
+      H: [32, 26, 184, 94],
+      K: [48, 42, 152, 62],
+      A: [64, 58, 50, 30],
+      C: [134, 58, 50, 30],
+      Y: [252, 58, 50, 30],
+    });
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [89, 88],
+        [89, 96],
+        [192, 96],
+        [192, 73],
+        [208, 73],
+        [208, 112],
+        [124, 112],
+        [124, 128],
+        [224, 128],
+        [224, 73],
+        [252, 73],
+      ],
+      "Y>C #1": [
+        [302, 73],
+        [310, 73],
+        [310, 144],
+        [8, 144],
+        [8, 73],
+        [24, 73],
+        [24, 18],
+        [124, 18],
+        [124, 34],
+        [40, 34],
+        [40, 73],
+        [56, 73],
+        [56, 50],
+        [159, 50],
+        [159, 58],
+      ],
+    });
+  });
+
+  test("is refused when the node inside is too short between an edge in and an edge out", () => {
+    expect(() =>
+      place(
+        "down",
+        [
+          leaf("B", 50, 30),
+          group("G", "right", [group("H", "down", [leaf("N", 50, 4)])]),
+          leaf("C", 50, 30),
+        ],
+        ["B>N", "N>C"],
+      ),
+    ).toThrow(
+      new InvalidGraphError(
+        'Node "N" is 4 long between the edges that enter it and the edges that leave it, less than the gap of 5 between edges.',
+      ),
+    );
+  });
+
+  test("is refused when the node inside is too narrow for it", () => {
+    expect(() =>
+      place(
+        "down",
+        [leaf("B", 50, 30), group("G", "right", [group("H", "down", [leaf("N", 9, 30)])])],
+        ["B>N"],
+      ),
+    ).toThrow(
+      new InvalidGraphError(
+        'Node "N" is 9 across where its edges meet it, too narrow for an edge to keep 5 from its corners.',
+      ),
+    );
+  });
+});
+
 describe("placeGraph: a graph that cannot be laid out", () => {
   test.each([
     ["two nodes with one id", graph("down", [leaf("A", 50, 30), leaf("A", 50, 30)]), '"A"'],
@@ -4217,8 +4615,8 @@ describe("placeGraph: a node too small for its edges", () => {
   test("is accepted however small when no edge that is drawn meets it", () => {
     const apart = place(
       "down",
-      [group("G", "right", [group("K", "right", [leaf("N", 1, 1)])]), leaf("B", 50, 30)],
-      ["N>B", "B>N"],
+      [group("G", "right", [group("K", "right", [leaf("N", 1, 1)])])],
+      ["G>N", "N>G"],
     );
 
     expect(paths(apart)).toEqual({});
@@ -4345,8 +4743,8 @@ describe("placeGraph: any graph", () => {
     );
   });
 
-  test("draws the edges whose ends are each a node of one grid or a child of a group of that grid, except between a group and its child, and no others, in the order they are listed", () => {
-    /** Each node with the groups around it, outermost first. */
+  test("draws every edge except one between a group and a node inside it, and no others, in the order they are listed", () => {
+    /** Each node with the groups around it. */
     const groupsAround = (
       nodes: readonly GraphNode[],
       around: readonly string[] = [],
@@ -4359,22 +4757,11 @@ describe("placeGraph: any graph", () => {
     fc.assert(
       fc.property(graphs, (any) => {
         const around = new Map(groupsAround(any.nodes));
-        const expected = any.edges.filter((edge) => {
-          const from = around.get(edge.from) ?? [];
-          const to = around.get(edge.to) ?? [];
-          let shared = 0;
-          while (shared < from.length && from[shared] === to[shared]) {
-            shared += 1;
-          }
-          const outOf = from.slice(shared);
-          const into = to.slice(shared);
-          return (
-            outOf.length <= 1 &&
-            into.length <= 1 &&
-            !outOf.includes(edge.to) &&
-            !into.includes(edge.from)
-          );
-        });
+        const expected = any.edges.filter(
+          (edge) =>
+            !(around.get(edge.from) ?? []).includes(edge.to) &&
+            !(around.get(edge.to) ?? []).includes(edge.from),
+        );
         const drawn = placeGraph(roomy(any, spacing), spacing).edges;
         expect(drawn.map(({ id, from, to }) => ({ id, from, to }))).toEqual(expected);
       }),

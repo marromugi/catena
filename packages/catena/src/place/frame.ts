@@ -116,8 +116,8 @@ function clearOf(lines: readonly number[], from: number, apart: number): number 
  * Measures a grid: rows and columns as large as the largest node in them, and corridors as wide as the
  * spacing asks, as the lanes in them need, and, in a grid with edges, wide enough to keep the middle of
  * each row and column clear of the next. A corridor before a row that an edge enters is at least the
- * shortest stretch long, and at least the edge gap where that edge starts inside its source or ends
- * inside its target. Lanes lie in the middle of their corridor.
+ * shortest stretch long, and at least the edge gap where that edge runs between two nodes of the grid
+ * and starts inside its source or ends inside its target. Lanes lie in the middle of their corridor.
  *
  * An edge that crosses the border turns off the line through the middle of the side it crosses: where
  * that line runs along the flow, onto the middle line of a column or a lane beside one; where it runs

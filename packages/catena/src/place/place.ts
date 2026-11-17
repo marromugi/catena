@@ -43,17 +43,23 @@ function movedEdge(edge: PlacedEdge, dx: number, dy: number): PlacedEdge {
   };
 }
 
-/**
- * Each edge as it bears on one grid: between the two nodes of the grid that hold its ends.
- * An edge with an end outside the grid is left out.
- */
-function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): EdgeEnds[] {
+/** The node of a grid that is each node, or holds it at any depth, by the id of that node. */
+function nodeAroundOf(nodes: readonly GraphNode[]): Map<string, string> {
   const nodeAround = new Map<string, string>();
   for (const node of nodes) {
     for (const id of idsIn(node)) {
       nodeAround.set(id, node.id);
     }
   }
+  return nodeAround;
+}
+
+/**
+ * Each edge as it bears on one grid: between the two nodes of the grid that hold its ends.
+ * An edge with an end outside the grid is left out.
+ */
+function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): EdgeEnds[] {
+  const nodeAround = nodeAroundOf(nodes);
   return edges.flatMap((edge) => {
     const from = nodeAround.get(edge.from);
     const to = nodeAround.get(edge.to);
@@ -63,7 +69,7 @@ function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]):
 
 /**
  * The edges one grid draws, in the order they are listed. An end of an edge is drawn to the node of the
- * grid that is that end, or that holds it as a child. An edge whose ends are drawn to two nodes runs
+ * grid that is that end, or that holds it at any depth. An edge whose ends are drawn to two nodes runs
  * between them, and so does an edge from a node of the grid to itself; an edge drawn to one node with an
  * end inside it is left out. An edge in `crossing` runs between its end in the grid and the outside.
  *
@@ -74,18 +80,10 @@ function runsOf(
   edges: readonly GraphEdge[],
   crossing: ReadonlySet<string>,
 ): Run[] {
-  const nodeAt = new Map<string, string>();
-  for (const node of nodes) {
-    nodeAt.set(node.id, node.id);
-    if ("children" in node) {
-      for (const child of node.children) {
-        nodeAt.set(child.id, node.id);
-      }
-    }
-  }
+  const nodeAround = nodeAroundOf(nodes);
   return edges.flatMap((edge): Run[] => {
-    const from = nodeAt.get(edge.from);
-    const to = nodeAt.get(edge.to);
+    const from = nodeAround.get(edge.from);
+    const to = nodeAround.get(edge.to);
     if (from !== undefined && to !== undefined) {
       const startsInside = from !== edge.from;
       const endsInside = to !== edge.to;
@@ -96,11 +94,17 @@ function runsOf(
     if (!crossing.has(edge.id)) {
       return [];
     }
-    return [
-      to === edge.to
-        ? { id: edge.id, from: outside, to }
-        : { id: edge.id, from: edge.from, to: outside },
-    ];
+    if (to !== undefined) {
+      return [{ id: edge.id, from: outside, to, startsInside: false, endsInside: to !== edge.to }];
+    }
+    if (from !== undefined) {
+      return [
+        { id: edge.id, from, to: outside, startsInside: from !== edge.from, endsInside: false },
+      ];
+    }
+    throw new Error(
+      `Edge "${edge.id}" crosses the border of a grid that holds neither of its ends.`,
+    );
   });
 }
 
@@ -108,11 +112,7 @@ function runsOf(
 function crossingInto(id: string, runs: readonly Run[]): Set<string> {
   return new Set(
     runs.flatMap((run) =>
-      run.from !== outside &&
-      run.to !== outside &&
-      ((run.from === id && run.startsInside) || (run.to === id && run.endsInside))
-        ? [run.id]
-        : [],
+      (run.from === id && run.startsInside) || (run.to === id && run.endsInside) ? [run.id] : [],
     ),
   );
 }
@@ -279,12 +279,16 @@ function arrange(
     if (run.from === outside) {
       crossings.set(
         run.id,
-        between.map((point) => movedPoint(point, -first.x, -first.y)),
+        [...between, ...insideOf(run.to, run.id, last)].map((point) =>
+          movedPoint(point, -first.x, -first.y),
+        ),
       );
     } else if (run.to === outside) {
       crossings.set(
         run.id,
-        between.map((point) => movedPoint(point, -last.x, -last.y)),
+        [...insideOf(run.from, run.id, first), ...between].map((point) =>
+          movedPoint(point, -last.x, -last.y),
+        ),
       );
     } else {
       const [start, second, ...rest] = withoutPointsOnRuns([
@@ -371,12 +375,11 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * have met. A corridor is at least the gap between nodes, or the padding at the outside, and wider where
  * edges need the room: for their lanes, to keep clear of the next row or column, or for a straight stretch.
  *
- * An edge with an end that is a child of a group runs to the group as an edge to the group itself does,
- * through the middle of the group's side, and on inside the group to the child, which it enters or leaves
- * along the group's own flow. A group is made longer at one end of that side where that keeps such an
- * edge sound. Any other edge between nodes of different grids orders them but is left out of the layout:
- * one with an end deeper than a child of a group of the grid that holds both its ends, and one between a
- * group and a node inside it.
+ * An edge with an end inside a group runs to the group as an edge to the group itself does, through the
+ * middle of the group's side, and on inside the group to the node that is its end or holds it, as far in
+ * as that end lies; it enters or leaves that end along the flow of the grid it is in. A group is made
+ * longer at one end of that side where that keeps such an edge sound. An edge between a group and a node
+ * inside it is left out of the layout and orders no nodes.
  *
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of
  * `graph.edges`, in canvas coordinates.

@@ -1,0 +1,5 @@
+id: oneof-without-last-arm
+language: TypeScript
+rule:
+  pattern: fc.oneof($A, $B, $C)
+fix: fc.oneof($A, $B)

@@ -1,0 +1,5 @@
+id: turned-to-same
+language: TypeScript
+rule:
+  pattern: '$FLOW === "down" ? "right" : "down"'
+fix: $FLOW

@@ -1,0 +1,5 @@
+id: crossing-inside-to-nothing
+language: TypeScript
+rule:
+  pattern: ($RUN.$END === $ID && $RUN.$INSIDE)
+fix: ($RUN.$END === $ID)
