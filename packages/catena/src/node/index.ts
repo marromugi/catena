@@ -46,7 +46,7 @@ export {
   textPart,
   title,
 } from "./parts";
-export type { OwnIcon } from "./parts";
+export type { LogoShape, OwnIcon, OwnImage, OwnLogo } from "./parts";
 export { element, NO_SHADOW, writeSvg } from "./svg";
 export type { NewId, Outline, Shadow, SvgElement } from "./svg";
 export { defineTheme, TONES } from "./theme";
