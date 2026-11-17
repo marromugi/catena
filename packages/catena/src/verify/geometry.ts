@@ -235,3 +235,65 @@ export function areTooClose(a: Segment, b: Segment, gap: number): boolean {
 export function doubleBack(a: Segment, b: Segment): boolean {
   return sharedRun(a, b) > TOLERANCE && distanceBetweenParallels(a, b) <= TOLERANCE;
 }
+
+function isSamePoint(a: Point, b: Point): boolean {
+  return near(a.x, b.x) && near(a.y, b.y);
+}
+
+function pointAlong(segment: Segment, distance: number): Point {
+  const share = distance / lengthOf(segment);
+  return {
+    x: segment.from.x + (segment.to.x - segment.from.x) * share,
+    y: segment.from.y + (segment.to.y - segment.from.y) * share,
+  };
+}
+
+/** How far two paths run as one from their first points. */
+export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
+  const [start] = a;
+  if (start === undefined || b[0] === undefined || !isSamePoint(start, b[0])) {
+    return 0;
+  }
+  let at: Point = start;
+  let lead = 0;
+  let nextOfA = 1;
+  let nextOfB = 1;
+  for (;;) {
+    const toA = a[nextOfA];
+    const toB = b[nextOfB];
+    if (toA === undefined || toB === undefined) {
+      return lead;
+    }
+    const restOfA = { from: at, to: toA };
+    const restOfB = { from: at, to: toB };
+    const reach = Math.min(lengthOf(restOfA), lengthOf(restOfB));
+    if (reach > TOLERANCE) {
+      if (!isSamePoint(pointAlong(restOfA, reach), pointAlong(restOfB, reach))) {
+        return lead;
+      }
+      lead += reach;
+    }
+    const endsA = lengthOf(restOfA) <= reach + TOLERANCE;
+    const endsB = lengthOf(restOfB) <= reach + TOLERANCE;
+    at = endsA ? toA : toB;
+    nextOfA += endsA ? 1 : 0;
+    nextOfB += endsB ? 1 : 0;
+  }
+}
+
+/** The stretches left of a path once `lead` is cut from its start and `tail` from its end. */
+export function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
+  const segments = segmentsOf(points);
+  const end = segments.reduce((length, segment) => length + lengthOf(segment), 0) - tail;
+  const kept: Segment[] = [];
+  let passed = 0;
+  for (const segment of segments) {
+    const from = Math.max(lead - passed, 0);
+    const to = Math.min(end - passed, lengthOf(segment));
+    if (to - from > TOLERANCE) {
+      kept.push({ from: pointAlong(segment, from), to: pointAlong(segment, to) });
+    }
+    passed += lengthOf(segment);
+  }
+  return kept;
+}
