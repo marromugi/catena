@@ -28,6 +28,7 @@ import {
   list,
   optional,
   panel,
+  pill,
   redBadge,
   roundButton,
   row,
@@ -280,12 +281,12 @@ describe("badges and the status dot", () => {
       dot: { diameter: 6, colors: { red: "crimson" } },
     });
     const text = badgeText("Badge");
-    const pill = redBadge.layout("Badge", changed, 300);
+    const laidBadge = redBadge.layout("Badge", changed, 300);
 
-    expect(pill.size).toEqual({ width: text.width + 8, height: 14 });
-    expect(writeSvg(pill.draw({ x: 0, y: 0, ...pill.size }, noId)[0] ?? element("none"))).toMatch(
-      / rx="7" fill="pink" stroke="#fbd0d0" /,
-    );
+    expect(laidBadge.size).toEqual({ width: text.width + 8, height: 14 });
+    expect(
+      writeSvg(laidBadge.draw({ x: 0, y: 0, ...laidBadge.size }, noId)[0] ?? element("none")),
+    ).toMatch(/ rx="7" fill="pink" stroke="#fbd0d0" /);
     expect(badge.layout("Badge", changed, 300).size.height).toBe(20);
     const dot = statusDot.layout("red", changed, 300);
     expect(dot.size).toEqual({ width: 6, height: 6 });
@@ -551,8 +552,8 @@ describe("what review found", () => {
       badges: { plain: { fill: "ivory", color: "navy" } },
       dot: { colors: { plain: "gray" } },
     });
-    const pill = badge.layout("Badge", changed, 300);
-    const drawn = pill.draw({ x: 0, y: 0, ...pill.size }, noId).map(writeSvg);
+    const laidBadge = badge.layout("Badge", changed, 300);
+    const drawn = laidBadge.draw({ x: 0, y: 0, ...laidBadge.size }, noId).map(writeSvg);
 
     expect(drawn[0]).toMatch(/ fill="ivory" stroke="#e6e6e6" /);
     expect(drawn[1]).toMatch(/fill="navy"\/>$/);
@@ -995,6 +996,21 @@ describe("icons and the kinds that carry one", () => {
     ]);
   });
 
+  test("a user's own icon on a view box taller than wide, away from the origin, is centred across the icon's square", () => {
+    const own = {
+      pathData: "M 10 0 L 34 48",
+      viewBox: { x: 10, y: 0, width: 24, height: 48 },
+      paint: "fill",
+    } as const;
+
+    // Scaled by 20 / 48, the 24 across is 10 wide, set 5 in: x 10 lands on 5 + 5 = 10, x 34 on 20.
+    expect(
+      icon.layout(own, theme, 100).draw({ x: 5, y: 7, width: 20, height: 20 }, noId).map(writeSvg),
+    ).toEqual([
+      `<path d="M 10 0 L 34 48" transform="translate(5.833333333333333 7) scale(0.4166666666666667)" fill="#1f1f1f"/>`,
+    ]);
+  });
+
   test("an icon is a built-in name or a user's own icon with a view box and a paint, and nothing else", () => {
     const kind = frame(icon);
     const box = { x: 0, y: 0, width: 24, height: 24 };
@@ -1005,7 +1021,12 @@ describe("icons and the kinds that carry one", () => {
       { pathData: "M 0 0", viewBox: box, paint: "both" },
       { pathData: "M 0 0", viewBox: { ...box, width: 0 }, paint: "fill" },
       { pathData: "M 0 0", viewBox: { ...box, height: Number.POSITIVE_INFINITY }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, height: 0 }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, height: -24 }, paint: "fill" },
       { pathData: "M 0 0", viewBox: { ...box, x: Number.NaN }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, x: Number.POSITIVE_INFINITY }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, y: Number.NEGATIVE_INFINITY }, paint: "fill" },
+      { pathData: "M 0 0", viewBox: { ...box, unit: "px" }, paint: "fill" },
       { pathData: 1, viewBox: box, paint: "fill" },
       { pathData: "M 0 0", viewBox: box, paint: "fill", color: "red" },
     ];
@@ -1217,6 +1238,24 @@ describe("icons and the kinds that carry one", () => {
 
     expect(block.size.width).toBe(95);
     expect(block.size.height).toBeCloseTo(40 + 8 * 17.6, 6);
+  });
+
+  test("a pill lays its child out inside its padding", () => {
+    // 40 characters of 11 in the 84 left inside 8 of padding at 100: seven to a line, six lines.
+    const block = pill(bodyText, (t) => t.button).layout("あ".repeat(40), theme, 100);
+
+    expect(block.size.width).toBe(93);
+    expect(block.size.height).toBeCloseTo(16 + 6 * 17.6, 6);
+  });
+
+  test("a pill is half its height round, and draws at its own size at the top-left of a larger box", () => {
+    const block = pill(fixed(40, 10), (t) => t.button).layout(null, theme, 300);
+
+    expect(block.size).toEqual({ width: 56, height: 26 });
+    expect(block.draw({ x: 5, y: 7, width: 300, height: 300 }, noId).map(writeSvg)).toEqual([
+      `<rect x="5.5" y="7.5" width="55" height="25" rx="13" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
+      `<rect x="13" y="15" width="40" height="10"/>`,
+    ]);
   });
 
   test("a centred part draws at its own size across the middle of its box", () => {
