@@ -281,19 +281,54 @@ export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
   }
 }
 
-/** The stretches left of a path once `lead` is cut from its start and `tail` from its end. */
+/** Whether `next`, which starts where `segment` ends, goes straight on from it, level or upright. */
+function continues(segment: Segment, next: Segment): boolean {
+  const level = isHorizontal(segment) && isHorizontal(next);
+  if (!level && !(isVertical(segment) && isVertical(next))) {
+    return false;
+  }
+  const along = (each: Segment) => (level ? each.to.x - each.from.x : each.to.y - each.from.y);
+  return along(segment) * along(next) > 0;
+}
+
+/** The stretches of a path, with each run of them that goes straight on made one stretch. */
+export function straightened(segments: readonly Segment[]): Segment[] {
+  const runs: Segment[] = [];
+  for (const segment of segments) {
+    const last = runs.at(-1);
+    if (last !== undefined && continues(last, segment)) {
+      runs[runs.length - 1] = { from: last.from, to: segment.to };
+    } else {
+      runs.push(segment);
+    }
+  }
+  return runs;
+}
+
+/**
+ * The stretches left of a path once `lead` is cut from its start and `tail` from its end.
+ * A stretch that is not cut is left as it is, whatever its length.
+ */
 export function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
   const segments = segmentsOf(points);
-  const end = segments.reduce((length, segment) => length + lengthOf(segment), 0) - tail;
+  const cutsAtEnd: number[] = [];
+  let behind = 0;
+  for (const segment of segments.toReversed()) {
+    cutsAtEnd.unshift(Math.max(tail - behind, 0));
+    behind += lengthOf(segment);
+  }
   const kept: Segment[] = [];
   let passed = 0;
-  for (const segment of segments) {
+  segments.forEach((segment, index) => {
     const from = Math.max(lead - passed, 0);
-    const to = Math.min(end - passed, lengthOf(segment));
-    if (to - from > TOLERANCE) {
+    const cut = cutsAtEnd[index] ?? 0;
+    const to = lengthOf(segment) - cut;
+    if (from === 0 && cut === 0) {
+      kept.push(segment);
+    } else if (to - from > TOLERANCE) {
       kept.push({ from: pointAlong(segment, from), to: pointAlong(segment, to) });
     }
     passed += lengthOf(segment);
-  }
+  });
   return kept;
 }

@@ -14,6 +14,7 @@ import {
   separation,
   sharedLead,
   sidesAlong,
+  straightened,
   TOLERANCE,
   type Segment,
   type Side,
@@ -248,8 +249,13 @@ function isTooCloseToItself(edge: PlacedEdge, spacing: Spacing): boolean {
 function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, spacing: Spacing): boolean {
   const lead = a.from === b.from ? sharedLead(a.points, b.points) : 0;
   const tail = a.to === b.to ? sharedLead(a.points.toReversed(), b.points.toReversed()) : 0;
-  const restOfA = segmentsBetween(a.points, lead, tail);
-  const restOfB = segmentsBetween(b.points, lead, tail);
+  const shared = lead > TOLERANCE || tail > TOLERANCE;
+  const rest = (edge: PlacedEdge) => {
+    const segments = segmentsBetween(edge.points, lead, tail);
+    return shared ? straightened(segments) : segments;
+  };
+  const restOfA = rest(a);
+  const restOfB = rest(b);
   return restOfA.some((first, atA) =>
     restOfB.some((second, atB) => {
       if (!isOrthogonal(first) || !isOrthogonal(second)) {

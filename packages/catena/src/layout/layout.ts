@@ -46,9 +46,9 @@ export interface Spacing {
   readonly nodeGap: number;
   /** Between a group's border and the nodes inside it. */
   readonly padding: number;
-  /** Between an edge and a node it does not connect to. */
+  /** Between an edge and a node it does not connect to, unless the node is inside a group it connects. */
   readonly edgeToNode: number;
-  /** Between two stretches of edge that run side by side. */
+  /** Between two stretches of edge that run side by side, unless edges of one node share them at that node. */
   readonly edgeGap: number;
   /** The shortest stretch of an edge between two bends, or between a bend and an end. */
   readonly minSegment: number;

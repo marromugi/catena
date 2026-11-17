@@ -1836,6 +1836,65 @@ describe.each([
     });
   });
 
+  test("may part just before a point on the one that goes straight on", () => {
+    const straightOn = edge("S-T3", "S", "T3", [
+      [150, 30],
+      [150, 63],
+      [150, 100],
+    ]);
+    const fork = drawnLayout([hub, left, middle], [toLeft, straightOn]);
+
+    expect(verify(fork, spacing)).toEqual([]);
+  });
+
+  test("are reported when one comes back beside the other, past a point on its straight stretch", () => {
+    const straightOn = edge("S-T3", "S", "T3", [
+      [150, 30],
+      [150, 63],
+      [150, 100],
+    ]);
+    const back = edge("back", "S", "T3", [
+      [150, 30],
+      [150, 60],
+      [100, 60],
+      [100, 80],
+      [147, 80],
+      [147, 100],
+    ]);
+    const crowded = drawnLayout([hub, middle], [straightOn, back]);
+
+    expect(verify(crowded, spacing)).toContainEqual({
+      kind: "edges-too-close",
+      edges: ["S-T3", "back"],
+    });
+  });
+
+  test("are not reported for one of them coming back beside the stretch they share", () => {
+    const far = edge("S-U2", "S", "U2", [
+      [25, 30],
+      [25, 60],
+      [225, 60],
+      [225, 100],
+    ]);
+    const back = edge("back", "S", "U1", [
+      [25, 30],
+      [25, 60],
+      [125, 60],
+      [125, 75],
+      [110, 75],
+      [110, 63],
+      [40, 63],
+    ]);
+    const looping = drawnLayout(
+      [node("S", 0, 0, 50, 30), node("U1", 0, 48, 40, 30), node("U2", 200, 100, 50, 30)],
+      [far, back],
+    );
+
+    expect(verify(looping, spacing).filter(({ kind }) => kind === "edges-too-close")).toEqual([
+      { kind: "edges-too-close", edges: ["back", "back"] },
+    ]);
+  });
+
   test("are reported on one stretch when two nodes that touch hold it", () => {
     const touching = [node("A", 50, 0, 50, 30), node("B", 100, 0, 50, 30), left, right];
     const fromA = edge("A-T1", "A", "T1", [
@@ -1891,5 +1950,64 @@ describe("verify: an edge that ends at a group", () => {
     );
 
     expect(verify(outOf, wide)).toEqual([]);
+  });
+});
+
+describe("verify: two edges that share no node", () => {
+  const corners = [
+    node("f0", 1000, 1000, 10, 10),
+    node("t0", 1000, 2000, 10, 10),
+    node("f1", 1100, 1000, 10, 10),
+    node("t1", 1100, 2000, 10, 10),
+  ];
+  const closeness = (edges: PlacedEdge[], kept = spacing) =>
+    verify({ width: 5000, height: 5000, nodes: corners, edges }, kept).filter(
+      ({ kind }) => kind === "edges-too-close",
+    );
+
+  test("are compared at the points they are given, so a millionth short of the edge gap passes", () => {
+    const turning = edge("e1", "f0", "t0", [
+      [155, 5.000002],
+      [79.999999, 5.000002],
+      [79.999999, 139.999999],
+    ]);
+    const stopping = edge("e3", "f1", "t1", [
+      [29.999999, 60.333333333333336],
+      [29.999999, 85.3],
+      [109.999999, 85.3],
+      [109.999999, 65.000002],
+      [75, 65.000002],
+    ]);
+
+    expect(closeness([turning, stopping])).toEqual([]);
+  });
+
+  test("are too close where one crosses the other at a point given on its straight stretch", () => {
+    const level = edge("level", "f0", "t0", [
+      [100, 150],
+      [150, 150],
+      [200, 150],
+    ]);
+    const crossing = edge("crossing", "f1", "t1", [
+      [150, 100],
+      [150, 200],
+    ]);
+
+    expect(closeness([level, crossing])).toEqual([
+      { kind: "edges-too-close", edges: ["level", "crossing"] },
+    ]);
+  });
+
+  test("are compared even when one of them has no length", () => {
+    const dot = edge("dot", "f0", "t0", [
+      [185, 150],
+      [185, 150],
+    ]);
+    const line = edge("line", "f1", "t1", [
+      [200, 150],
+      [160, 150],
+    ]);
+
+    expect(closeness([dot, line])).toEqual([{ kind: "edges-too-close", edges: ["dot", "line"] }]);
   });
 });
