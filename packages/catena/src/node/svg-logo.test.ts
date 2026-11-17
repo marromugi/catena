@@ -450,14 +450,69 @@ describe("readSvgLogo", () => {
 
   const refusals: ReadonlyArray<readonly [string, string, string]> = [
     [
-      "a transform",
-      svg('<g transform="scale(2)"><path d="M0 0"/></g>'),
-      "A logo cannot hold the SVG's transform on <g>.",
-    ],
-    [
       "a transform in style",
       svg('<path d="M0 0" style="transform: none"/>'),
-      "A logo cannot hold the SVG's transform on <path>.",
+      "A logo cannot hold the SVG's transform in the style of <path>.",
+    ],
+    [
+      "a transform in CSS units",
+      svg('<g transform="rotate(45deg)"/>'),
+      'transform "rotate(45deg)" on <g> is not a list of SVG transform functions.',
+    ],
+    [
+      "a transform function given too many numbers",
+      svg('<g transform="translate(1 2 3)"/>'),
+      'transform "translate(1 2 3)" on <g> is not a list of SVG transform functions.',
+    ],
+    [
+      "a transform list that starts with a comma",
+      svg('<g transform=",scale(2)"/>'),
+      'transform ",scale(2)" on <g> is not a list of SVG transform functions.',
+    ],
+    [
+      "a transform function SVG does not name",
+      svg('<g transform="Scale(2)"/>'),
+      'transform "Scale(2)" on <g> is not a list of SVG transform functions.',
+    ],
+    [
+      "a transform origin",
+      svg('<g transform="scale(2)" transform-origin="5 5"/>'),
+      "A logo cannot hold the SVG's transform-origin on <g>.",
+    ],
+    [
+      "a transform box",
+      svg('<path d="M0 0" transform="scale(2)" style="transform-box: fill-box"/>'),
+      "A logo cannot hold the SVG's transform-box on <path>.",
+    ],
+    [
+      "path data that is not path data, under a transform",
+      svg('<path d="M0 0 X" transform="scale(2)"/>'),
+      'd "M0 0 X" on <path> is not path data.',
+    ],
+    [
+      "path data that does not start with a move, under a transform",
+      svg('<path d="L1 1" transform="scale(2)"/>'),
+      'd "L1 1" on <path> is not path data.',
+    ],
+    [
+      "coordinates a transform takes past the largest number",
+      svg('<path d="M1e300 0" transform="scale(1e300)"/>'),
+      "The coordinates of <path> run past the largest number.",
+    ],
+    [
+      "a stroke under a transform that scales one way more than the other",
+      svg(`<g transform="scale(2 1)"><path d="M0 0" stroke="red" ${ROUND}/></g>`),
+      "The stroke of <path> is under a transform that does not scale evenly in both directions; a logo's stroke-width is one number.",
+    ],
+    [
+      "a stroke under a skew",
+      svg(`<path d="M0 0" fill="none" stroke="red" ${ROUND} transform="skewX(10)"/>`),
+      "The stroke of <path> is under a transform that does not scale evenly in both directions; a logo's stroke-width is one number.",
+    ],
+    [
+      "a root flattened by its transform",
+      svg('<path d="M0 0"/>', 'viewBox="0 0 4 4" transform="scale(0)"'),
+      "The SVG draws no shape.",
     ],
     [
       "a gradient",
@@ -647,5 +702,172 @@ describe("readSvgLogo", () => {
   test.each(refusals)("refuses %s, naming it", (_, given, message) => {
     expect(() => readSvgLogo(given)).toThrow(new UnreadableSvgError(message));
     expect(() => readSvgLogo(given)).toThrow(UnreadableSvgError);
+  });
+});
+
+const pathUnder = (transform: string, d = "M 1 2") =>
+  readSvgLogo(svg(`<path d="${d}" transform="${transform}"/>`)).shapes[0]?.pathData;
+
+const turn = (degrees: number) => {
+  const radians = (degrees * Math.PI) / 180;
+  return [Math.cos(radians), Math.sin(radians)] as const;
+};
+
+// The terms of M·Mᵀ for the matrix M taking the unit circle to an ellipse: two ellipses about the
+// origin are one when these agree.
+const outline = ([p, q, r, s]: readonly [number, number, number, number]) => [
+  p * p + q * q,
+  p * r + q * s,
+  r * r + s * s,
+];
+
+const strokeUnder = (transform: string) =>
+  readSvgLogo(
+    svg(
+      `<path d="M0 0 L1 0" fill="none" stroke="red" stroke-width="3" ${ROUND} transform="${transform}"/>`,
+    ),
+  ).shapes[0];
+
+const rectUnderRoot = (root: string) =>
+  readSvgLogo(svg('<rect width="50" height="20"/>', root)).shapes[0]?.pathData;
+
+describe("readSvgLogo with transforms", () => {
+  test.each([
+    ["", "M 1 2"],
+    ["translate(5)", "M 6 2"],
+    ["translate(5 -1)", "M 6 1"],
+    ["scale(2)", "M 2 4"],
+    ["scale(2, 3)", "M 2 6"],
+    ["rotate(90)", "M -2 1"],
+    ["rotate(90 1 0)", "M -1 0"],
+    ["rotate(-270)", "M -2 1"],
+    ["skewX(45)", "M 3 2"],
+    ["skewY(45)", "M 1 3"],
+    ["matrix(1 2 3 4 5 6)", "M 12 16"],
+    ["matrix(1,2,3,4,5,6)", "M 12 16"],
+    ["translate(10) scale(2)", "M 12 4"],
+    ["scale(2) translate(10)", "M 22 4"],
+    ["translate(10),scale(2)", "M 12 4"],
+    ["translate(10)scale(2)", "M 12 4"],
+    ["translate(10-5)", "M 11 -3"],
+    [" translate( 10 , 1 ) ", "M 11 3"],
+  ])("transform %j places M 1 2 at %s", (transform, expected) => {
+    expect(pathUnder(transform)).toBe(expected);
+  });
+
+  test("a group's transform applies after its shape's own", () => {
+    const nested =
+      '<g transform="translate(10 20)"><rect transform="scale(2)" width="3" height="4"/></g>';
+    const listed = '<rect transform="translate(10 20) scale(2)" width="3" height="4"/>';
+    expect(readSvgLogo(svg(nested)).shapes[0]?.pathData).toBe("M 10 20 L 16 20 L 16 28 L 10 28 Z");
+    expect(readSvgLogo(svg(listed)).shapes[0]?.pathData).toBe("M 10 20 L 16 20 L 16 28 L 10 28 Z");
+  });
+
+  test("relative commands, H and V become absolute, each from where the last one ended", () => {
+    expect(pathUnder("translate(10 0)", "m1 1 h2 v2 l-1 0 z m 5 5 l1 1 H 0 V 0")).toBe(
+      "M 11 1 L 13 1 L 13 3 L 12 3 Z M 16 6 L 17 7 L 10 7 L 10 0",
+    );
+    expect(pathUnder("translate(10 0)", "M0 0 1 1 m1 1 2 2")).toBe("M 10 0 L 11 1 M 12 2 L 14 4");
+    expect(pathUnder("translate(10 0)", "M0 0c1 1 2 2 3 3s1 1 2 2q1 1 2 2t1 1")).toBe(
+      "M 10 0 C 11 1 12 2 13 3 S 14 4 15 5 Q 16 6 17 7 T 18 8",
+    );
+  });
+
+  test("an arc keeps its flags, follows the transform, and turns its sweep under a mirror", () => {
+    expect(pathUnder("translate(5 0)", "M0 0 a1 1 0 012 0")).toBe("M 5 0 A 1 1 0 0 1 7 0");
+    expect(pathUnder("scale(3 1)", "M2 0 A 2 2 0 1 1 -2 0")).toBe("M 6 0 A 6 2 0 1 1 -6 0");
+    expect(pathUnder("scale(1 -1)", "M0 0 A 2 1 0 1 1 2 0")).toBe("M 0 0 A 2 1 0 1 0 2 0");
+    expect(pathUnder("rotate(30)", "M0 0 A 0 2 0 1 1 2 0")).toBe(
+      `M 0 0 L ${Math.cos(Math.PI / 6) * 2} ${Math.sin(Math.PI / 6) * 2}`,
+    );
+  });
+
+  test("an arc under any transform runs along the ellipse the transform makes of the file's", () => {
+    const factor = fc.double({ min: -4, max: 4, noNaN: true });
+    const radius = fc.double({ min: 0.1, max: 10, noNaN: true });
+    fc.assert(
+      fc.property(
+        fc.tuple(factor, factor, factor, factor),
+        radius,
+        radius,
+        fc.double({ min: -360, max: 360, noNaN: true }),
+        ([a, b, c, d], rx, ry, degrees) => {
+          fc.pre(Math.abs(a * d - b * c) > 0.01);
+          const read = pathUnder(
+            `matrix(${a} ${b} ${c} ${d} 0 0)`,
+            `M0 0 A ${rx} ${ry} ${degrees} 0 1 10 0`,
+          );
+          const [command, toRx, toRy, turned, large, sweep] = (read ?? "").split(" ").slice(3);
+          expect(command).toBe("A");
+          const [cos, sin] = turn(degrees);
+          const [toCos, toSin] = turn(Number(turned));
+          const file = outline([
+            (a * cos + c * sin) * rx,
+            (c * cos - a * sin) * ry,
+            (b * cos + d * sin) * rx,
+            (d * cos - b * sin) * ry,
+          ]);
+          const R1 = Number(toRx);
+          const R2 = Number(toRy);
+          const logo = outline([toCos * R1, -toSin * R2, toSin * R1, toCos * R2]);
+          const size = Math.max(...file.map(Math.abs));
+          file.forEach((value, i) => {
+            expect(Math.abs(value - (logo[i] ?? 0))).toBeLessThan(1e-9 * size);
+          });
+          expect(large).toBe("0");
+          expect(sweep).toBe(a * d - b * c < 0 ? "0" : "1");
+        },
+      ),
+    );
+  });
+
+  test("a stroke under an even scale takes the scale into its width, turned or mirrored", () => {
+    expect(strokeUnder("scale(2)")).toMatchObject({ paint: "stroke", width: 6 });
+    expect(strokeUnder("scale(-2 2)")).toMatchObject({ paint: "stroke", width: 6 });
+    const turned = strokeUnder("rotate(30) scale(0.5)");
+    expect(turned?.paint === "stroke" ? turned.width : undefined).toBeCloseTo(1.5, 12);
+  });
+
+  test("what a transform flattens to nothing is left out, before what it holds is read", () => {
+    expect(paths('<g transform="scale(0)"><path d="M0 0"/><text/></g>')).toEqual(["M9 9"]);
+    expect(paths('<path d="M0 0" transform="matrix(1 2 2 4 0 0)"/>')).toEqual(["M9 9"]);
+    expect(paths('<path d="M0 0" stroke="red" transform="scale(1 0)"/>')).toEqual(["M9 9"]);
+  });
+
+  test("the root's transform moves its box about the centre, in the units of its width and height", () => {
+    expect(
+      rectUnderRoot('viewBox="0 0 100 100" width="200" height="200" transform="translate(20 0)"'),
+    ).toBe("M 10 0 L 60 0 L 60 20 L 10 20 Z");
+    expect(rectUnderRoot('viewBox="0 0 100 100" transform="rotate(90)"')).toBe(
+      "M 100 0 L 100 50 L 80 50 L 80 0 Z",
+    );
+    expect(rectUnderRoot('width="100" height="100" transform="rotate(90)"')).toBe(
+      "M 100 0 L 100 50 L 80 50 L 80 0 Z",
+    );
+    expect(
+      rectUnderRoot(
+        'viewBox="0 0 100 100" width="200" height="100" preserveAspectRatio="xMinYMin" transform="rotate(180)"',
+      ),
+    ).toBe("M 200 100 L 150 100 L 150 80 L 200 80 Z");
+    const topAligned = rectUnderRoot(
+      'viewBox="0 0 100 50" width="300" height="200" preserveAspectRatio="xMaxYMin meet" transform="rotate(180)"',
+    );
+    expect(
+      topAligned
+        ?.split(" ")
+        .filter((part) => /\d/.test(part))
+        .map(Number),
+    ).toEqual(
+      [100, 200 / 3, 50, 200 / 3, 50, 140 / 3, 100, 140 / 3].map((n) => expect.closeTo(n, 9)),
+    );
+    expect(rectUnderRoot('viewBox="0 0 100 100" width="200" transform="scale(0.5)"')).toBe(
+      "M 25 25 L 50 25 L 50 35 L 25 35 Z",
+    );
+  });
+
+  test("the CSS translate, rotate and scale stay refused as attributes too", () => {
+    expect(() => readSvgLogo(svg('<path d="M0 0" rotate="45"/>'))).toThrow(
+      new UnreadableSvgError("A logo cannot hold the SVG's rotate on <path>."),
+    );
   });
 });
