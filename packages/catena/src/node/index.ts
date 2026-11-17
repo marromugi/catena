@@ -37,6 +37,7 @@ export {
   bodyText,
   divider,
   icon,
+  ICON_NAME,
   iconPart,
   image,
   imagePart,
@@ -46,7 +47,7 @@ export {
   textPart,
   title,
 } from "./parts";
-export { CUSTOM_ICON, UnknownIconError, UnknownLogoError } from "./logo";
+export { CUSTOM_ICON, REGISTERED_LOGO, UnknownIconError, UnknownLogoError } from "./logo";
 export { readSvgLogo, UnreadableSvgError } from "./svg-logo";
 export type {
   CustomIcon,

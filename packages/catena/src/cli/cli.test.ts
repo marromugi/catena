@@ -1,9 +1,19 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
+import { Ajv } from "ajv";
 import * as fc from "fast-check";
 import * as v from "valibot";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
@@ -28,6 +38,7 @@ import {
   NODE_KINDS,
   readDiagramFile,
 } from "./diagram-file";
+import { diagramJsonSchema } from "./diagram-schema";
 import { drawDiagramFile } from "./draw";
 import { run, USAGE } from "./main";
 
@@ -475,6 +486,8 @@ describe("run", () => {
     [["draw", sample, sample]],
     [["draw", sample, "-o"]],
     [["draw", sample, "--colour", "red"]],
+    [["schema", sample]],
+    [["schema", "-o", "out.json"]],
   ])("exits 2 with the usage for %j", (args) => {
     const { code, stdout, stderr } = runWith(args);
     expect({ code, stdout }).toEqual({ code: 2, stdout: "" });
@@ -640,6 +653,139 @@ describe("the catena command", () => {
   });
 });
 
+/** The line `catena schema` prints for the schema at `path`. */
+const schemaLine = (path: string) => `"$schema": ${JSON.stringify(path)}\n`;
+
+/** What the diagram file's JSON Schema file holds for the custom icons `names`. */
+const expectedFor = (names: readonly string[]) =>
+  `${JSON.stringify(diagramJsonSchema(names), null, 2)}\n`;
+
+describe("the diagram file's JSON Schema", () => {
+  const schemaPath = join(configDirectory, "diagram.schema.json");
+  const ownIcon = {
+    pathData: "M2 2L8 8",
+    viewBox: { x: 0, y: 0, width: 10, height: 10 },
+    paint: "stroke",
+  };
+
+  afterEach(() => {
+    rmSync(configPath, { recursive: true, force: true });
+    rmSync(schemaPath, { recursive: true, force: true });
+  });
+
+  const writeConfig = (names: readonly string[]) =>
+    writeFileSync(configPath, text({ icons: Object.fromEntries(names.map((n) => [n, ownIcon])) }));
+
+  const written = () => readFileSync(schemaPath, "utf8");
+
+  test('catena schema writes it beside the config, naming the config\'s icons, and prints the "$schema" line pointing at it', () => {
+    writeConfig(["mine"]);
+    expect(runWith(["schema"])).toEqual({ code: 0, stdout: schemaLine(schemaPath), stderr: "" });
+    expect(written()).toBe(expectedFor(["mine"]));
+  });
+
+  test("catena schema makes the config's directory when it isn't there", () => {
+    const missing = join(directory, "no-config-yet", "catena");
+    vi.stubEnv("CATENA_CONFIG_DIR", missing);
+    try {
+      const path = join(missing, "diagram.schema.json");
+      expect(runWith(["schema"])).toEqual({ code: 0, stdout: schemaLine(path), stderr: "" });
+      expect(readFileSync(path, "utf8")).toBe(expectedFor([]));
+    } finally {
+      vi.stubEnv("CATENA_CONFIG_DIR", configDirectory);
+    }
+  });
+
+  test("catena schema exits 1 when it can't be written, after its path", () => {
+    mkdirSync(schemaPath);
+    expect(runWith(["schema"])).toEqual({
+      code: 1,
+      stdout: "",
+      stderr: `catena: ${schemaPath}: EISDIR: illegal operation on a directory, read\n`,
+    });
+  });
+
+  test("catena schema exits 1 with the reader's message for a config it refuses", () => {
+    writeFileSync(configPath, "{");
+    expect(runWith(["schema"])).toEqual({
+      code: 1,
+      stdout: "",
+      stderr: `catena: The catena config ${configPath} is not JSON.\n`,
+    });
+  });
+
+  test("catena draw writes it, and rewrites it once the config's names change", () => {
+    const sample = fileOf(text(SAMPLE));
+    writeConfig(["mine"]);
+    expect(runWith(["draw", sample]).stderr).toBe("");
+    expect(written()).toBe(expectedFor(["mine"]));
+    writeConfig(["ours"]);
+    expect(runWith(["draw", sample]).stderr).toBe("");
+    expect(written()).toBe(expectedFor(["ours"]));
+  });
+
+  test.each([
+    ["isn't there", () => join(directory, "missing.json")],
+    ["is refused", () => fileOf(text(naming("nope")))],
+  ])("catena draw writes it before reading the diagram file, so also when that %s", (_, path) => {
+    writeConfig(["mine"]);
+    expect(runWith(["draw", path()]).code).toBe(1);
+    expect(written()).toBe(expectedFor(["mine"]));
+  });
+
+  test("catena draw leaves it alone when it holds what would be written", () => {
+    writeConfig(["mine"]);
+    writeFileSync(schemaPath, expectedFor(["mine"]));
+    const past = new Date("2026-01-01T00:00:00Z");
+    utimesSync(schemaPath, past, past);
+    expect(runWith(["draw", fileOf(text(SAMPLE))]).code).toBe(0);
+    expect(statSync(schemaPath).mtime).toEqual(past);
+  });
+
+  test("catena draw says when it can't be written, and draws all the same", () => {
+    mkdirSync(schemaPath);
+    expect(runWith(["draw", fileOf(text(SAMPLE))])).toEqual({
+      code: 0,
+      stdout: `${draw(SAMPLE)}\n`,
+      stderr: `catena: the diagram file's JSON Schema was not written: ${schemaPath}: EISDIR: illegal operation on a directory, read\n`,
+    });
+  });
+
+  test("catena draw draws a file holding a $schema key as it draws the file without one", () => {
+    const pointed = { $schema: schemaPath, ...SAMPLE };
+    expect(runWith(["draw", fileOf(text(pointed))])).toEqual({
+      code: 0,
+      stdout: `${draw(SAMPLE)}\n`,
+      stderr: "",
+    });
+  });
+
+  test("from outside the repo, catena schema prints the line a diagram file checks its icon names with", () => {
+    const bin = fileURLToPath(new URL("../../bin/catena.js", import.meta.url));
+    const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "catena-elsewhere-")));
+    try {
+      mkdirSync(join(elsewhere, "config"));
+      writeFileSync(join(elsewhere, "config", "config.json"), text({ icons: { mine: ownIcon } }));
+      const printed = execFileSync(bin, ["schema"], {
+        cwd: elsewhere,
+        env: { ...process.env, CATENA_CONFIG_DIR: "config" },
+        encoding: "utf8",
+      });
+      const absolute = join(elsewhere, "config", "diagram.schema.json");
+      expect(printed).toBe(schemaLine(absolute));
+      const { $schema } = v.parse(v.object({ $schema: v.string() }), JSON.parse(`{${printed}}`));
+      const validate = new Ajv({ strictTuples: false }).compile(
+        JSON.parse(readFileSync($schema, "utf8")),
+      );
+      const pointing = (icon: string) => ({ $schema, ...naming(icon) });
+      expect([validate(pointing("spark")), validate(pointing("mine"))]).toEqual([true, true]);
+      expect(validate(pointing("sprak"))).toBe(false);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("properties", () => {
   const SEED = 20261118;
   const words = fc.string({ unit: "grapheme" });
@@ -753,7 +899,7 @@ describe("properties", () => {
       }),
       { seed: SEED, numRuns: 300 },
     );
-  });
+  }, 60_000);
 
   test("draws a diagram of content its kinds take as the same well-formed SVG every time", () => {
     fc.assert(

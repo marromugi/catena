@@ -35,8 +35,11 @@ catena is used as the `catena` command, the `bin` of `packages/catena`. From a c
 
 ```sh
 node packages/catena/bin/catena.js draw <diagram.json> [-o <out.svg>]
+node packages/catena/bin/catena.js schema
 ```
 
 `pnpm link --global` in `packages/catena` puts `catena` on the PATH. The diagram file's shape is `src/cli/diagram-file.ts`.
 
-Every run reads the user's config, `config.json` in `$CATENA_CONFIG_DIR`, else in `$XDG_CONFIG_HOME/catena`, else in `~/.config/catena` (`src/config/custom-icons.ts`); its custom icons are what a bare string naming no built-in icon draws. A config that isn't there is no icons; one the reader refuses stops every draw with exit 1. Set `CATENA_CONFIG_DIR` to run against another config, or a directory without one. There is no run skill; the command's behaviour is checked by its tests (`src/cli/cli.test.ts`).
+Every run reads the user's config, `config.json` in `$CATENA_CONFIG_DIR`, else in `$XDG_CONFIG_HOME/catena`, else in `~/.config/catena` (`src/config/custom-icons.ts`); its custom icons are what a bare string naming no built-in icon draws. A config that isn't there is no icons; one the reader refuses stops every draw with exit 1. Set `CATENA_CONFIG_DIR` to run against another config, or a directory without one.
+
+The diagram file's JSON Schema, `diagram.schema.json`, lives in the config's directory, listing the built-in and config icon names (`src/cli/diagram-schema.ts`). Every `catena draw` rewrites it there, making the directory, when what it would write differs; `catena schema` writes it and prints the `"$schema": "<absolute path>"` line a diagram file points at it with. Editors don't expand `~` or `$HOME` in that path. There is no run skill; the command's behaviour is checked by its tests (`src/cli/cli.test.ts`).

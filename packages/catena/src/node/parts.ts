@@ -200,7 +200,10 @@ export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF
 
 export const image = imagePart((theme) => theme.image);
 
-const ICON = v.union([v.string(), OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO]);
+/** An icon's content as a bare string: the name of a built-in icon or of one of the theme's custom icons. */
+export const ICON_NAME = v.string();
+
+const ICON = v.union([ICON_NAME, OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO]);
 
 const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
 

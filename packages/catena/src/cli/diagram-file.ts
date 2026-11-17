@@ -81,6 +81,7 @@ export type NodeEntry = LeafEntry | GroupEntry;
 
 /** A diagram as its file gives it: the graph, each node naming its kind, and how the diagram is drawn. */
 export interface DiagramFile {
+  readonly $schema?: string;
   readonly direction: Direction;
   readonly nodes: readonly NodeEntry[];
   readonly edges: readonly { readonly id: string; readonly from: string; readonly to: string }[];
@@ -103,7 +104,44 @@ export class InvalidDiagramFileError extends Error {
 }
 
 const DIRECTION = v.picklist(["down", "right"]);
-const CELL = v.strictObject({ row: v.number(), column: v.number() });
+/** A finite number: JSON such as `1e999` parses to Infinity. */
+const FINITE = v.pipe(v.number(), v.finite());
+const CELL = v.strictObject({ row: FINITE, column: FINITE });
+
+/** A group of nodes, each child read by `node`. */
+function groupOf<TNode extends v.GenericSchema>(node: TNode) {
+  return v.strictObject({
+    id: v.string(),
+    direction: DIRECTION,
+    children: v.tupleWithRest([node], node),
+    cell: v.optional(CELL),
+  });
+}
+
+/** A diagram file, each of its nodes read by `node`. A `$schema` key, naming the file's JSON Schema, is let through. */
+function diagramFileOf<TNode extends v.GenericSchema>(node: TNode) {
+  return v.strictObject({
+    $schema: v.optional(v.string()),
+    direction: DIRECTION,
+    nodes: v.array(node),
+    edges: v.array(v.strictObject({ id: v.string(), from: v.string(), to: v.string() })),
+    header: v.optional(
+      v.strictObject({
+        title: v.optional(v.string()),
+        repository: v.optional(v.strictObject({ name: v.string() })),
+        capturedAt: v.optional(v.string()),
+      }),
+    ),
+    background: v.optional(
+      v.strictObject({
+        canvas: v.optional(v.string()),
+        dot: v.optional(v.string()),
+        dotRadius: v.optional(v.pipe(FINITE, v.minValue(0))),
+        spacing: v.optional(v.pipe(FINITE, v.gtValue(0))),
+      }),
+    ),
+  });
+}
 
 const LEAF = v.strictObject({
   id: v.string(),
@@ -119,33 +157,31 @@ const NODE: v.GenericSchema<unknown, NodeEntry> = v.lazy((input) =>
   isGroup(input) ? GROUP : LEAF,
 );
 
-const GROUP = v.strictObject({
-  id: v.string(),
-  direction: DIRECTION,
-  children: v.tupleWithRest([NODE], NODE),
-  cell: v.optional(CELL),
-});
+const GROUP = groupOf(NODE);
 
-const DIAGRAM_FILE = v.strictObject({
-  direction: DIRECTION,
-  nodes: v.array(NODE),
-  edges: v.array(v.strictObject({ id: v.string(), from: v.string(), to: v.string() })),
-  header: v.optional(
-    v.strictObject({
-      title: v.optional(v.string()),
-      repository: v.optional(v.strictObject({ name: v.string() })),
-      capturedAt: v.optional(v.string()),
-    }),
-  ),
-  background: v.optional(
-    v.strictObject({
-      canvas: v.optional(v.string()),
-      dot: v.optional(v.string()),
-      dotRadius: v.optional(v.pipe(v.number(), v.minValue(0))),
-      spacing: v.optional(v.pipe(v.number(), v.gtValue(0))),
-    }),
-  ),
-});
+const DIAGRAM_FILE = diagramFileOf(NODE);
+
+/** A node of each kind with the content that kind takes, or a group of such nodes. */
+const NODE_WITH_CONTENT: v.GenericSchema = v.lazy(() =>
+  v.union([GROUP_WITH_CONTENT, v.variant("kind", LEAVES_WITH_CONTENT)]),
+);
+
+const GROUP_WITH_CONTENT = groupOf(NODE_WITH_CONTENT);
+
+const LEAVES_WITH_CONTENT = NODE_KIND_NAMES.map((kind) =>
+  v.strictObject({
+    id: v.string(),
+    kind: v.literal(kind),
+    content: NODE_KINDS[kind].schema,
+    cell: v.optional(CELL),
+  }),
+);
+
+/**
+ * The diagram file as `catena draw` reads it and each node's kind then checks its content: the schema an
+ * editor checks a diagram file with.
+ */
+export const DIAGRAM_FILE_WITH_CONTENT = diagramFileOf(NODE_WITH_CONTENT);
 
 /**
  * The diagram `text` holds as JSON. A node's content is checked by its kind when the node is built, not here.
