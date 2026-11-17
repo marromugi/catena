@@ -15,8 +15,9 @@ export interface EdgeOptions {
 export const DEFAULT_EDGE_RADIUS = 8;
 
 /**
- * The edge as an unfilled `<path>` along its points, each bend rounded. It carries no stroke, so the
- * caller paints it, for example from a `<g>` around it.
+ * The edge as an unfilled `<path>` along its points. Where a horizontal stretch meets a vertical one the
+ * bend is rounded; any other turn, which `verify` reports as `edge-not-orthogonal`, or a turn back, is
+ * drawn sharp. The path carries no stroke, so the caller paints it, for example from a `<g>` around it.
  */
 export function drawEdge(edge: PlacedEdge, options: EdgeOptions = {}): SvgElement {
   const radius = options.radius ?? DEFAULT_EDGE_RADIUS;
@@ -26,70 +27,80 @@ export function drawEdge(edge: PlacedEdge, options: EdgeOptions = {}): SvgElemen
   return element("path", { d: pathData(turningPoints(edge.points), radius), fill: "none" });
 }
 
-/** The points without repeats, and without a point the path goes straight through. */
-function turningPoints(points: readonly Point[]): Point[] {
-  const distinct = points.filter(
-    (point, index) => index === 0 || !samePoint(point, points[index - 1]),
-  );
-  return distinct.filter((point, index) => {
-    const before = distinct[index - 1];
-    const after = distinct[index + 1];
-    if (before === undefined || after === undefined) return true;
-    const { cos, sin } = turn(before, point, after);
-    return !(sin === 0 && cos === 1);
-  });
+/** Which way a stretch goes, each of `x` and `y` -1, 0 or 1. */
+interface Heading {
+  readonly x: number;
+  readonly y: number;
 }
 
-function pathData(points: readonly Point[], radius: number): string {
-  const [start, ...rest] = points;
-  if (start === undefined) return "";
+/** The points without repeats, and without a point a horizontal or vertical stretch goes straight through. */
+function turningPoints(points: readonly [Point, ...Point[]]): [Point, ...Point[]] {
+  const [first, ...others] = points;
+  const distinct: [Point, ...Point[]] = [first];
+  for (const point of others) {
+    if (!samePoint(point, distinct.at(-1))) distinct.push(point);
+  }
+  const [start, ...rest] = distinct;
+  const kept: [Point, ...Point[]] = [start];
+  for (const [index, point] of rest.entries()) {
+    const before = kept.at(-1) ?? start;
+    const after = rest[index + 1];
+    const straight =
+      after !== undefined &&
+      isAxial(heading(before, point)) &&
+      samePoint(heading(before, point), heading(point, after));
+    if (!straight) kept.push(point);
+  }
+  return kept;
+}
+
+function pathData(points: readonly [Point, ...Point[]], radius: number): string {
+  const [start] = points;
   const last = points.length - 1;
   const commands = [`M ${start.x} ${start.y}`];
   let pen = start;
-  for (const [offset, point] of rest.slice(0, -1).entries()) {
-    const index = offset + 1;
-    const before = points[index - 1] ?? point;
-    const after = points[index + 1] ?? point;
-    const { cos, sin } = turn(before, point, after);
-    const lent = Math.min(
+  for (let index = 1; index < last; index++) {
+    const before = points[index - 1] ?? start;
+    const point = points[index] ?? start;
+    const after = points[index + 1] ?? start;
+    const into = heading(before, point);
+    const out = heading(point, after);
+    const cut = Math.min(
+      radius,
       distance(before, point) * (index - 1 === 0 ? 1 : 1 / 2),
       distance(point, after) * (index + 1 === last ? 1 : 1 / 2),
     );
-    const tanHalfTurn = sin === 0 ? Infinity : (1 - cos) / Math.abs(sin);
-    const cut = Math.min(radius * tanHalfTurn, lent);
-    if (tanHalfTurn === Infinity || cut === 0) {
+    if (!isRightAngle(into, out) || cut === 0) {
       commands.push(`L ${point.x} ${point.y}`);
       pen = point;
       continue;
     }
-    const into = toward(point, before, cut);
-    const out = toward(point, after, cut);
-    const arcRadius = cut / tanHalfTurn;
-    if (!samePoint(into, pen)) commands.push(`L ${into.x} ${into.y}`);
-    commands.push(`A ${arcRadius} ${arcRadius} 0 0 ${sin > 0 ? 1 : 0} ${out.x} ${out.y}`);
-    pen = out;
+    const arcStart = { x: point.x - into.x * cut, y: point.y - into.y * cut };
+    const arcEnd = { x: point.x + out.x * cut, y: point.y + out.y * cut };
+    if (!samePoint(arcStart, pen)) commands.push(`L ${arcStart.x} ${arcStart.y}`);
+    const clockwise = into.x * out.y - into.y * out.x > 0;
+    commands.push(`A ${cut} ${cut} 0 0 ${clockwise ? 1 : 0} ${arcEnd.x} ${arcEnd.y}`);
+    pen = arcEnd;
   }
-  const end = rest.at(-1);
-  if (end !== undefined && !samePoint(end, pen)) commands.push(`L ${end.x} ${end.y}`);
+  const end = points[last] ?? start;
+  if (!samePoint(end, pen)) commands.push(`L ${end.x} ${end.y}`);
   return commands.join(" ");
 }
 
-/** The cosine and sine of the angle the path turns by at `at`; the sine is positive for a clockwise turn on screen. */
-function turn(before: Point, at: Point, after: Point): { cos: number; sin: number } {
-  const inX = (at.x - before.x) / distance(before, at);
-  const inY = (at.y - before.y) / distance(before, at);
-  const outX = (after.x - at.x) / distance(at, after);
-  const outY = (after.y - at.y) / distance(at, after);
-  return { cos: inX * outX + inY * outY, sin: inX * outY - inY * outX };
+function heading(from: Point, to: Point): Heading {
+  return { x: Math.sign(to.x - from.x), y: Math.sign(to.y - from.y) };
 }
 
-/** The point `length` from `from` on the way to `to`. */
-function toward(from: Point, to: Point, length: number): Point {
-  const whole = distance(from, to);
-  return {
-    x: from.x + ((to.x - from.x) / whole) * length,
-    y: from.y + ((to.y - from.y) / whole) * length,
-  };
+function isAxial(h: Heading): boolean {
+  return h.x === 0 || h.y === 0;
+}
+
+/** One heading is horizontal and the other vertical. */
+function isRightAngle(a: Heading, b: Heading): boolean {
+  return (
+    (a.x === 0 && a.y !== 0 && b.y === 0 && b.x !== 0) ||
+    (a.y === 0 && a.x !== 0 && b.x === 0 && b.y !== 0)
+  );
 }
 
 function distance(a: Point, b: Point): number {

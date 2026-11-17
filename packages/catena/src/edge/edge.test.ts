@@ -51,7 +51,47 @@ describe("drawEdge", () => {
     expect(pathOf(straight)).toBe('<path d="M 0 0 L 100 0" fill="none"/>');
   });
 
-  test("refuses a negative radius", () => {
+  test("turns each way at bends away from the origin", () => {
+    const upThenRight = edgeAlong({ x: 10, y: 50 }, { x: 10, y: 20 }, { x: 60, y: 20 });
+    expect(pathOf(upThenRight)).toBe(
+      '<path d="M 10 50 L 10 28 A 8 8 0 0 1 18 20 L 60 20" fill="none"/>',
+    );
+    const leftThenDown = edgeAlong({ x: 60, y: 20 }, { x: 10, y: 20 }, { x: 10, y: 50 });
+    expect(pathOf(leftThenDown)).toBe(
+      '<path d="M 60 20 L 18 20 A 8 8 0 0 0 10 28 L 10 50" fill="none"/>',
+    );
+  });
+
+  test("draws sharp a bend that is not between a horizontal and a vertical stretch", () => {
+    const slanted = edgeAlong({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 100 });
+    expect(pathOf(slanted)).toBe('<path d="M 0 0 L 100 0 L 200 100" fill="none"/>');
+    const diagonal = edgeAlong({ x: 0, y: 0 }, { x: 3, y: 1 }, { x: 9, y: 3 }, { x: 9, y: 50 });
+    expect(pathOf(diagonal)).toBe('<path d="M 0 0 L 3 1 L 9 3 L 9 50" fill="none"/>');
+  });
+
+  test("draws sharp a point where the path turns back on itself", () => {
+    const back = edgeAlong({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 50, y: 0 });
+    expect(pathOf(back)).toBe('<path d="M 0 0 L 100 0 L 50 0" fill="none"/>');
+  });
+
+  test("goes straight through a point on a vertical stretch", () => {
+    const down = edgeAlong({ x: 5, y: 10 }, { x: 5, y: 30 }, { x: 5, y: 60 });
+    expect(pathOf(down)).toBe('<path d="M 5 10 L 5 60" fill="none"/>');
+  });
+
+  test("drops a repeated point at an end", () => {
+    const repeated = edgeAlong(
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 },
+      { x: 100, y: 50 },
+    );
+    expect(pathOf(repeated)).toBe(pathOf(corner));
+    expect(pathOf(edgeAlong({ x: 1, y: 1 }, { x: 1, y: 1 }))).toBe('<path d="M 1 1" fill="none"/>');
+  });
+
+  test("refuses a negative radius or none at all", () => {
     expect(() => drawEdge(corner, { radius: -1 })).toThrow(RangeError);
+    expect(() => drawEdge(corner, { radius: Number.NaN })).toThrow(RangeError);
   });
 });
