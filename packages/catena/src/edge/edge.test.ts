@@ -33,9 +33,24 @@ describe("drawEdge", () => {
   });
 
   test("gives each bend at most half of a stretch between two bends", () => {
-    const step = edgeAlong({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 10 }, { x: 200, y: 10 });
+    const step = edgeAlong(
+      { x: 0, y: 20 },
+      { x: 100, y: 20 },
+      { x: 100, y: 30 },
+      { x: 200, y: 30 },
+    );
     expect(pathOf(step)).toBe(
-      '<path d="M 0 0 L 95 0 A 5 5 0 0 1 100 5 A 5 5 0 0 0 105 10 L 200 10" fill="none"/>',
+      '<path d="M 0 20 L 95 20 A 5 5 0 0 1 100 25 A 5 5 0 0 0 105 30 L 200 30" fill="none"/>',
+    );
+    const hook = edgeAlong(
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      { x: 40, y: 30 },
+      { x: 0, y: 30 },
+      { x: 0, y: 60 },
+    );
+    expect(pathOf(hook)).toBe(
+      '<path d="M 0 0 L 32 0 A 8 8 0 0 1 40 8 L 40 22 A 8 8 0 0 1 32 30 L 8 30 A 8 8 0 0 0 0 38 L 0 60" fill="none"/>',
     );
   });
 
@@ -67,6 +82,8 @@ describe("drawEdge", () => {
     expect(pathOf(slanted)).toBe('<path d="M 0 0 L 100 0 L 200 100" fill="none"/>');
     const diagonal = edgeAlong({ x: 0, y: 0 }, { x: 3, y: 1 }, { x: 9, y: 3 }, { x: 9, y: 50 });
     expect(pathOf(diagonal)).toBe('<path d="M 0 0 L 3 1 L 9 3 L 9 50" fill="none"/>');
+    const peak = edgeAlong({ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 0 });
+    expect(pathOf(peak)).toBe('<path d="M 0 0 L 10 10 L 20 0" fill="none"/>');
   });
 
   test("draws sharp a point where the path turns back on itself", () => {
@@ -87,6 +104,14 @@ describe("drawEdge", () => {
       { x: 100, y: 50 },
     );
     expect(pathOf(repeated)).toBe(pathOf(corner));
+    const repeatedAtBend = edgeAlong(
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 },
+    );
+    expect(pathOf(repeatedAtBend)).toBe(pathOf(corner));
     expect(pathOf(edgeAlong({ x: 1, y: 1 }, { x: 1, y: 1 }))).toBe('<path d="M 1 1" fill="none"/>');
   });
 

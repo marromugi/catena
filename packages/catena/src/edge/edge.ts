@@ -37,19 +37,24 @@ interface Heading {
 function turningPoints(points: readonly [Point, ...Point[]]): [Point, ...Point[]] {
   const [first, ...others] = points;
   const distinct: [Point, ...Point[]] = [first];
+  let previous = first;
   for (const point of others) {
-    if (!samePoint(point, distinct.at(-1))) distinct.push(point);
+    if (samePoint(point, previous)) continue;
+    distinct.push(point);
+    previous = point;
   }
   const [start, ...rest] = distinct;
   const kept: [Point, ...Point[]] = [start];
+  let before = start;
   for (const [index, point] of rest.entries()) {
-    const before = kept.at(-1) ?? start;
     const after = rest[index + 1];
     const straight =
       after !== undefined &&
       isAxial(heading(before, point)) &&
       samePoint(heading(before, point), heading(point, after));
-    if (!straight) kept.push(point);
+    if (straight) continue;
+    kept.push(point);
+    before = point;
   }
   return kept;
 }
@@ -97,16 +102,13 @@ function isAxial(h: Heading): boolean {
 
 /** One heading is horizontal and the other vertical. */
 function isRightAngle(a: Heading, b: Heading): boolean {
-  return (
-    (a.x === 0 && a.y !== 0 && b.y === 0 && b.x !== 0) ||
-    (a.y === 0 && a.x !== 0 && b.x === 0 && b.y !== 0)
-  );
+  return isAxial(a) && isAxial(b) && a.x * b.x + a.y * b.y === 0;
 }
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-function samePoint(a: Point, b: Point | undefined): boolean {
-  return b !== undefined && a.x === b.x && a.y === b.y;
+function samePoint(a: Point, b: Point): boolean {
+  return a.x === b.x && a.y === b.y;
 }
