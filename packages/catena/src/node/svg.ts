@@ -15,6 +15,26 @@ export function element(
   return { name, attributes, children };
 }
 
+/**
+ * Gives an id for an element another refers to, such as a `<clipPath>`. The ids are unique among the
+ * nodes of one graph drawn once into a document; two graphs, or one node drawn twice, can repeat them. A
+ * container passes the one it is given on to the parts it holds.
+ */
+export type NewId = () => string;
+
+/**
+ * Ids for the elements of the node `nodeId`: `catena-`, the node id with each character but a letter or
+ * digit written as `_<code point in hex>_`, `-`, and a count. Two different node ids never give the same
+ * id, and each is a valid SVG id.
+ */
+export function idsOfNode(nodeId: string): NewId {
+  const written = Array.from(nodeId, (c) =>
+    /[A-Za-z0-9]/.test(c) ? c : `_${(c.codePointAt(0) ?? 0).toString(16)}_`,
+  ).join("");
+  let count = 0;
+  return () => `catena-${written}-${++count}`;
+}
+
 const ESCAPES: Record<string, string> = { "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" };
 
 /** The element as SVG markup, its attribute values escaped so any string stays one value. */

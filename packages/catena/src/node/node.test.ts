@@ -11,6 +11,8 @@ import {
   defineTheme,
   element,
   frame,
+  image,
+  imageTitleBodyCard,
   optional,
   redBadge,
   row,
@@ -131,6 +133,11 @@ const fixed = (width: number, height: number): Part<v.NullSchema<undefined>> => 
   layout: () => ({ size: { width, height }, draw: (box) => [element("rect", { ...box })] }),
 });
 
+// The id source handed to a part that refers to no other element.
+const noId = () => {
+  throw new Error("This part takes no id.");
+};
+
 describe("writeSvg", () => {
   test("writes an element's attributes and then its children inside it", () => {
     expect(writeSvg(element("g", { id: "a" }, [element("rect", { x: 1 })]))).toBe(
@@ -211,7 +218,7 @@ describe("badges and the status dot", () => {
 
     // 14 (one line of 10 × 1.4) + 2 × 3
     expect(block.size).toEqual({ width: text.width + 32, height: 20 });
-    expect(block.draw({ x: 10, y: 20, width: 300, height: 100 }).map(writeSvg)).toEqual([
+    expect(block.draw({ x: 10, y: 20, width: 300, height: 100 }, noId).map(writeSvg)).toEqual([
       `<rect x="10.5" y="20.5" width="${text.width + 31}" height="19" rx="10" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
       `<path d="${textPathData(text, 26, 23)}" fill="#1f1f1f"/>`,
     ]);
@@ -220,7 +227,7 @@ describe("badges and the status dot", () => {
   test("the red badge differs from the plain one only in its colours", () => {
     const drawn = redBadge
       .layout("Badge", theme, 300)
-      .draw({ x: 10, y: 20, width: 300, height: 100 })
+      .draw({ x: 10, y: 20, width: 300, height: 100 }, noId)
       .map(writeSvg);
 
     expect(drawn[0]).toMatch(/ rx="10" fill="#fde4e4" stroke="#fbd0d0" /);
@@ -257,13 +264,13 @@ describe("badges and the status dot", () => {
     const pill = redBadge.layout("Badge", changed, 300);
 
     expect(pill.size).toEqual({ width: text.width + 8, height: 14 });
-    expect(writeSvg(pill.draw({ x: 0, y: 0, ...pill.size })[0] ?? element("none"))).toMatch(
+    expect(writeSvg(pill.draw({ x: 0, y: 0, ...pill.size }, noId)[0] ?? element("none"))).toMatch(
       / rx="7" fill="pink" stroke="#fbd0d0" /,
     );
     expect(badge.layout("Badge", changed, 300).size.height).toBe(20);
     const dot = statusDot.layout("red", changed, 300);
     expect(dot.size).toEqual({ width: 6, height: 6 });
-    expect(writeSvg(dot.draw({ x: 0, y: 0, ...dot.size })[0] ?? element("none"))).toBe(
+    expect(writeSvg(dot.draw({ x: 0, y: 0, ...dot.size }, noId)[0] ?? element("none"))).toBe(
       `<circle cx="3" cy="3" r="3" fill="crimson"/>`,
     );
   });
@@ -280,7 +287,7 @@ describe("row", () => {
     );
 
     expect(block.size).toEqual({ width: 142, height: 20 });
-    expect(block.draw(box).map(writeSvg)).toEqual([
+    expect(block.draw(box, noId).map(writeSvg)).toEqual([
       `<rect x="0" y="15" width="50" height="10"/>`,
       `<rect x="62" y="10" width="80" height="20"/>`,
     ]);
@@ -291,7 +298,7 @@ describe("row", () => {
     const block = kind.layout({ a: null, b: null, c: null }, theme, 200);
 
     expect(block.size).toEqual({ width: 200, height: 10 });
-    expect(block.draw({ ...box, height: 10 }).map(writeSvg)).toEqual([
+    expect(block.draw({ ...box, height: 10 }, noId).map(writeSvg)).toEqual([
       `<rect x="0" y="0" width="50" height="10"/>`,
       `<rect x="62" y="0" width="206" height="10"/>`,
       `<rect x="280" y="0" width="20" height="10"/>`,
@@ -319,7 +326,7 @@ describe("optional", () => {
     });
     const shown = row(parts).layout(absent, theme, 300);
     expect(shown.size).toEqual({ width: 92, height: 10 });
-    expect(shown.draw({ x: 0, y: 0, width: 300, height: 10 }).map(writeSvg)).toEqual([
+    expect(shown.draw({ x: 0, y: 0, width: 300, height: 10 }, noId).map(writeSvg)).toEqual([
       `<rect x="0" y="0" width="50" height="10"/>`,
       `<rect x="62" y="0" width="30" height="10"/>`,
     ]);
@@ -417,7 +424,7 @@ describe("what review found", () => {
     const block = kind.layout({ a: null, g: null, b: null }, theme, 300);
 
     expect(block.size).toEqual({ width: 454, height: 10 });
-    expect(block.draw({ x: 0, y: 0, width: 300, height: 10 }).map(writeSvg)).toEqual([
+    expect(block.draw({ x: 0, y: 0, width: 300, height: 10 }, noId).map(writeSvg)).toEqual([
       `<rect x="0" y="0" width="200" height="10"/>`,
       `<rect x="212" y="0" width="30" height="10"/>`,
       `<rect x="254" y="0" width="200" height="10"/>`,
@@ -526,12 +533,12 @@ describe("what review found", () => {
       dot: { colors: { plain: "gray" } },
     });
     const pill = badge.layout("Badge", changed, 300);
-    const drawn = pill.draw({ x: 0, y: 0, ...pill.size }).map(writeSvg);
+    const drawn = pill.draw({ x: 0, y: 0, ...pill.size }, noId).map(writeSvg);
 
     expect(drawn[0]).toMatch(/ fill="ivory" stroke="#e6e6e6" /);
     expect(drawn[1]).toMatch(/fill="navy"\/>$/);
     const dot = statusDot.layout("plain", changed, 300);
-    expect(dot.draw({ x: 0, y: 0, ...dot.size }).map(writeSvg)).toEqual([
+    expect(dot.draw({ x: 0, y: 0, ...dot.size }, noId).map(writeSvg)).toEqual([
       `<circle cx="8" cy="8" r="8" fill="gray"/>`,
     ]);
   });
@@ -550,5 +557,124 @@ describe("what review found", () => {
       // @ts-expect-error the badge's key is misspelt
       buildNode(titleBodyBadgeCard, theme, "n", { title: "ここで", body: "", bdage: "x" }),
     ).toThrow(refusal);
+  });
+});
+
+const ids = (svg: string) => [...svg.matchAll(/ id="([^"]*)"/g)].map(([, id]) => id);
+const clipRefs = (svg: string) =>
+  [...svg.matchAll(/clip-path="url\(#([^)]*)\)"/g)].map(([, id]) => id);
+
+describe("the image and the card with an image", () => {
+  const SUNSET = "https://example.com/sunset.jpg";
+
+  test("the card gives a leaf as high as its padding, the image at its aspect ratio, title and body", () => {
+    const { leaf } = buildNode(imageTitleBodyCard, theme, "card", {
+      image: SUNSET,
+      title: "ここで",
+      body: BODY,
+    });
+
+    // 20 + 280 / 1.5 + 12 + 21 + 12 + 52.8 + 20
+    expect(leaf.size.width).toBe(320);
+    expect(leaf.size.height).toBeCloseTo(137.8 + 280 / 1.5, 6);
+  });
+
+  test("draws the image filling the width inside the padding, clipped to round corners, over the title", () => {
+    const node = buildNode(imageTitleBodyCard, theme, "card", {
+      image: SUNSET,
+      title: "ここで",
+      body: BODY,
+    });
+    const height = 280 / 1.5;
+
+    const area = `x="30" y="40" width="280" height="${height}"`;
+    const titleData = textPathData(
+      layoutText("ここで", { fonts: fonts.bold, size: 14, lineHeight: 1.5, maxWidth: 280 }),
+      30,
+      40 + height + 12,
+    );
+    expect(node.draw({ x: 10, y: 20, ...node.leaf.size })).toContain(
+      `<clipPath id="catena-card-1"><rect ${area} rx="6"/></clipPath>` +
+        `<image ${area} href="${SUNSET}" preserveAspectRatio="xMidYMid slice" clip-path="url(#catena-card-1)"/>` +
+        `<path d="${titleData}" fill="#1f1f1f"/>`,
+    );
+  });
+
+  test("takes its aspect ratio and corners from the theme, and writes the href as given, escaped", () => {
+    const square = defineTheme(fonts, { image: { aspectRatio: 1, radius: 0 } });
+    const block = image.layout(`a.png?b=1&c="2"`, square, 100);
+
+    expect(block.size).toEqual({ width: 100, height: 100 });
+    expect(block.draw({ x: 0, y: 0, width: 100, height: 100 }, () => "i").map(writeSvg)).toEqual([
+      `<clipPath id="i"><rect x="0" y="0" width="100" height="100" rx="0"/></clipPath>`,
+      `<image x="0" y="0" width="100" height="100" href="a.png?b=1&amp;c=&quot;2&quot;" preserveAspectRatio="xMidYMid slice" clip-path="url(#i)"/>`,
+    ]);
+  });
+
+  test("takes no room when it is given no width", () => {
+    expect(image.layout(SUNSET, theme, -10).size).toEqual({ width: 0, height: 0 });
+  });
+
+  test("refuses an image that is not an href", () => {
+    expect(() =>
+      // @ts-expect-error the image is not a string
+      buildNode(imageTitleBodyCard, theme, "card", { image: 1, title: "", body: "" }),
+    ).toThrow(expect.objectContaining({ name: "InvalidNodeContentError" }));
+  });
+
+  test("frame, stack and row hand each part in a node an id of its own", () => {
+    const kind = frame(stack({ top: image, side: row({ left: image }) }));
+    const node = buildNode(kind, theme, "n", { top: SUNSET, side: { left: SUNSET } });
+    const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+
+    expect(ids(drawn)).toEqual(["catena-n-1", "catena-n-2"]);
+    expect(clipRefs(drawn)).toEqual(["catena-n-1", "catena-n-2"]);
+  });
+
+  const firstId = (nodeId: string) => {
+    const node = buildNode(imageTitleBodyCard, theme, nodeId, {
+      image: SUNSET,
+      title: "",
+      body: "",
+    });
+    return ids(node.draw({ x: 0, y: 0, ...node.leaf.size }))[0];
+  };
+
+  test("writes the node id into its element ids, each character but a letter or digit as its code point", () => {
+    expect(firstId("aZ9")).toBe("catena-aZ9-1");
+    expect(firstId(`ノード "1"`)).toBe("catena-_30ce__30fc__30c9__20__22_1_22_-1");
+    expect(firstId(" b")).toBe("catena-_20_b-1");
+    expect(firstId("ȋ")).toBe("catena-_20b_-1");
+    expect(firstId("😀")).toBe("catena-_1f600_-1");
+  });
+
+  test("gives nodes with different ids different element ids, each a valid SVG id", () => {
+    const nodeIds = ["a b", "a-b", "ab", "a_b", "a_20_b", "a-1", "a", " b", "ȋ", "😀", "😁"];
+    const drawnIds = nodeIds.map(firstId);
+
+    expect(new Set(drawnIds).size).toBe(nodeIds.length);
+    for (const id of drawnIds) expect(id).toMatch(/^[A-Za-z][\w-]*$/);
+  });
+
+  test("gives the same ids each time a node is drawn", () => {
+    const node = buildNode(imageTitleBodyCard, theme, "card", {
+      image: SUNSET,
+      title: "",
+      body: "",
+    });
+    const box = { x: 0, y: 0, ...node.leaf.size };
+
+    expect(node.draw(box)).toBe(node.draw(box));
+  });
+
+  test("draws at its own size at the top-left of a larger box", () => {
+    const square = defineTheme(fonts, { image: { aspectRatio: 1, radius: 0 } });
+    const block = image.layout(SUNSET, square, 100);
+    const drawn = block.draw({ x: 10, y: 20, width: 300, height: 300 }, () => "i").map(writeSvg);
+
+    expect(drawn[0]).toBe(
+      `<clipPath id="i"><rect x="10" y="20" width="100" height="100" rx="0"/></clipPath>`,
+    );
+    expect(drawn[1]).toMatch(/^<image x="10" y="20" width="100" height="100" /);
   });
 });
