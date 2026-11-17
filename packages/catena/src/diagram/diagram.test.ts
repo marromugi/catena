@@ -1,13 +1,14 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
+import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import { drawEdge } from "../edge";
 import { iconPathData } from "../icon";
 import type { Layout, Rect } from "../layout";
 import { writeSvg, type Node } from "../node";
 import { placeGraph } from "../place";
-import { Typeface } from "../text";
+import { layoutText, textPathData, Typeface } from "../text";
 import { DEFAULT_DOT_GRID, DEFAULT_EDGE_PAINT, drawDiagram, type DiagramHeader } from "./index";
 
 const spacing = { nodeGap: 40, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 16 };
@@ -81,6 +82,7 @@ describe("drawDiagram", () => {
       drawDiagram(layout, nodes, {
         background: { dot: undefined },
         edgePaint: { stroke: undefined },
+        header: undefined,
       }),
     ).toBe(drawDiagram(layout, nodes));
   });
@@ -228,6 +230,16 @@ const empty = (width: number): Layout => ({ width, height: 100, nodes: [], edges
 const headerOf = (given: Omit<DiagramHeader, "fonts">) =>
   drawDiagram(empty(800), new Map(), { header: { fonts, ...given } });
 
+/** The title drawn in a header holding only it, on an empty layout `width` wide. */
+const titleAlone = (width: number) => (title: string) =>
+  titles(drawDiagram(empty(width), new Map(), { header: { fonts, title } }));
+
+const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+
+/** `text` set on one line, 12 high, in the fonts of `weight`. */
+const setIn = (text: string, weight: "regular" | "bold") =>
+  layoutText(text, { fonts: fonts[weight], size: 12, lineHeight: 1.5, maxWidth: Infinity });
+
 /** The left, right, top and bottom of what an outline covers, from its points. */
 interface Span {
   readonly left: number;
@@ -333,7 +345,7 @@ describe("drawDiagram with a header", () => {
 
   test("draws a white band flush with the top, its bottom corners 24 round, a light border and a shadow below", () => {
     expect(drawDiagram(empty(800), new Map(), { header: { fonts } })).toContain(
-      '<filter id="catena-header-shadow" filterUnits="userSpaceOnUse" x="-24" y="-24" width="848" height="124">' +
+      '<filter id="catena-header-shadow" filterUnits="objectBoundingBox" x="-0.1" y="-0.5" width="1.2" height="2">' +
         '<feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.08"/></filter>' +
         '<path d="M0.5 0V47.5A24 24 0 0 0 24.5 71.5H775.5A24 24 0 0 0 799.5 47.5V0" fill="#ffffff" ' +
         'stroke="#ebebeb" stroke-width="1" filter="url(#catena-header-shadow)"/>',
@@ -386,12 +398,74 @@ describe("drawDiagram with a header", () => {
     expect(none).toContain('filter="url(#catena-header-shadow)"');
   });
 
-  test("draws a line break as a space, and a text of only spaces as none", () => {
-    const draw = (title: string) =>
-      drawDiagram(empty(800), new Map(), { header: { ...header, title } });
-    expect(draw("このシーケンス図の\nタイトル")).toBe(draw("このシーケンス図の タイトル"));
-    const { title: _, ...untitled } = header;
-    expect(draw(" \n ")).toBe(drawDiagram(empty(800), new Map(), { header: untitled }));
+  test("draws each run of spaces and line breaks as one space, and adds none where there is none", () => {
+    const draw = titleAlone(800);
+    expect(draw("このシーケンス図の\nタイトル")).toEqual(draw("このシーケンス図の タイトル"));
+    expect(draw("A \n  B")).toEqual(draw("A B"));
+    expect(draw("A\nB")).not.toEqual(draw("AB"));
+  });
+
+  test("draws no text holding only spaces or drawing nothing, and no clock for such a time", () => {
+    const blank = headerOf({
+      title: " \n ",
+      repository: { name: ZERO_WIDTH_SPACE },
+      capturedAt: ZERO_WIDTH_SPACE,
+    });
+    expect(blank).toBe(headerOf({}));
+  });
+
+  test("sets the title 12 bold and the repository and the time 12 regular, centred in the band", () => {
+    expect(titles(headerOf({ title: "Title" }))).toEqual([
+      textPathData(setIn("Title", "bold"), 40, 27),
+    ]);
+    const repository = setIn("repo", "regular");
+    expect(details(headerOf({ repository: { name: "repo" } }))).toEqual([
+      textPathData(repository, 760 - repository.width, 27),
+    ]);
+  });
+
+  test("draws the clock 18 across in light grey, its lines 1.75 wide as drawn", () => {
+    const svg = headerOf({ capturedAt: "14:00" });
+    expect(clockBox(svg)).toMatchObject({ top: 27, bottom: 45 });
+    expect(svg).toContain(
+      ' scale(0.75)" fill="none" stroke-width="2.3333333333333335" stroke-linecap="round" ' +
+        'stroke-linejoin="round" stroke="#b3b3b3"/>',
+    );
+  });
+
+  test("gives every document the same shadow filter, so each band keeps its whole shadow on a shared page", () => {
+    const [narrow, wide] = [300, 700].map(
+      (width) =>
+        /<filter .*?<\/filter>/.exec(drawDiagram(empty(width), new Map(), { header }))?.[0],
+    );
+    expect(narrow).toBeDefined();
+    expect(narrow).toBe(wide);
+  });
+
+  test("draws a text that exactly fits its room whole, and a cut that exactly fits it", () => {
+    const [drawn = ""] = titleAlone(80 + setIn("WWWW", "bold").width)("WWWW");
+    expect(endsInEllipsis(drawn)).toBe(false);
+    const cutRoom = titleAlone(80 + setIn("WWW…", "bold").width);
+    expect(cutRoom("WWWWWWWW")).toEqual(cutRoom("WWW…"));
+  });
+
+  test("leaves a text out when … alone would fit but not one character and …", () => {
+    const room = (setIn("…", "regular").width + setIn("W…", "regular").width) / 2;
+    const svg = drawDiagram(empty(40 + 40 + 18 + 8 + room), new Map(), {
+      header: { fonts, capturedAt: "WWW" },
+    });
+    expect([details(svg).length, clockBox(svg)]).toEqual([0, undefined]);
+  });
+
+  test("cuts a text of 2000 characters", () => {
+    const long = "サンプルの文章".repeat(300);
+    const [title = ""] = titles(headerOf({ title: long }));
+    expect(endsInEllipsis(title)).toBe(true);
+    expect(startsAt(spanOf(title), 40)).toBe(true);
+    const all = headerOf({ title: long, repository: { name: long }, capturedAt: long });
+    const [time = ""] = details(all);
+    expect(endsInEllipsis(time)).toBe(true);
+    expect(clockBox(all)?.left).toBeGreaterThanOrEqual(40);
   });
 
   test("cuts a title too wide for what the repository and the time leave, ending it in …", () => {
@@ -408,6 +482,8 @@ describe("drawDiagram with a header", () => {
     const spans = [spanOf(title), spanOf(repository)] as const;
     expect(startsAt(spans[0], 40)).toBe(true);
     expect(spans[1].left - spans[0].right).toBeGreaterThan(40 - BEARING);
+    // The longest start that fits: one more letter of 12 at most would pass the room's end.
+    expect(spans[1].left - spans[0].right).toBeLessThan(40 + 12 + 2 * BEARING);
   });
 
   test("leaves the title out before cutting the repository, and the repository before cutting the time", () => {
@@ -428,5 +504,53 @@ describe("drawDiagram with a header", () => {
   test("leaves out each text, and the clock with the time, when not even one character and … fit", () => {
     const svg = drawDiagram(empty(84), new Map(), { header });
     expect([titles(svg).length, details(svg).length, clockBox(svg)]).toEqual([0, 0, undefined]);
+  });
+});
+
+describe("drawDiagram with a header: any texts at any width", () => {
+  const piece = fc.constantFrom(
+    "a",
+    "W",
+    " ",
+    "\n",
+    "語",
+    "の",
+    "…",
+    "-",
+    "👩‍💻",
+    String.fromCodePoint(0x3000),
+    ZERO_WIDTH_SPACE,
+    "e" + String.fromCodePoint(0x301),
+  );
+  const text = fc.option(
+    fc.array(piece, { maxLength: 24 }).map((pieces) => pieces.join("")),
+    { nil: undefined },
+  );
+  const headers = fc.record({
+    title: text,
+    repository: text.map((name) => (name === undefined ? undefined : { name })),
+    capturedAt: text,
+  });
+
+  test("keeps every text and the clock in the band, left to right without touching", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 900 }), headers, (width, given) => {
+        const svg = drawDiagram(empty(width), new Map(), { header: { fonts, ...given } });
+        const clock = clockBox(svg);
+        const [first, second] = details(svg).map(spanOf);
+        const [time, repository] = clock === undefined ? [undefined, first] : [first, second];
+        const spans = [...titles(svg).map(spanOf), repository, clock, time].filter(
+          (span) => span !== undefined,
+        );
+        for (const span of spans) {
+          expect(span.left).toBeGreaterThanOrEqual(0);
+          expect(span.right).toBeLessThanOrEqual(width);
+          expect(span.top).toBeGreaterThanOrEqual(0);
+          expect(span.bottom).toBeLessThanOrEqual(72);
+        }
+        expect(apart(spans)).toBe(true);
+      }),
+      { numRuns: 300 },
+    );
   });
 });

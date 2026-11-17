@@ -1,5 +1,5 @@
 import { iconGrid, iconPathData, iconStroke } from "../icon";
-import { element, shadowFilter, type SvgElement, type TextLook, type Theme } from "../node";
+import { element, type SvgElement, type TextLook, type Theme } from "../node";
 import { layoutText, textPathData, type TextLayout } from "../text";
 
 /** The repository a diagram was drawn from, as its header names it. */
@@ -9,8 +9,9 @@ export interface HeaderRepository {
 
 /**
  * A band across the top of a diagram: `title` at its left; at its right `repository`, then a clock and
- * `capturedAt`, written as given. Each text is set in `fonts` on one line, a line break drawn as a space;
- * a text left out or holding only spaces is not drawn.
+ * `capturedAt`, written as given. Each text is set in `fonts` on one line, each run of spaces and line
+ * breaks drawn as one space; a text left out, holding only spaces, or whose glyphs draw nothing is not
+ * drawn.
  *
  * When they don't all fit, the capture time keeps its whole width first, then the repository, then the
  * title, each from what the one before left. A text wider than its room is cut to the longest start that
@@ -46,6 +47,32 @@ export const HEADER_HEIGHT = LOOK.height;
 
 /** The id of the header's shadow filter. A node's ids end in a count, so none is this one. */
 const SHADOW_ID = "catena-header-shadow";
+
+/**
+ * The header's shadow. Its region is in units of the band's own box, so it is the same in every document
+ * and one of them serves every header inlined in a page. Half the band's height above and below holds the
+ * shadow's offset and three times its blur.
+ */
+const SHADOW_FILTER = element(
+  "filter",
+  {
+    id: SHADOW_ID,
+    filterUnits: "objectBoundingBox",
+    x: -0.1,
+    y: -0.5,
+    width: 1.2,
+    height: 2,
+  },
+  [
+    element("feDropShadow", {
+      dx: LOOK.shadow.dx,
+      dy: LOOK.shadow.dy,
+      stdDeviation: LOOK.shadow.blur,
+      "flood-color": LOOK.shadow.color,
+      "flood-opacity": LOOK.shadow.opacity,
+    }),
+  ],
+);
 
 const ELLIPSIS = "…";
 
@@ -95,7 +122,7 @@ function band(width: number): SvgElement[] {
     `M${left} 0V${bottom - r}A${r} ${r} 0 0 0 ${left + r} ${bottom}` +
     `H${right - r}A${r} ${r} 0 0 0 ${right} ${bottom - r}V0`;
   return [
-    shadowFilter({ x: 0, y: 0, width, height }, LOOK.shadow, SHADOW_ID),
+    SHADOW_FILTER,
     element("path", {
       d,
       fill: LOOK.fill,
@@ -135,11 +162,23 @@ function fitted(
       maxWidth: Infinity,
     });
   const whole = set(line);
+  if (textPathData(whole, 0, 0) === "") return undefined;
   if (whole.width <= room) return whole;
   const characters = Array.from(graphemes.segment(line), ({ segment }) => segment);
-  for (let kept = characters.length - 1; kept >= 1; kept--) {
-    const cut = set(characters.slice(0, kept).join("").trimEnd() + ELLIPSIS);
-    if (cut.width <= room) return cut;
+  const cutAt = (kept: number) => set(characters.slice(0, kept).join("").trimEnd() + ELLIPSIS);
+  // A start grows no narrower as it grows longer, so the longest that fits is found by halving.
+  let fits: TextLayout | undefined;
+  let low = 1;
+  let high = characters.length - 1;
+  while (low <= high) {
+    const kept = Math.floor((low + high) / 2);
+    const cut = cutAt(kept);
+    if (cut.width <= room) {
+      fits = cut;
+      low = kept + 1;
+    } else {
+      high = kept - 1;
+    }
   }
-  return undefined;
+  return fits;
 }
