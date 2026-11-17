@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
+import * as fc from "fast-check";
 import * as v from "valibot";
 import { describe, expect, test } from "vitest";
 import { iconNames, iconPathData } from "../icon";
@@ -18,6 +19,7 @@ import {
   fitted,
   frame,
   icon,
+  iconPart,
   iconTile,
   iconTitleBodyCard,
   iconTitleCard,
@@ -50,7 +52,7 @@ import {
   type ThemeOverrides,
   writeSvg,
 } from "./index";
-import type { OwnLogo } from "./index";
+import type { LogoShape, OwnLogo } from "./index";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -1087,7 +1089,7 @@ describe("icons and the kinds that carry one", () => {
     ]);
   });
 
-  test("an icon is a built-in name or a user's own icon with a view box and a paint, and nothing else", () => {
+  test("a user's own one-colour icon has path data, a view box and a paint, and nothing else", () => {
     const kind = frame(icon);
     const box = { x: 0, y: 0, width: 24, height: 24 };
     const notIcons: unknown[] = [
@@ -1117,11 +1119,13 @@ describe("icons and the kinds that carry one", () => {
   // Made-up marks: catena's tests carry no real company's logo or colours.
   const ring = "M 24 4 A 20 20 0 1 1 23.9 4 Z";
   const bar = "M 8 40 L 40 8";
-  const twoColourLogo: OwnLogo = {
+  const dot = "M 22 24 A 2 2 0 1 1 26 24 A 2 2 0 1 1 22 24 Z";
+  const madeUpLogo: OwnLogo = {
     viewBox: { x: 0, y: 0, width: 48, height: 48 },
     shapes: [
       { pathData: ring, paint: "fill", color: "#3a6ea5" },
       { pathData: bar, paint: "stroke", color: "#e0a030", width: 4 },
+      { pathData: dot, paint: "fill", color: "#f4f1e8" },
     ],
   };
   const madeUpImage =
@@ -1129,12 +1133,13 @@ describe("icons and the kinds that carry one", () => {
     "%3Crect width='2' height='1' fill='%237a4fd0'/%3E%3C/svg%3E";
 
   test("a user's own logo is its shapes in its view box, each in the colour it gives, scaled and centred in the icon's square", () => {
-    const node = buildNode(iconTitleCard, theme, "c", { icon: twoColourLogo, title: "ここで" });
+    const node = buildNode(iconTitleCard, theme, "c", { icon: madeUpLogo, title: "ここで" });
 
     expect(node.draw({ x: 10, y: 20, width: 320, height: 61 })).toContain(
       `<g transform="translate(30 40.5) scale(0.4166666666666667)">` +
         `<path d="${ring}" fill="#3a6ea5"/>` +
         `<path d="${bar}" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke="#e0a030"/>` +
+        `<path d="${dot}" fill="#f4f1e8"/>` +
         `</g>`,
     );
   });
@@ -1189,6 +1194,11 @@ describe("icons and the kinds that carry one", () => {
       { viewBox: box, shapes: [{ ...stroke, width: undefined }] },
       { viewBox: box, shapes: [{ ...stroke, width: 0 }] },
       { viewBox: box, shapes: [{ ...stroke, width: Number.POSITIVE_INFINITY }] },
+      { viewBox: box, shapes: [{ ...stroke, width: -2 }] },
+      { viewBox: box, shapes: [{ ...stroke, color: "" }] },
+      { viewBox: box, shapes: [{ ...stroke, pathData: 1 }] },
+      { viewBox: box, shapes: [{ ...stroke, dash: [2, 2] }] },
+      { viewBox: box, shapes: [{ ...fill, opacity: 0.5 }] },
       { viewBox: box, shapes: [{ ...fill, pathData: 1 }] },
       { viewBox: box, shapes: [fill, "spark"] },
       { href: 1 },
@@ -1201,6 +1211,74 @@ describe("icons and the kinds that carry one", () => {
         expect.objectContaining({ name: "InvalidNodeContentError" }),
       );
     }
+  });
+
+  const breadths = fc.double({ min: 1e-3, max: 1e3, noNaN: true });
+  const offsets = fc.double({ min: -1e3, max: 1e3, noNaN: true });
+  const viewBoxes = fc.record({ x: offsets, y: offsets, width: breadths, height: breadths });
+  const colours = fc.string({ minLength: 1 });
+  const shapes: fc.Arbitrary<LogoShape> = fc.oneof(
+    fc.record({ pathData: fc.string(), paint: fc.constant("fill"), color: colours }),
+    fc.record({
+      pathData: fc.string(),
+      paint: fc.constant("stroke"),
+      color: colours,
+      width: breadths,
+    }),
+  );
+  const logos: fc.Arbitrary<OwnLogo> = fc.record({
+    viewBox: viewBoxes,
+    shapes: fc.array(shapes, { minLength: 1, maxLength: 5 }),
+  });
+
+  test("a logo draws the same whatever colours the look holds, each shape in order in its own colour", () => {
+    fc.assert(
+      fc.property(logos, colours, colours, (logo, one, other) => {
+        const drawIn = (color: string) =>
+          iconPart((t) => ({ ...t.icon, color, colors: { spark: color } }))
+            .layout(logo, theme, 100)
+            .draw({ x: 0, y: 0, width: 20, height: 20 }, noId);
+        const drawn = drawIn(one);
+        expect(drawIn(other)).toEqual(drawn);
+        expect(drawn[0]?.children.map((path) => path.attributes.d)).toEqual(
+          logo.shapes.map((shape) => shape.pathData),
+        );
+        expect(
+          drawn[0]?.children.map((path) =>
+            path.attributes.fill === "none" ? path.attributes.stroke : path.attributes.fill,
+          ),
+        ).toEqual(logo.shapes.map((shape) => shape.color));
+      }),
+    );
+  });
+
+  test("a logo's view box is scaled so its longer side is the icon's size, and centred in the icon's square", () => {
+    fc.assert(
+      fc.property(logos, offsets, offsets, (logo, x, y) => {
+        const [g] = icon.layout(logo, theme, 100).draw({ x, y, width: 20, height: 20 }, noId);
+        const [, left, top, scale] = /^translate\((\S+) (\S+)\) scale\((\S+)\)$/
+          .exec(String(g?.attributes.transform))!
+          .map(Number);
+        const { viewBox } = logo;
+        const at = (vx: number, vy: number) => [left! + vx * scale!, top! + vy * scale!];
+        const [x0, y0] = at(viewBox.x, viewBox.y);
+        const [x1, y1] = at(viewBox.x + viewBox.width, viewBox.y + viewBox.height);
+        expect(Math.max(x1! - x0!, y1! - y0!)).toBeCloseTo(20, 6);
+        expect((x0! + x1!) / 2).toBeCloseTo(x + 10, 6);
+        expect((y0! + y1!) / 2).toBeCloseTo(y + 10, 6);
+      }),
+    );
+  });
+
+  test("an image's href is written as given, whatever it holds", () => {
+    fc.assert(
+      fc.property(fc.string(), (href) => {
+        const [drawn] = icon
+          .layout({ href }, theme, 100)
+          .draw({ x: 0, y: 0, width: 20, height: 20 }, noId);
+        expect(drawn?.attributes.href).toBe(href);
+      }),
+    );
   });
 
   test("the icon-and-title card sets the icon centred on the title's line, the title a gap after it", () => {
