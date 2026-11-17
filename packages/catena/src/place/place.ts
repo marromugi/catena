@@ -64,8 +64,9 @@ function edgesBetween(nodes: readonly GraphNode[], edges: readonly GraphEdge[]):
 /**
  * The edges one grid draws, in the order they are listed. An end of an edge is drawn to the node of the
  * grid that is that end, or that holds it as a child and flows as the grid does. An edge whose ends are
- * drawn to two nodes, or which connects a node to itself, runs between them. An edge in `crossing` runs
- * between its end in the grid and the outside.
+ * drawn to two nodes runs between them, and so does an edge from a node of the grid to itself; an edge
+ * drawn to one node with an end inside it is left out. An edge in `crossing` runs between its end in
+ * the grid and the outside.
  *
  * @param crossing The ids of the edges that the grid around this one draws across this grid's border.
  */
@@ -333,8 +334,8 @@ function requireSound(graph: Graph, spacing: Spacing): void {
 }
 
 /**
- * Places the nodes of a graph, each grid in rows and columns, and draws the edges whose two ends are
- * nodes of one grid or children of groups of that grid.
+ * Places the nodes of a graph, each grid in rows and columns, and draws the edges between two nodes of
+ * one grid, and those that go on into a group of that grid as written below.
  *
  * The edges decide the order along the flow: a node goes after every node listed before it that leads to
  * it, unless it names its cell. In a grid, an edge counts between the two nodes that hold its ends, so an

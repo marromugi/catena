@@ -984,14 +984,18 @@ describe("placeGraph: a corridor", () => {
   });
 });
 
-describe("placeGraph: edges and groups", () => {
-  const nested = place(
+/** A group that flows across the graph, with edges inside it, to it, from it, and out of a node inside it. */
+const nestedGraph = (): Layout =>
+  place(
     "down",
     [group("G", "right", [leaf("A", 50, 30), leaf("B", 50, 30)]), leaf("C", 50, 30)],
     ["A>C", "A>B", "G>C", "C>G"],
   );
 
+describe("placeGraph: edges and groups", () => {
   test("draws an edge between two nodes of a group inside the group, and an edge to the group at its border", () => {
+    const nested = nestedGraph();
+
     expect(boxes(nested)).toEqual({
       G: [10, 16, 140, 50],
       A: [20, 26, 50, 30],
@@ -1019,7 +1023,7 @@ describe("placeGraph: edges and groups", () => {
   });
 
   test("lists the edges it draws in the order of the graph, whichever grid each is in", () => {
-    expect(nested.edges.map(({ id }) => id)).toEqual(["A>B #1", "G>C #2", "C>G #3"]);
+    expect(nestedGraph().edges.map(({ id }) => id)).toEqual(["A>B #1", "G>C #2", "C>G #3"]);
   });
 
   test("makes a group larger by the lanes inside it", () => {
@@ -1051,6 +1055,20 @@ const row = (): [GraphNode, GraphNode] => [
   leaf("A", 50, 30, { row: 0, column: 0 }),
   leaf("B", 50, 30, { row: 0, column: 1 }),
 ];
+
+/** Leaves of 50 by 30 named A, B, … that fill a grid row by row. */
+const filling = (columnCount: number, rowCount: number): [GraphNode, ...GraphNode[]] => {
+  const [first, ...rest] = Array.from({ length: columnCount * rowCount }, (_, at) =>
+    leaf(String.fromCodePoint(65 + at), 50, 30, {
+      row: Math.floor(at / columnCount),
+      column: at % columnCount,
+    }),
+  );
+  if (first === undefined) {
+    throw new Error("A grid of no cells has no leaves.");
+  }
+  return [first, ...rest];
+};
 
 /** The placement, once `verify` has found nothing broken in it. */
 const checked = (placement: Layout, kept: Spacing = spacing): Layout => {
@@ -1171,6 +1189,100 @@ describe("placeGraph: an edge into or out of a group that flows as the grid arou
         [185, 132],
       ],
     });
+  });
+
+  test("goes around between two columns, straight on from the middle of the side when the lane lies there", () => {
+    const placement = checked(
+      place("down", [leaf("X", 50, 30), group("G", "down", filling(2, 2))], ["X>C"]),
+    );
+
+    expect(boxes(placement)["G"]).toEqual([10, 60, 140, 106]);
+    expect(paths(placement)).toEqual({
+      "X>C #0": [
+        [80, 40],
+        [80, 116],
+        [45, 116],
+        [45, 126],
+      ],
+    });
+  });
+
+  test("goes around on the side of the middle of four columns", () => {
+    const placement = checked(
+      place(
+        "down",
+        [leaf("X", 50, 30), group("Q", "down", filling(4, 2))],
+        ["X>E", "X>F", "X>G", "X>H"],
+      ),
+    );
+
+    expect(paths(placement)).toEqual({
+      "X>E #0": [
+        [150, 40],
+        [150, 68],
+        [80, 68],
+        [80, 114],
+        [45, 114],
+        [45, 137],
+      ],
+      "X>F #1": [
+        [150, 40],
+        [150, 119],
+        [115, 119],
+        [115, 137],
+      ],
+      "X>G #2": [
+        [150, 40],
+        [150, 124],
+        [185, 124],
+        [185, 137],
+      ],
+      "X>H #3": [
+        [150, 40],
+        [150, 68],
+        [220, 68],
+        [220, 129],
+        [255, 129],
+        [255, 137],
+      ],
+    });
+  });
+
+  test("goes around from a node further back on the side of the middle column", () => {
+    const placement = checked(
+      place("down", [group("G", "down", filling(3, 2)), leaf("Y", 50, 30)], ["A>Y"]),
+    );
+
+    expect(boxes(placement)["G"]).toEqual([10, 10, 210, 106]);
+    expect(paths(placement)).toEqual({
+      "A>Y #0": [
+        [45, 50],
+        [45, 60],
+        [80, 60],
+        [80, 108],
+        [115, 108],
+        [115, 136],
+      ],
+    });
+  });
+
+  test("makes a group long enough between the edges that enter it and those that leave it, by the lane inside", () => {
+    const flush = { ...spacing, padding: 0 };
+    const placement = checked(
+      place(
+        "down",
+        [group("G", "down", [group("K", "down", [leaf("N", 50, 3)]), leaf("B", 50, 30)])],
+        ["K>K", "N>B"],
+        flush,
+      ),
+      flush,
+    );
+
+    expect(boxes(placement)["K"]).toEqual([0, 16, 50, 25.5]);
+    expect(paths(placement)["N>B #1"]).toEqual([
+      [25, 25.5],
+      [25, 61.5],
+    ]);
   });
 
   test("runs on from a node of the last row through the middle of the group's side", () => {
@@ -1560,6 +1672,92 @@ describe("placeGraph: the middle of a group's side that edges cross", () => {
       "X>B #0": [
         [113, 40],
         [113, 76],
+      ],
+    });
+  });
+
+  test.each([[["X>P", "X>T", "P>Y"]], [["X>T", "P>Y", "X>P"]]])(
+    "is moved onto a line sooner than as far to a place clear of one, whichever edge is listed first: %j",
+    (links) => {
+      const placement = place(
+        "down",
+        [
+          leaf("X", 50, 30, { row: 0, column: 0 }),
+          group(
+            "G",
+            "down",
+            [
+              leaf("Z", 6, 30, { row: 0, column: 0 }),
+              leaf("P", 12, 30, { row: 0, column: 1 }),
+              leaf("T", 12, 30, { row: 1, column: 1 }),
+            ],
+            { row: 1, column: 0 },
+          ),
+          leaf("Y", 50, 30, { row: 2, column: 0 }),
+        ],
+        links,
+      );
+
+      expect(verify(placement, spacing)).toEqual([]);
+      expect(boxes(placement)["G"]).toEqual([10, 60, 86, 116]);
+      expect(boxes(placement)["P"]).toEqual([47, 76, 12, 30]);
+      expect(
+        placement.edges.find(({ to }) => to === "P")?.points.map(({ x, y }) => [x, y]),
+      ).toEqual([
+        [53, 40],
+        [53, 76],
+      ]);
+    },
+  );
+
+  test.each([[["X>A", "X>B"]], [["X>B", "X>A"]]])(
+    "is moved onto the earlier of two lines as near, whichever edge is listed first: %j",
+    (links) => {
+      const narrow = { ...spacing, padding: 3 };
+      const placement = place(
+        "down",
+        [leaf("X", 50, 30), group("G", "down", [leaf("A", 10, 30), leaf("B", 10, 30)])],
+        ["A>B", ...links],
+        narrow,
+      );
+
+      expect(verify(placement, narrow)).toEqual([]);
+      expect(boxes(placement)["G"]).toEqual([7, 53, 42, 99]);
+      expect(
+        Object.fromEntries(
+          placement.edges
+            .filter(({ from }) => from === "X")
+            .map(({ to, points }) => [to, points.map(({ x, y }) => [x, y])]),
+        ),
+      ).toEqual({
+        A: [
+          [28, 33],
+          [28, 61],
+          [41, 61],
+          [41, 69],
+        ],
+        B: [
+          [28, 33],
+          [28, 109],
+          [41, 109],
+          [41, 119],
+        ],
+      });
+    },
+  );
+
+  test("is kept from the line by the gap between edges and the shortest stretch, not by the room an edge keeps from a node", () => {
+    const clearance = { ...spacing, edgeToNode: 12 };
+    const placement = place("down", [leaf("X", 50, 30), columns(40, 50, 50)], ["X>B"], clearance);
+
+    expect(verify(placement, clearance)).toEqual([]);
+    expect(boxes(placement)["G"]).toEqual([10, 60, 206, 64]);
+    expect(paths(placement)).toEqual({
+      "X>B #0": [
+        [113, 40],
+        [113, 72],
+        [105, 72],
+        [105, 84],
       ],
     });
   });
@@ -2063,7 +2261,7 @@ describe("placeGraph: any graph", () => {
     );
   });
 
-  test("draws the edges that cross the border of no group, or of one at either end that flows as the grid around it does, and no others, in the order they are listed", () => {
+  test("draws the edges whose ends are each a node of one grid or a child of a group of that grid that flows as it does, except between a group and its child, and no others, in the order they are listed", () => {
     interface Where {
       /** The groups around the node, outermost first. */
       readonly around: readonly string[];

@@ -55,6 +55,12 @@ interface Stack {
   readonly height: number;
 }
 
+/** A place the middle of a grid's side may be moved to, and whether it is on a line an edge turns onto. */
+interface Stop {
+  readonly place: number;
+  readonly onLine: boolean;
+}
+
 /** Lines up rows or columns with a corridor before each and one after the last. */
 function lineUp(sizes: readonly number[], corridors: readonly number[]): Line {
   const tracks: Track[] = [];
@@ -81,18 +87,30 @@ function firstLane(line: Line, index: number, stack: number): number {
   return end - ((line.corridors[index] ?? 0) + stack) / 2;
 }
 
-/** The place nearest `from` that is on each of `lines` or at least `apart` from it. */
+/**
+ * The place nearest `from` that is on each of `lines` or at least `apart` from it. Of two as near, a
+ * place on a line comes first, then the smaller.
+ */
 function clearOf(lines: readonly number[], from: number, apart: number): number {
   const isClear = (place: number, measuredFrom?: number): boolean =>
     lines.every((line) => line === measuredFrom || Math.abs(place - line) >= apart);
+  const comesFirst = (one: Stop, other: Stop): boolean => {
+    const nearer = Math.abs(one.place - from) - Math.abs(other.place - from);
+    if (nearer !== 0) {
+      return nearer < 0;
+    }
+    return one.onLine === other.onLine ? one.place < other.place : one.onLine;
+  };
   return [
-    ...[from].filter((place) => isClear(place)),
+    ...[{ place: from, onLine: false }].filter(({ place }) => isClear(place)),
     ...lines.flatMap((line) =>
-      [line, line - apart, line + apart].filter((place) => isClear(place, line)),
+      [
+        { place: line, onLine: true },
+        { place: line - apart, onLine: false },
+        { place: line + apart, onLine: false },
+      ].filter(({ place }) => isClear(place, line)),
     ),
-  ].reduce((nearest, place) =>
-    Math.abs(place - from) < Math.abs(nearest - from) ? place : nearest,
-  );
+  ].reduce((first, stop) => (comesFirst(stop, first) ? stop : first)).place;
 }
 
 /**
