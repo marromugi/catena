@@ -30,7 +30,7 @@ export interface Frame {
   entryOf(id: string): FlowPoint;
   /** How far along the flow the lane lies that the edges leaving a node, or coming in from the outside, share. */
   laneAfter(end: End): number;
-  /** How far along the flow the lane lies that the edges coming around to a node, or going out to the outside, share. */
+  /** How far along the flow the lane lies that the edges running to a node along a lane, or going out to the outside, share. */
   laneBefore(end: End): number;
   /** How far across the flow the lane lies that the edges of a node, or of the outside, run along in a corridor between columns. */
   laneBeside(corridor: number, end: End): number;

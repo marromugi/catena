@@ -375,7 +375,8 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * through the middle of the group's side, and on inside the group to the child, which it enters or leaves
  * along the group's own flow. A group is made longer at one end of that side where that keeps such an
  * edge sound. Any other edge between nodes of different grids orders them but is left out of the layout:
- * one with an end deeper than a child of a group, and one between a group and a node inside it.
+ * one with an end deeper than a child of a group of the grid that holds both its ends, and one between a
+ * group and a node inside it.
  *
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of
  * `graph.edges`, in canvas coordinates.

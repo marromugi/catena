@@ -35,8 +35,8 @@ export type Run =
  *   then along the lane of its target;
  * - "fromBeside": from the outside across the flow to the outside's lane in the corridor before the
  *   column `beside`, along that lane, then along the lane of its target;
- * - "toBeside": along the lane of its source, along the outside's lane in the corridor before the
- *   column `beside`, then across the flow to the outside.
+ * - "toBeside": along the lane of its source, along the outside's lane in the corridor `beside`, the
+ *   one after the last column, then across the flow to the outside.
  */
 export type Route =
   | { readonly kind: "straight" }
@@ -55,7 +55,7 @@ export interface Lanes {
   readonly routes: ReadonlyMap<string, Route>;
   /** For each corridor between rows, the nodes of the row before it whose edges turn in it, the nearest to that row first. Before the first row, the outside when an edge comes in from it along the flow. */
   readonly leaving: readonly (readonly End[])[];
-  /** For each corridor between rows, the nodes of the row after it that edges come around to. Their lanes follow those of `leaving`. After the last row, the outside when an edge goes out to it along the flow. */
+  /** For each corridor between rows, the nodes of the row after it that edges run to along a lane in it, rather than dropping into them from their source's lane. Their lanes follow those of `leaving`. After the last row, the outside when an edge goes out to it along the flow. */
   readonly entering: readonly (readonly End[])[];
   /** For each corridor between columns, the ends whose edges run along it. */
   readonly beside: readonly (readonly End[])[];
@@ -145,8 +145,9 @@ class LaneOrder {
  * own, which its edges run out to along the same line: that lane then comes first, so the drop starts
  * past it, and where two nodes would each have to come first, the later edge goes around instead. An
  * edge straight from that node into the target is one the drop may join. Every other edge goes around: through a corridor
- * beside its source to the lane of its target, in the corridor before the target's row. All the edges
- * that come around to a node share that lane.
+ * beside its source to the lane of its target, in the corridor before the target's row. Every edge that
+ * runs to a node along a lane, whether it comes around, joins, or comes in from the outside beside the
+ * columns, shares that lane.
  *
  * Where the border is crossed along the flow, the outside has a lane like a node's at each end of the
  * grid: the one its edges come in along is the first of the corridor before the first row, and the one
