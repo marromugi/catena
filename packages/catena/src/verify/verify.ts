@@ -290,7 +290,6 @@ function sharedThroughBorders(a: PlacedEdge, b: PlacedEdge, index: Index): Share
   return [...through("from"), ...through("to").map(reversed)];
 }
 
-/** The stretches two edges may share, each as it lies on the first edge and on the second. */
 function sharedStretches(a: PlacedEdge, b: PlacedEdge, index: Index): SharedStretch[] {
   const lead = a.from === b.from ? sharedLead(a.points, b.points) : 0;
   const tail = a.to === b.to ? sharedLead(a.points.toReversed(), b.points.toReversed()) : 0;

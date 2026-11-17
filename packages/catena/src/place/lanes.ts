@@ -13,7 +13,6 @@ export type End = string | typeof outside;
  */
 export type BorderCrossing = "along" | "across";
 
-/** An edge as one grid draws it: between two of its nodes, or between one of them and the outside. */
 export type Run =
   | {
       readonly id: string;
@@ -83,7 +82,6 @@ function corridorBeside(from: Spot, to: Spot): number {
 class LaneOrder {
   readonly #later = new Map<End, Set<End>>();
 
-  /** Whether the lane of `first` already has to come before that of `second`. */
   #precedes(first: End, second: End): boolean {
     const seen = new Set<End>([first]);
     const open: End[] = [first];

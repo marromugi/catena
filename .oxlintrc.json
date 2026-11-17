@@ -20,12 +20,34 @@
           }
         ]
       }
+    ],
+    "import/no-cycle": [
+      "error",
+      {
+        "ignoreTypes": false
+      }
     ]
   },
   "env": {
     "builtin": true
   },
   "overrides": [
+    {
+      "files": ["packages/catena/src/layout/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../**", "./../**"],
+                "message": "layout holds the types the other modules share, so it imports nothing outside layout."
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "files": ["packages/catena/src/verify/**"],
       "rules": {
