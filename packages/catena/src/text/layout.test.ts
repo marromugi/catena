@@ -112,8 +112,13 @@ describe("layoutText: any text", () => {
     "（",
     ".",
     "!",
-    String.fromCodePoint(0x3000),
+    "\t",
+    "\r\n",
     "e" + String.fromCodePoint(0x301),
+    // Spaces `\s` matches other than U+0020, the no-break space among them.
+    ...[0xa0, 0x1680, 0x2000, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff].map(
+      (code) => String.fromCodePoint(code),
+    ),
   );
   const texts = fc.array(pieces, { maxLength: 30 }).map((list) => list.join(""));
 

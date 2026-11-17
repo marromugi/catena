@@ -447,6 +447,12 @@ describe("drawDiagram with a header", () => {
     expect(endsInEllipsis(drawn)).toBe(false);
     const cutRoom = titleAlone(80 + setIn("WWW…", "bold").width);
     expect(cutRoom("WWWWWWWW")).toEqual(cutRoom("WWW…"));
+    expect(cutRoom("WWWW")).toEqual(cutRoom("WWW…"));
+  });
+
+  test("leaves a text out when the only start that fits with … draws nothing", () => {
+    const room = (setIn("…", "bold").width + setIn("W…", "bold").width) / 2;
+    expect(titleAlone(80 + room)(`${ZERO_WIDTH_SPACE}WWWW`)).toEqual([]);
   });
 
   test("leaves a text out when … alone would fit but not one character and …", () => {

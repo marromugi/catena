@@ -15,8 +15,8 @@ export interface HeaderRepository {
  *
  * When they don't all fit, the capture time keeps its whole width first, then the repository, then the
  * title, each from what the one before left. A text wider than its room is cut to the longest start that
- * fits with `…` after it, and left out when not even one character and `…` fit; the clock goes with its
- * time.
+ * fits with `…` after it, and left out when no start that draws something fits with `…`; the clock goes
+ * with its time.
  */
 export interface DiagramHeader {
   readonly fonts: Theme["fonts"];
@@ -145,6 +145,8 @@ function clockIcon(x: number, y: number): SvgElement {
   });
 }
 
+const drawsNothing = (text: TextLayout) => textPathData(text, 0, 0) === "";
+
 /** `content` on one line no wider than `room`, cut as {@link DiagramHeader} says, or nothing to draw. */
 function fitted(
   content: string | undefined,
@@ -162,23 +164,23 @@ function fitted(
       maxWidth: Infinity,
     });
   const whole = set(line);
-  if (textPathData(whole, 0, 0) === "") return undefined;
+  if (drawsNothing(whole)) return undefined;
   if (whole.width <= room) return whole;
   const characters = Array.from(graphemes.segment(line), ({ segment }) => segment);
-  const cutAt = (kept: number) => set(characters.slice(0, kept).join("").trimEnd() + ELLIPSIS);
+  const startOf = (kept: number) => characters.slice(0, kept).join("").trimEnd();
   // A start grows no narrower as it grows longer, so the longest that fits is found by halving.
-  let fits: TextLayout | undefined;
+  let longest = 0;
   let low = 1;
   let high = characters.length - 1;
   while (low <= high) {
     const kept = Math.floor((low + high) / 2);
-    const cut = cutAt(kept);
-    if (cut.width <= room) {
-      fits = cut;
+    if (set(startOf(kept) + ELLIPSIS).width <= room) {
+      longest = kept;
       low = kept + 1;
     } else {
       high = kept - 1;
     }
   }
-  return fits;
+  if (longest === 0 || drawsNothing(set(startOf(longest)))) return undefined;
+  return set(startOf(longest) + ELLIPSIS);
 }
