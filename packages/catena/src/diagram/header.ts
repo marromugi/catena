@@ -1,4 +1,4 @@
-import { iconGrid, iconPathData, iconStroke } from "../icon";
+import { filledIconPaint, filledIconPathData, iconGrid } from "../icon";
 import { element, type SvgElement, type TextLook, type Theme } from "../node";
 import { layoutText, textPathData, type TextLayout } from "../text";
 
@@ -13,8 +13,8 @@ export interface HeaderRepository {
  * breaks drawn as one space; a text left out, holding only spaces, or whose glyphs draw nothing is not
  * drawn.
  *
- * When they don't all fit, the capture time keeps its whole width first, then the repository, then the
- * title, each from what the one before left. A text wider than its room is cut to the longest start that
+ * When they don't all fit, the title keeps its whole width first, then the capture time, then the
+ * repository, each from what the one before left. A text wider than its room is cut to the longest start that
  * fits with `…` after it, and left out when no start that draws something fits with `…`; the clock goes
  * with its time.
  */
@@ -34,10 +34,11 @@ const LOOK = {
   strokeWidth: 1,
   shadow: { dx: 0, dy: 4, blur: 8, color: "#000000", opacity: 0.08 },
   title: { weight: "bold", size: 12, lineHeight: 1.5, color: "#1f1f1f" },
-  detail: { weight: "regular", size: 12, lineHeight: 1.5, color: "#8c8c8c" },
-  clock: { size: 18, strokeWidth: 1.75, color: "#b3b3b3" },
+  detail: { weight: "regular", size: 13, lineHeight: 1.5, color: "#8c8c8c" },
+  /** The filled clock's box; its disc is 20 of the grid's 24 across. */
+  clock: { size: 21, color: "#b3b3b3" },
   /** Between the clock and the time after it. */
-  iconGap: 8,
+  iconGap: 9,
   /** Between the title, the repository and the clock, next to each other. */
   itemGap: 40,
 } as const;
@@ -87,11 +88,15 @@ export function drawHeader(width: number, header: DiagramHeader): SvgElement[] {
 
   const drawn = [...band(width)];
   let end = width - paddingX;
+  const title = fitted(header.title, LOOK.title, header, end - paddingX);
+  if (title !== undefined) drawn.push(text(title, paddingX, LOOK.title));
+  /** Where the right side's room starts: after the title and the gap beside it. */
+  const rightStart = title === undefined ? paddingX : paddingX + title.width + itemGap;
   const time = fitted(
     header.capturedAt,
     LOOK.detail,
     header,
-    end - paddingX - clock.size - iconGap,
+    end - rightStart - clock.size - iconGap,
   );
   if (time !== undefined) {
     const x = end - time.width;
@@ -99,14 +104,8 @@ export function drawHeader(width: number, header: DiagramHeader): SvgElement[] {
     drawn.push(clockIcon(iconX, middle(clock.size)), text(time, x, LOOK.detail));
     end = iconX - itemGap;
   }
-  const repository = fitted(header.repository?.name, LOOK.detail, header, end - paddingX);
-  if (repository !== undefined) {
-    const x = end - repository.width;
-    drawn.push(text(repository, x, LOOK.detail));
-    end = x - itemGap;
-  }
-  const title = fitted(header.title, LOOK.title, header, end - paddingX);
-  if (title !== undefined) drawn.push(text(title, paddingX, LOOK.title));
+  const repository = fitted(header.repository?.name, LOOK.detail, header, end - rightStart);
+  if (repository !== undefined) drawn.push(text(repository, end - repository.width, LOOK.detail));
   return drawn;
 }
 
@@ -134,14 +133,12 @@ function band(width: number): SvgElement[] {
 }
 
 function clockIcon(x: number, y: number): SvgElement {
-  const { size, strokeWidth, color } = LOOK.clock;
-  const scale = size / iconGrid;
+  const { size, color } = LOOK.clock;
   return element("path", {
-    d: iconPathData.clock,
-    transform: `translate(${x} ${y}) scale(${scale})`,
-    ...iconStroke,
-    stroke: color,
-    "stroke-width": strokeWidth / scale,
+    d: filledIconPathData.clock,
+    transform: `translate(${x} ${y}) scale(${size / iconGrid})`,
+    ...filledIconPaint,
+    fill: color,
   });
 }
 

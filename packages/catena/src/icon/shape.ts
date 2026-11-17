@@ -43,6 +43,30 @@ export function quarter(from: Point, corner: Point, to: Point): Cubic {
   return [toward(from, corner), toward(to, corner), to];
 }
 
+/** Where `degrees` clockwise from the right lands on the circle around `center`. */
+export function onCircle([cx, cy]: Point, radius: number, degrees: number): Point {
+  const radians = (degrees * Math.PI) / 180;
+  return [cx + Math.cos(radians) * radius, cy + Math.sin(radians) * radius];
+}
+
+/** The arc around `center` from `from` to `to` degrees, clockwise from the right, as cubics of a quarter or less. */
+export function arc(center: Point, radius: number, from: number, to: number): Cubic[] {
+  const pieces = Math.ceil(Math.abs(to - from) / 90);
+  const sweep = (to - from) / pieces;
+  const reach = (4 / 3) * Math.tan((sweep * Math.PI) / 720) * radius;
+  /** The control point `reach` along the tangent at `degrees`, forward when `sign` is 1. */
+  const along = (degrees: number, sign: number): Point => {
+    const [x, y] = onCircle(center, radius, degrees);
+    const radians = (degrees * Math.PI) / 180;
+    return [x - Math.sin(radians) * reach * sign, y + Math.cos(radians) * reach * sign];
+  };
+  return Array.from({ length: pieces }, (_, index) => {
+    const start = from + sweep * index;
+    const end = start + sweep;
+    return cubic(along(start, 1), along(end, -1), onCircle(center, radius, end));
+  });
+}
+
 export function ellipse(cx: number, cy: number, rx: number, ry: number): string {
   const top: Point = [cx, cy - ry];
   const right: Point = [cx + rx, cy];
