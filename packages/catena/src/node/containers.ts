@@ -1,16 +1,23 @@
 import * as v from "valibot";
 import type { Block, Part } from "./part";
+import { subtitle } from "./parts";
 import { outlinedRect } from "./svg";
+import type { CardLook, Theme } from "./theme";
 
 /**
- * A card drawn around `child`, which is laid out inside the card's padding. The card fills the width it
- * is given, and grows past it when `child` is wider than the width left inside the padding.
+ * A card drawn around `child`, in the look `lookOf` picks from the theme, the theme's card by default.
+ * `child` is laid out inside the card's padding. The card fills the width it is given, and grows past it
+ * when `child` is wider than the width left inside the padding.
  */
-export function frame<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
+export function frame<TSchema extends v.GenericSchema>(
+  child: Part<TSchema>,
+  lookOf: (theme: Theme) => CardLook = (theme) => theme.card,
+): Part<TSchema> {
   return {
     schema: child.schema,
     layout(content, theme, maxWidth) {
-      const { padding, radius } = theme.card;
+      const look = lookOf(theme);
+      const { padding, radius } = look;
       const inner = child.layout(content, theme, maxWidth - 2 * padding);
       return {
         size: {
@@ -18,7 +25,7 @@ export function frame<TSchema extends v.GenericSchema>(child: Part<TSchema>): Pa
           height: inner.size.height + 2 * padding,
         },
         draw: (box, newId) => [
-          outlinedRect(box, radius, theme.card),
+          outlinedRect(box, radius, look),
           ...inner.draw(
             {
               x: box.x + padding,
@@ -88,30 +95,66 @@ export function stack<const TParts extends Record<string, Part>>(
   const { entries, schema } = keyedParts("stack", parts);
   return {
     schema,
-    layout(content, theme, maxWidth) {
-      let next = 0;
-      const placed = entries
-        .map(([key, part]) => part.layout(content[key], theme, maxWidth))
-        .filter((block) => !isEmpty(block))
-        .map((block) => {
-          const top = next;
-          next += block.size.height + theme.gap;
-          return { block, top };
-        });
-      return {
-        size: {
-          width: Math.max(0, ...placed.map(({ block }) => block.size.width)),
-          height: Math.max(0, next - theme.gap),
-        },
-        draw: (box, newId) =>
-          placed.flatMap(({ block, top }) =>
-            block.draw(
-              { x: box.x, y: box.y + top, width: box.width, height: block.size.height },
-              newId,
-            ),
-          ),
-      };
+    layout: (content, theme, maxWidth) =>
+      stacked(
+        entries.map(([key, part]) => part.layout(content[key], theme, maxWidth)),
+        theme.gap,
+      ),
+  };
+}
+
+/**
+ * As many items as the content gives, each laid out by `item`, set one over the next the theme's gap
+ * apart. Its content is an array of `item`'s content. With no items it takes no room.
+ */
+export function list<TSchema extends v.GenericSchema>(
+  item: Part<TSchema>,
+): Part<v.ArraySchema<TSchema, undefined>> {
+  return {
+    schema: v.array(item.schema),
+    layout: (content, theme, maxWidth) =>
+      stacked(
+        content.map((each) => item.layout(each, theme, maxWidth)),
+        theme.gap,
+      ),
+  };
+}
+
+/** A card in the theme's panel look around `child`, such as the list of a section. */
+export function panel<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
+  return frame(child, (theme) => theme.panel);
+}
+
+/**
+ * A heading over `items`, a gap apart. Its content is `{ heading, items }`: the heading's text, and
+ * `items`' content.
+ */
+export function section<TSchema extends v.GenericSchema>(items: Part<TSchema>) {
+  return stack({ heading: subtitle, items });
+}
+
+/** `blocks` set one over the next, `gap` apart, each as wide as the box. No gap is set beside an empty block. */
+function stacked(blocks: readonly Block[], gap: number): Block {
+  let next = 0;
+  const placed = blocks
+    .filter((block) => !isEmpty(block))
+    .map((block) => {
+      const top = next;
+      next += block.size.height + gap;
+      return { block, top };
+    });
+  return {
+    size: {
+      width: Math.max(0, ...placed.map(({ block }) => block.size.width)),
+      height: Math.max(0, next - gap),
     },
+    draw: (box, newId) =>
+      placed.flatMap(({ block, top }) =>
+        block.draw(
+          { x: box.x, y: box.y + top, width: box.width, height: block.size.height },
+          newId,
+        ),
+      ),
   };
 }
 

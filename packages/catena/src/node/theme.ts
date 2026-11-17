@@ -29,6 +29,13 @@ export interface ImageLook {
   readonly radius: number;
 }
 
+/** How a divider's line looks. `dash` is the lengths of the dashes and the spaces between them; empty, the line is solid. */
+export interface DividerLook {
+  readonly color: string;
+  readonly width: number;
+  readonly dash: readonly number[];
+}
+
 /** The names a badge's or a status dot's colouring is chosen by. */
 export const TONES = ["plain", "red"] as const;
 export type Tone = (typeof TONES)[number];
@@ -46,8 +53,14 @@ export interface Theme {
   /** The space between parts stacked one over the next, and between parts set side by side in a row. */
   readonly gap: number;
   readonly card: CardLook;
+  /** A card held in a list inside another card. */
+  readonly itemCard: CardLook;
+  /** A card around a section's list. */
+  readonly panel: CardLook;
   readonly title: TextLook;
   readonly body: TextLook;
+  readonly subtitle: TextLook;
+  readonly divider: DividerLook;
   readonly badges: Readonly<Record<Tone, BadgeLook>>;
   readonly dot: DotLook;
   readonly image: ImageLook;
@@ -58,8 +71,12 @@ export interface ThemeOverrides {
   readonly nodeWidth?: number;
   readonly gap?: number;
   readonly card?: Partial<CardLook>;
+  readonly itemCard?: Partial<CardLook>;
+  readonly panel?: Partial<CardLook>;
   readonly title?: Partial<TextLook>;
   readonly body?: Partial<TextLook>;
+  readonly subtitle?: Partial<TextLook>;
+  readonly divider?: Partial<DividerLook>;
   readonly badges?: { readonly [T in Tone]?: Partial<BadgeLook> };
   readonly dot?: {
     readonly diameter?: number;
@@ -75,8 +92,24 @@ const DEFAULT_CARD: CardLook = {
   stroke: "#e6e6e6",
   strokeWidth: 1,
 };
+const DEFAULT_ITEM_CARD: CardLook = {
+  padding: 12,
+  radius: 8,
+  fill: "#ffffff",
+  stroke: "#ebebeb",
+  strokeWidth: 1,
+};
+const DEFAULT_PANEL: CardLook = {
+  padding: 12,
+  radius: 10,
+  fill: "#ffffff",
+  stroke: "#ebebeb",
+  strokeWidth: 1,
+};
 const DEFAULT_TITLE: TextLook = { weight: "bold", size: 14, lineHeight: 1.5, color: "#1f1f1f" };
 const DEFAULT_BODY: TextLook = { weight: "regular", size: 11, lineHeight: 1.6, color: "#8c8c8c" };
+const DEFAULT_SUBTITLE: TextLook = { weight: "bold", size: 12, lineHeight: 1.5, color: "#1f1f1f" };
+const DEFAULT_DIVIDER: DividerLook = { color: "#e0e0e0", width: 1, dash: [3, 3] };
 
 const BADGE_TEXT = {
   weight: "bold",
@@ -104,8 +137,12 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
     nodeWidth: overrides.nodeWidth ?? 320,
     gap: overrides.gap ?? 12,
     card: laidOver(DEFAULT_CARD, overrides.card),
+    itemCard: laidOver(DEFAULT_ITEM_CARD, overrides.itemCard),
+    panel: laidOver(DEFAULT_PANEL, overrides.panel),
     title: laidOver(DEFAULT_TITLE, overrides.title),
     body: laidOver(DEFAULT_BODY, overrides.body),
+    subtitle: laidOver(DEFAULT_SUBTITLE, overrides.subtitle),
+    divider: laidOver(DEFAULT_DIVIDER, overrides.divider),
     badges: {
       plain: laidOver(DEFAULT_BADGES.plain, overrides.badges?.plain),
       red: laidOver(DEFAULT_BADGES.red, overrides.badges?.red),
