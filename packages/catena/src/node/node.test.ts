@@ -15,6 +15,7 @@ import {
   title,
   titleBodyCard,
   type Part,
+  writeSvg,
 } from "./index";
 
 const require = createRequire(import.meta.url);
@@ -88,14 +89,14 @@ describe("the theme", () => {
 
   test("lays the looks it is given over the defaults, keeping a default given as undefined", () => {
     const changed = defineTheme(fonts, {
-      gap: 4,
+      gap: 0,
       title: { weight: "regular", size: 20, color: "navy" },
       body: { lineHeight: 2, color: undefined },
     });
     const node = buildNode(titleBodyCard, changed, "card", { title: "ここで", body: BODY });
 
-    // 20 + 30 (one line of 20 × 1.5) + 4 + 66 (three lines of 11 × 2) + 20
-    expect(node.leaf.size.height).toBeCloseTo(140, 6);
+    // 20 + 30 (one line of 20 × 1.5) + 0 + 66 (three lines of 11 × 2) + 20
+    expect(node.leaf.size.height).toBeCloseTo(136, 6);
     const titleData = textPathData(
       layoutText("ここで", { fonts: fonts.regular, size: 20, lineHeight: 1.5, maxWidth: 280 }),
       20,
@@ -122,6 +123,14 @@ const fixed = (width: number, height: number): Part<v.NullSchema<undefined>> => 
   layout: () => ({ size: { width, height }, draw: (box) => [element("rect", { ...box })] }),
 });
 
+describe("writeSvg", () => {
+  test("writes an element's attributes and then its children inside it", () => {
+    expect(writeSvg(element("g", { id: "a" }, [element("rect", { x: 1 })]))).toBe(
+      `<g id="a"><rect x="1"/></g>`,
+    );
+  });
+});
+
 describe("frame and stack", () => {
   test("hand their parts the box they are drawn in, less the padding and stacked the gap apart", () => {
     const kind = frame(stack({ a: fixed(50, 10), b: fixed(80, 20) }));
@@ -132,6 +141,14 @@ describe("frame and stack", () => {
       `<g><rect x="0.5" y="0.5" width="399" height="199" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
         `<rect x="20" y="20" width="360" height="10"/><rect x="20" y="42" width="360" height="20"/></g>`,
     );
+    expect(
+      buildNode(frame(fixed(50, 10)), theme, "f", null).draw({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 200,
+      }),
+    ).toContain(`<rect x="20" y="20" width="360" height="160"/>`);
   });
 
   test("a stack is as wide as its widest part, and an empty one takes no room", () => {
@@ -144,12 +161,16 @@ describe("frame and stack", () => {
     expect(stack({}).layout({}, theme, 100).size).toEqual({ width: 0, height: 0 });
   });
 
-  test.each(["1", "__proto__"])(
+  test.each(["0", "1", "10", "__proto__"])(
     "a stack refuses the key %s, whose place in the order is lost",
     (key) => {
       expect(() => stack({ a: title, [key]: bodyText })).toThrow(`"${key}"`);
     },
   );
+
+  test("a stack takes keys that only hold digits among letters", () => {
+    expect(Object.keys(stack({ a1: title, "1a": bodyText }).schema.entries)).toEqual(["a1", "1a"]);
+  });
 });
 
 describe("a kind made from parts", () => {
