@@ -9,21 +9,28 @@ import {
   bodyText,
   buildNode,
   defineTheme,
+  divider,
   element,
   frame,
   image,
   imageTitleBodyCard,
+  itemCard,
+  list,
   optional,
+  panel,
   redBadge,
   row,
+  section,
   stack,
   statusDot,
   statusTitleCard,
+  subtitle,
   textPart,
   title,
   titleBadgeCard,
   titleBodyBadgeCard,
   titleBodyCard,
+  titleBodyItemsSectionCard,
   type Part,
   writeSvg,
 } from "./index";
@@ -676,5 +683,218 @@ describe("the image and the card with an image", () => {
       `<clipPath id="i"><rect x="10" y="20" width="100" height="100" rx="0"/></clipPath>`,
     );
     expect(drawn[1]).toMatch(/^<image x="10" y="20" width="100" height="100" /);
+  });
+});
+
+describe("lists, the divider and sections", () => {
+  test("a list sets as many items as it is given one under the next, the gap apart, each as wide as the box", () => {
+    const block = list(fixed(50, 10)).layout([null, null, null], theme, 100);
+
+    expect(block.size).toEqual({ width: 50, height: 54 });
+    expect(block.draw({ x: 5, y: 7, width: 100, height: 54 }, noId).map(writeSvg)).toEqual([
+      `<rect x="5" y="7" width="100" height="10"/>`,
+      `<rect x="5" y="29" width="100" height="10"/>`,
+      `<rect x="5" y="51" width="100" height="10"/>`,
+    ]);
+  });
+
+  test("a list with no items takes no room, and a stack sets no gap for it", () => {
+    expect(list(title).layout([], theme, 100).size).toEqual({ width: 0, height: 0 });
+    const kind = stack({ a: fixed(10, 10), items: list(title), b: fixed(10, 10) });
+    expect(kind.layout({ a: null, items: [], b: null }, theme, 100).size.height).toBe(32);
+  });
+
+  test("a list's content is an array of its item's content", () => {
+    // @ts-expect-error a string, not an array of them
+    expect(() => buildNode(frame(list(title)), theme, "l", "ここで")).toThrow(
+      expect.objectContaining({ name: "InvalidNodeContentError" }),
+    );
+    // @ts-expect-error an item that is not a string
+    expect(() => buildNode(frame(list(title)), theme, "l", ["ここで", 1])).toThrow(
+      expect.objectContaining({ name: "InvalidNodeContentError" }),
+    );
+  });
+
+  test("a divider is a dashed line across the box, and takes no content", () => {
+    const block = divider.layout(undefined, theme, 200);
+
+    expect(block.size).toEqual({ width: 200, height: 1 });
+    expect(block.draw({ x: 10, y: 20, width: 300, height: 1 }, noId).map(writeSvg)).toEqual([
+      `<line x1="10" y1="20.5" x2="310" y2="20.5" stroke="#e0e0e0" stroke-width="1" stroke-dasharray="3 3"/>`,
+    ]);
+    const kind = frame(stack({ a: title, line: divider }));
+    expect(() => buildNode(kind, theme, "d", { a: "ここで" })).not.toThrow();
+    // @ts-expect-error the divider shows nothing
+    expect(() => buildNode(kind, theme, "d", { a: "ここで", line: "x" })).toThrow(
+      expect.objectContaining({ name: "InvalidNodeContentError" }),
+    );
+  });
+
+  test("a divider with no dash is a solid line", () => {
+    const solid = defineTheme(fonts, { divider: { dash: [], color: "red", width: 2 } });
+
+    expect(
+      divider.layout(undefined, solid, 100).draw({ x: 0, y: 0, width: 100, height: 2 }, noId),
+    ).toEqual([
+      element("line", { x1: 0, y1: 1, x2: 100, y2: 1, stroke: "red", "stroke-width": 2 }),
+    ]);
+  });
+
+  test("a section is a heading over its items, a gap apart, and a panel frames what it holds", () => {
+    const kind = section(panel(list(fixed(50, 10))));
+    const block = kind.layout({ heading: "ここで", items: [null] }, theme, 200);
+
+    // 18 (one line of 12 × 1.5) + 12 + 12 + 10 + 12
+    expect(block.size).toEqual({ width: 200, height: 64 });
+    const headingData = textPathData(
+      layoutText("ここで", { fonts: fonts.bold, size: 12, lineHeight: 1.5, maxWidth: 200 }),
+      0,
+      0,
+    );
+    expect(block.draw({ x: 0, y: 0, width: 200, height: 64 }, noId).map(writeSvg)).toEqual([
+      `<path d="${headingData}" fill="#1f1f1f"/>`,
+      `<rect x="0.5" y="30.5" width="199" height="33" rx="10" fill="#ffffff" stroke="#ebebeb" stroke-width="1"/>`,
+      `<rect x="12" y="42" width="176" height="10"/>`,
+    ]);
+  });
+
+  test("the card with items and a section is as high as its padding and all it stacks", () => {
+    const { leaf } = buildNode(titleBodyItemsSectionCard, theme, "card", {
+      title: "ここで",
+      body: BODY,
+      items: ["い", "う"],
+      section: { heading: "セクション名", items: ["え", "お"] },
+    });
+
+    // 20 + 21 + 12 + 52.8 + 12 + (42 + 12 + 42) + 12 + 1 + 12 + (18 + 12 + (12 + 96 + 12)) + 20,
+    // an item card being 12 + 18 + 12.
+    expect(leaf.size.width).toBe(320);
+    expect(leaf.size.height).toBeCloseTo(408.8, 6);
+  });
+
+  test("the card draws its item cards, the divider, the heading and the panel holding its own item cards", () => {
+    // Lines of 22, so every position is a whole number.
+    const even = defineTheme(fonts, { body: { lineHeight: 2 } });
+    const node = buildNode(titleBodyItemsSectionCard, even, "card", {
+      title: "ここで",
+      body: BODY,
+      items: ["い", "う"],
+      section: { heading: "セクション名", items: ["え", "お"] },
+    });
+    expect(node.leaf.size).toEqual({ width: 320, height: 422 });
+
+    const text = (
+      content: string,
+      look: { weight: "regular" | "bold"; size: number; lineHeight: number },
+      maxWidth: number,
+      x: number,
+      y: number,
+    ) =>
+      textPathData(
+        layoutText(content, {
+          fonts: fonts[look.weight],
+          size: look.size,
+          lineHeight: look.lineHeight,
+          maxWidth,
+        }),
+        x,
+        y,
+      );
+    const sub = { weight: "bold", size: 12, lineHeight: 1.5 } as const;
+    const item = (y: number, x: number, width: number, content: string) =>
+      `<rect x="${x + 0.5}" y="${y + 0.5}" width="${width - 1}" height="41" rx="8" fill="#ffffff" stroke="#ebebeb" stroke-width="1"/>` +
+      `<path d="${text(content, sub, width - 24, x + 12, y + 12)}" fill="#1f1f1f"/>`;
+
+    expect(node.draw({ x: 10, y: 20, width: 320, height: 422 })).toBe(
+      `<g><rect x="10.5" y="20.5" width="319" height="421" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
+        `<path d="${text("ここで", { weight: "bold", size: 14, lineHeight: 1.5 }, 280, 30, 40)}" fill="#1f1f1f"/>` +
+        `<path d="${text(BODY, { weight: "regular", size: 11, lineHeight: 2 }, 280, 30, 73)}" fill="#8c8c8c"/>` +
+        item(151, 30, 280, "い") +
+        item(205, 30, 280, "う") +
+        `<line x1="30" y1="259.5" x2="310" y2="259.5" stroke="#e0e0e0" stroke-width="1" stroke-dasharray="3 3"/>` +
+        `<path d="${text("セクション名", sub, 280, 30, 272)}" fill="#1f1f1f"/>` +
+        `<rect x="30.5" y="302.5" width="279" height="119" rx="10" fill="#ffffff" stroke="#ebebeb" stroke-width="1"/>` +
+        item(314, 42, 256, "え") +
+        item(368, 42, 256, "お") +
+        `</g>`,
+    );
+  });
+
+  test("the theme's item card, panel, subtitle and divider looks reach every part drawn with them", () => {
+    const changed = defineTheme(fonts, {
+      itemCard: { stroke: "teal", padding: 4 },
+      panel: { fill: "ivory", radius: undefined },
+      subtitle: { color: "navy" },
+      divider: { color: "plum" },
+    });
+    const node = buildNode(titleBodyItemsSectionCard, changed, "card", {
+      title: "ここで",
+      body: BODY,
+      items: ["い"],
+      section: { heading: "セクション名", items: ["え"] },
+    });
+    const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+
+    expect(drawn.match(/stroke="teal"/g)).toHaveLength(2);
+    expect(drawn.match(/fill="navy"/g)).toHaveLength(3);
+    expect(drawn).toMatch(/rx="10" fill="ivory" stroke="#ebebeb"/);
+    expect(drawn).toContain(`stroke="plum"`);
+    // 20 + 21 + 12 + 52.8 + 12 + (4 + 18 + 4) + 12 + 1 + 12 + (18 + 12 + (12 + 26 + 12)) + 20
+    expect(node.leaf.size.height).toBeCloseTo(268.8, 6);
+    expect(itemCard.layout("い", changed, 100).size).toEqual({ width: 100, height: 26 });
+    expect(subtitle.layout("い", changed, 100).size.height).toBe(18);
+  });
+
+  test("a section with no items keeps its heading and draws no panel", () => {
+    expect(panel(list(title)).layout([], theme, 200).size).toEqual({ width: 0, height: 0 });
+    const node = buildNode(titleBodyItemsSectionCard, theme, "card", {
+      title: "ここで",
+      body: BODY,
+      items: ["い", "う"],
+      section: { heading: "セクション名", items: [] },
+    });
+
+    // 408.8 less the panel (12 + 96 + 12) and the gap above it.
+    expect(node.leaf.size.height).toBeCloseTo(276.8, 6);
+    const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+    expect(drawn).not.toContain(`rx="10"`);
+    const headingData = textPathData(
+      layoutText("セクション名", { fonts: fonts.bold, size: 12, lineHeight: 1.5, maxWidth: 280 }),
+      20,
+      20 + 21 + 12 + 52.8 + 12 + 96 + 12 + 1 + 12,
+    );
+    expect(drawn).toMatch(new RegExp(`<path d="${headingData}" fill="#1f1f1f"/></g>$`));
+  });
+
+  test("a list holds more items than a call can take arguments", () => {
+    const items = Array.from({ length: 200_000 }, () => null);
+
+    expect(list(fixed(2, 1)).layout(items, theme, 100).size).toEqual({
+      width: 2,
+      height: 200_000 + 199_999 * 12,
+    });
+  });
+
+  test("a list lays each item out at the list's width", () => {
+    // 21 characters of 12 fill the 252 inside an item card's padding at 276, and wrap at 275.
+    const text = "あ".repeat(21);
+
+    expect(list(itemCard).layout([text], theme, 276).size.height).toBe(42);
+    expect(list(itemCard).layout([text], theme, 275).size.height).toBe(60);
+  });
+
+  test("a list's content is required where a stack holds it", () => {
+    const kind = frame(stack({ items: list(title) }));
+    // @ts-expect-error the list's key is left out
+    expect(() => buildNode(kind, theme, "l", {})).toThrow(
+      expect.objectContaining({ name: "InvalidNodeContentError" }),
+    );
+  });
+
+  test("a divider is as high as the theme's line, and takes no negative width", () => {
+    const thick = defineTheme(fonts, { divider: { width: 3 } });
+
+    expect(divider.layout(undefined, thick, 100).size).toEqual({ width: 100, height: 3 });
+    expect(divider.layout(undefined, theme, -10).size).toEqual({ width: 0, height: 1 });
   });
 });

@@ -2,8 +2,8 @@ import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
 import type { Part } from "./part";
-import { frame, optional, row, stack } from "./containers";
-import { bodyText, image, redBadge, statusDot, title } from "./parts";
+import { frame, list, optional, panel, row, section, stack } from "./containers";
+import { bodyText, divider, image, redBadge, statusDot, subtitle, title } from "./parts";
 import { element, idsOfNode, writeSvg } from "./svg";
 import type { Theme } from "./theme";
 
@@ -39,6 +39,23 @@ export const imageTitleBodyCard = frame(stack({ image, title, body: bodyText }))
 /** A card with a title, and a status dot before it on the nodes that have a status. */
 export const statusTitleCard = frame(
   row({ status: optional(statusDot), title }, { grow: "title" }),
+);
+
+/** A card in the theme's item card look, holding a line of text. */
+export const itemCard = frame(subtitle, (theme) => theme.itemCard);
+
+/**
+ * A card with a title over wrapping body text, a list of item cards, a divider, and a section whose item
+ * cards sit in a panel.
+ */
+export const titleBodyItemsSectionCard = frame(
+  stack({
+    title,
+    body: bodyText,
+    items: list(itemCard),
+    divider,
+    section: section(panel(list(itemCard))),
+  }),
 );
 
 /**

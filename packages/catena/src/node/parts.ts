@@ -34,6 +34,36 @@ export const title = textPart((theme) => theme.title);
 
 export const bodyText = textPart((theme) => theme.body);
 
+/** Text a step smaller than a title: an item card's text, and a section's heading. */
+export const subtitle = textPart((theme) => theme.subtitle);
+
+const NOTHING = v.optional(v.undefined());
+
+/**
+ * A line across the width it is given, in the theme's divider look. It shows nothing, so a stack holding
+ * it takes no content under its key.
+ */
+export const divider: Part<typeof NOTHING> = {
+  schema: NOTHING,
+  layout(_, theme, maxWidth) {
+    const { color, width, dash } = theme.divider;
+    return {
+      size: { width: Math.max(0, maxWidth), height: width },
+      draw: (box) => [
+        element("line", {
+          x1: box.x,
+          y1: box.y + width / 2,
+          x2: box.x + box.width,
+          y2: box.y + width / 2,
+          stroke: color,
+          "stroke-width": width,
+          ...(dash.length === 0 ? {} : { "stroke-dasharray": dash.join(" ") }),
+        }),
+      ],
+    };
+  },
+};
+
 /**
  * A pill holding a string, in the look `lookOf` picks from the theme. It is as wide as its text, and
  * draws at the top-left of the box it is given.
