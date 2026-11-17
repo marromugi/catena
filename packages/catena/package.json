@@ -6,7 +6,8 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "fontkit": "^3.0.0"
+    "fontkit": "^3.0.0",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@catena/font-source-han-sans": "workspace:*",
