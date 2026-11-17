@@ -164,6 +164,11 @@ export function frameOf(
     return lane * spacing.edgeGap;
   };
 
+  const middleOf = (place: number): number => {
+    const column = trackOf(columns, place);
+    return column.offset + column.size / 2;
+  };
+
   const cornerOf = (id: string): FlowPoint => {
     const item = itemOf(id);
     const row = trackOf(rows, item.step);
@@ -173,10 +178,10 @@ export function frameOf(
       along: row.offset + (row.size - item.along) / 2,
     };
   };
-  const entryOf = (id: string): FlowPoint => {
-    const corner = cornerOf(id);
-    return { across: corner.across + itemOf(id).across / 2, along: corner.along };
-  };
+  const entryOf = (id: string): FlowPoint => ({
+    across: middleOf(itemOf(id).place),
+    along: cornerOf(id).along,
+  });
 
   return {
     size: { across: columns.length, along: rows.length },

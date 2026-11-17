@@ -128,13 +128,6 @@ export function assignLanes(spots: ReadonlyMap<string, Spot>, edges: readonly Gr
   }
   const holders = new Map([...spots].map(([id, spot]) => [keyOf(spot), id]));
 
-  const turning = new Set<string>();
-  for (const edge of edges) {
-    if (!isStraight(spotOf(spots, edge.from), spotOf(spots, edge.to))) {
-      turning.add(edge.from);
-    }
-  }
-
   const order = new LaneOrder();
   const routeBetween = (edge: GraphEdge): Route => {
     const from = spotOf(spots, edge.from);
@@ -152,11 +145,15 @@ export function assignLanes(spots: ReadonlyMap<string, Spot>, edges: readonly Gr
   };
 
   const routes = new Map<string, Route>();
+  const turning = new Set<string>();
   const entering = new Set<string>();
   const beside = Array.from({ length: places + 1 }, () => new Set<string>());
   for (const edge of edges) {
     const route = routeBetween(edge);
     routes.set(edge.id, route);
+    if (route.kind === "direct" || route.kind === "around") {
+      turning.add(edge.from);
+    }
     if (route.kind === "around") {
       entering.add(edge.to);
       beside[route.beside]?.add(edge.from);
