@@ -1,6 +1,5 @@
 import type { Spacing } from "../layout";
-import type { GraphEdge } from "./graph";
-import type { Lanes } from "./lanes";
+import { outside, type End, type Lanes, type Run } from "./lanes";
 import type { Spot } from "./spot";
 
 /** A node as its grid sees it: its spot, and the room it takes across the flow and along it. */
@@ -19,18 +18,22 @@ export interface FlowPoint {
 export interface Frame {
   /** The far corner of the grid, corridors included. */
   readonly size: FlowPoint;
+  /** Where the edges from the outside come in: the middle of the grid's side that faces back along the flow. */
+  readonly entry: FlowPoint;
+  /** Where the edges to the outside go out: the middle of the grid's side that faces along the flow. */
+  readonly exit: FlowPoint;
   /** The corner of a node nearest the start of both the rows and the columns. */
   cornerOf(id: string): FlowPoint;
   /** Where the edges of a node leave it: the middle of its side that faces along the flow. */
   exitOf(id: string): FlowPoint;
   /** Where the edges of a node enter it: the middle of its side that faces back along the flow. */
   entryOf(id: string): FlowPoint;
-  /** How far along the flow the lane lies that the edges leaving a node share. */
-  laneAfter(id: string): number;
-  /** How far along the flow the lane lies that the edges coming around to a node share. */
-  laneBefore(id: string): number;
-  /** How far across the flow the lane lies that a node's edges run along in a corridor between columns. */
-  laneBeside(corridor: number, id: string): number;
+  /** How far along the flow the lane lies that the edges leaving a node, or coming in from the outside, share. */
+  laneAfter(end: End): number;
+  /** How far along the flow the lane lies that the edges coming around to a node, or going out to the outside, share. */
+  laneBefore(end: End): number;
+  /** How far across the flow the lane lies that the edges of a node, or of the outside, run along in a corridor between columns. */
+  laneBeside(corridor: number, end: End): number;
 }
 
 /** One row or one column of a grid. */
@@ -50,6 +53,12 @@ interface Line {
 interface Stack {
   readonly lanes: number;
   readonly height: number;
+}
+
+/** A place the middle of a grid's side may be moved to, and whether it is on a line an edge turns onto. */
+interface Stop {
+  readonly place: number;
+  readonly onLine: boolean;
 }
 
 /** Lines up rows or columns with a corridor before each and one after the last. */
@@ -79,17 +88,48 @@ function firstLane(line: Line, index: number, stack: number): number {
 }
 
 /**
+ * The place nearest `from` that is on each of `lines` or at least `apart` from it. Of two as near, a
+ * place on a line comes first, then the smaller.
+ */
+function clearOf(lines: readonly number[], from: number, apart: number): number {
+  const isClear = (place: number, measuredFrom?: number): boolean =>
+    lines.every((line) => line === measuredFrom || Math.abs(place - line) >= apart);
+  const comesFirst = (one: Stop, other: Stop): boolean => {
+    const nearer = Math.abs(one.place - from) - Math.abs(other.place - from);
+    if (nearer !== 0) {
+      return nearer < 0;
+    }
+    return one.onLine === other.onLine ? one.place < other.place : one.onLine;
+  };
+  return [
+    ...[{ place: from, onLine: false }].filter(({ place }) => isClear(place)),
+    ...lines.flatMap((line) =>
+      [
+        { place: line, onLine: true },
+        { place: line - apart, onLine: false },
+        { place: line + apart, onLine: false },
+      ].filter(({ place }) => isClear(place, line)),
+    ),
+  ].reduce((first, stop) => (comesFirst(stop, first) ? stop : first)).place;
+}
+
+/**
  * Measures a grid: rows and columns as large as the largest node in them, and corridors as wide as the
  * spacing asks, as the lanes in them need, and, in a grid with edges, wide enough to keep the middle of
  * each row and column clear of the next. A corridor before a row that an edge enters is at least the
- * shortest stretch long. Lanes lie in the middle of their corridor.
+ * shortest stretch long, and at least the edge gap where that edge starts inside its source or ends
+ * inside its target. Lanes lie in the middle of their corridor.
+ *
+ * An edge that crosses the border turns off the line through the middle of the grid's side onto the
+ * middle line of a column or a lane beside one. The grid is made wider on one side by the least that
+ * puts the middle of its side on each such line, or the edge gap and the shortest stretch from it.
  *
  * @param items The nodes of the grid by id, with no row or column left empty.
  * @param edges The edges `lanes` was made for.
  */
 export function frameOf(
   items: ReadonlyMap<string, Item>,
-  edges: readonly GraphEdge[],
+  edges: readonly Run[],
   lanes: Lanes,
   spacing: Spacing,
 ): Frame {
@@ -124,7 +164,16 @@ export function frameOf(
     const count = lanes.beside[corridor]?.length ?? 0;
     return { lanes: count, height: stackOf(count) };
   });
-  const entered = new Set(edges.map((edge) => itemOf(edge.to).step));
+  const entered = new Set(
+    edges.flatMap((edge) => (edge.to === outside ? [] : [itemOf(edge.to).step])),
+  );
+  const enteredFromInside = new Set(
+    edges.flatMap((edge) =>
+      edge.from !== outside && edge.to !== outside && (edge.startsInside || edge.endsInside)
+        ? [itemOf(edge.to).step]
+        : [],
+    ),
+  );
 
   const corridorsOf = (
     sizes: readonly number[],
@@ -146,7 +195,10 @@ export function frameOf(
   const rows = lineUp(
     rowSizes,
     corridorsOf(rowSizes, rowStacks, (corridor) =>
-      entered.has(corridor) ? spacing.minSegment : 0,
+      Math.max(
+        entered.has(corridor) ? spacing.minSegment : 0,
+        enteredFromInside.has(corridor) ? spacing.edgeGap : 0,
+      ),
     ),
   );
   const columns = lineUp(
@@ -154,14 +206,42 @@ export function frameOf(
     corridorsOf(columnSizes, columnStacks, () => 0),
   );
 
-  const laneOf = (list: readonly (readonly string[])[], corridor: number, id: string): number => {
-    const lane = list[corridor]?.indexOf(id) ?? -1;
+  const laneOf = (list: readonly (readonly End[])[], corridor: number, end: End): number => {
+    const lane = list[corridor]?.indexOf(end) ?? -1;
     if (lane === -1) {
       throw new Error(
-        `Node "${id}" has no lane in corridor ${corridor}, though an edge runs in it.`,
+        `${end === outside ? "The outside" : `Node "${end}"`} has no lane in corridor ${corridor}, though an edge runs in it.`,
       );
     }
     return lane * spacing.edgeGap;
+  };
+  const middleOf = (place: number): number => {
+    const column = trackOf(columns, place);
+    return column.offset + column.size / 2;
+  };
+  const laneBeside = (corridor: number, end: End): number =>
+    firstLane(columns, corridor, columnStacks[corridor]?.height ?? 0) +
+    laneOf(lanes.beside, corridor, end);
+
+  const turns = edges.flatMap((edge): number[] => {
+    if (edge.from !== outside && edge.to !== outside) {
+      return [];
+    }
+    const route = lanes.routes.get(edge.id);
+    const node = edge.from === outside ? edge.to : edge.from;
+    return [
+      route?.kind === "around" ? laneBeside(route.beside, edge.from) : middleOf(itemOf(node).place),
+    ];
+  });
+  const crossing = clearOf(
+    turns,
+    columns.length / 2,
+    Math.max(spacing.edgeGap, spacing.minSegment),
+  );
+  const shift = Math.max(0, columns.length - crossing * 2);
+  const size = {
+    across: Math.max(columns.length, crossing * 2) + shift,
+    along: rows.length,
   };
 
   const cornerOf = (id: string): FlowPoint => {
@@ -169,40 +249,40 @@ export function frameOf(
     const row = trackOf(rows, item.step);
     const column = trackOf(columns, item.place);
     return {
-      across: column.offset + (column.size - item.across) / 2,
+      across: shift + column.offset + (column.size - item.across) / 2,
       along: row.offset + (row.size - item.along) / 2,
     };
   };
-  const entryOf = (id: string): FlowPoint => {
-    const corner = cornerOf(id);
-    return { across: corner.across + itemOf(id).across / 2, along: corner.along };
-  };
+  const entryOf = (id: string): FlowPoint => ({
+    across: shift + middleOf(itemOf(id).place),
+    along: cornerOf(id).along,
+  });
 
   return {
-    size: { across: columns.length, along: rows.length },
+    size,
+    entry: { across: shift + crossing, along: 0 },
+    exit: { across: shift + crossing, along: size.along },
     cornerOf,
     entryOf,
     exitOf: (id) => {
       const entry = entryOf(id);
       return { ...entry, along: entry.along + itemOf(id).along };
     },
-    laneAfter: (id) => {
-      const corridor = itemOf(id).step + 1;
+    laneAfter: (end) => {
+      const corridor = end === outside ? 0 : itemOf(end).step + 1;
       return (
         firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
-        laneOf(lanes.leaving, corridor, id)
+        laneOf(lanes.leaving, corridor, end)
       );
     },
-    laneBefore: (id) => {
-      const corridor = itemOf(id).step;
+    laneBefore: (end) => {
+      const corridor = end === outside ? rowSizes.length : itemOf(end).step;
       return (
         firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
         (rowStacks[corridor]?.entering ?? 0) +
-        laneOf(lanes.entering, corridor, id)
+        laneOf(lanes.entering, corridor, end)
       );
     },
-    laneBeside: (corridor, id) =>
-      firstLane(columns, corridor, columnStacks[corridor]?.height ?? 0) +
-      laneOf(lanes.beside, corridor, id),
+    laneBeside: (corridor, end) => shift + laneBeside(corridor, end),
   };
 }
