@@ -1,21 +1,12 @@
-import type { Cell, Direction, GraphEdge, GraphNode } from "./graph";
+import type { Cell, Direction, EdgeEnds, GraphNode } from "./graph";
 import { InvalidGraphError } from "./graph";
+import { keyOf, type Spot } from "./spot";
 
-const keyOf = (cell: Cell): string => `${cell.row}:${cell.column}`;
-
-/** The cell `step` steps along the flow and `place` places across it. */
-function cellAt(step: number, place: number, direction: Direction): Cell {
-  return direction === "down" ? { row: step, column: place } : { row: place, column: step };
-}
-
-/** How many steps along the flow a cell lies. */
-export function stepOf(cell: Cell, direction: Direction): number {
-  return direction === "down" ? cell.row : cell.column;
-}
-
-/** How many places across the flow a cell lies. */
-export function placeOf(cell: Cell, direction: Direction): number {
-  return direction === "down" ? cell.column : cell.row;
+/** The spot of a cell in a grid that flows in `direction`. */
+function spotOf(cell: Cell, direction: Direction): Spot {
+  return direction === "down"
+    ? { step: cell.row, place: cell.column }
+    : { step: cell.column, place: cell.row };
 }
 
 function requireCell(node: GraphNode, cell: Cell): void {
@@ -28,8 +19,13 @@ function requireCell(node: GraphNode, cell: Cell): void {
   }
 }
 
+function ranksOf(indices: readonly number[]): Map<number, number> {
+  const inUse = [...new Set(indices)].toSorted((a, b) => a - b);
+  return new Map(inUse.map((index, rank) => [index, rank]));
+}
+
 /**
- * Gives every node of one grid a cell.
+ * Gives every node of one grid a spot, counting only the rows and columns that hold a node.
  *
  * A node that names its cell gets it. Any other node goes one step along the flow past the furthest
  * node that leads to it, and takes the first free place across the flow. Only an edge from a node
@@ -37,51 +33,57 @@ function requireCell(node: GraphNode, cell: Cell): void {
  * not that later node names its cell.
  *
  * @param edges Edges between nodes of this grid.
+ * @returns The spots, in the order of `nodes`.
  * @throws InvalidGraphError when a node names a cell that is not one, or two nodes name the same cell.
  */
-export function assignCells(
+export function assignSpots(
   nodes: readonly GraphNode[],
   direction: Direction,
-  edges: readonly Omit<GraphEdge, "id">[],
-): Map<string, Cell> {
+  edges: readonly EdgeEnds[],
+): Map<string, Spot> {
   const holders = new Map<string, string>();
   for (const node of nodes) {
     if (node.cell === undefined) {
       continue;
     }
     requireCell(node, node.cell);
-    const holder = holders.get(keyOf(node.cell));
+    const key = keyOf(spotOf(node.cell, direction));
+    const holder = holders.get(key);
     if (holder !== undefined) {
       throw new InvalidGraphError(
         `Nodes "${holder}" and "${node.id}" are both put in row ${node.cell.row}, column ${node.cell.column}.`,
       );
     }
-    holders.set(keyOf(node.cell), node.id);
+    holders.set(key, node.id);
   }
 
-  const cells = new Map<string, Cell>();
-  const steps = new Map<string, number>();
+  const spots = new Map<string, Spot>();
   for (const node of nodes) {
     if (node.cell !== undefined) {
-      cells.set(node.id, node.cell);
-      steps.set(node.id, stepOf(node.cell, direction));
+      spots.set(node.id, spotOf(node.cell, direction));
       continue;
     }
     let step = 0;
     for (const edge of edges) {
-      const from = edge.to === node.id ? steps.get(edge.from) : undefined;
+      const from = edge.to === node.id ? spots.get(edge.from)?.step : undefined;
       if (from !== undefined) {
         step = Math.max(step, from + 1);
       }
     }
     let place = 0;
-    while (holders.has(keyOf(cellAt(step, place, direction)))) {
+    while (holders.has(keyOf({ step, place }))) {
       place += 1;
     }
-    const cell = cellAt(step, place, direction);
-    holders.set(keyOf(cell), node.id);
-    cells.set(node.id, cell);
-    steps.set(node.id, step);
+    holders.set(keyOf({ step, place }), node.id);
+    spots.set(node.id, { step, place });
   }
-  return cells;
+
+  const steps = ranksOf([...spots.values()].map((spot) => spot.step));
+  const places = ranksOf([...spots.values()].map((spot) => spot.place));
+  return new Map(
+    [...spots].map(([id, spot]) => [
+      id,
+      { step: steps.get(spot.step) ?? 0, place: places.get(spot.place) ?? 0 },
+    ]),
+  );
 }

@@ -1,6 +1,7 @@
-/** Which way a diagram or a group flows: each edge leads to a node further down, or further right. */
+/** Which way a diagram or a group flows: a node goes further down, or further right, than the nodes listed before it that lead to it. */
 export type Direction = "down" | "right";
 
+/** How wide and how high a node is. */
 export interface Size {
   readonly width: number;
   readonly height: number;
@@ -29,13 +30,18 @@ export interface Group {
   readonly cell?: Cell;
 }
 
+/** A node of a graph: a leaf, or a group of nodes. */
 export type GraphNode = Leaf | Group;
 
-/** A connection between two nodes, at any depth. */
-export interface GraphEdge {
-  readonly id: string;
+/** The two nodes an edge connects, at any depth. */
+export interface EdgeEnds {
   readonly from: string;
   readonly to: string;
+}
+
+/** A connection between two nodes. */
+export interface GraphEdge extends EdgeEnds {
+  readonly id: string;
 }
 
 /** What a layout is made from. */

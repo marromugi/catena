@@ -1,13 +1,5 @@
 import type { GraphEdge } from "./graph";
-
-/**
- * Where a node sits in its grid: `step` rows along the flow and `place` columns across it,
- * counting only the rows and columns that hold a node.
- */
-export interface Spot {
-  readonly step: number;
-  readonly place: number;
-}
+import { keyOf, type Spot } from "./spot";
 
 /**
  * How an edge runs from its source, which it leaves along the flow, to its target, which it enters along the flow:
@@ -35,8 +27,6 @@ export interface Lanes {
   /** For each corridor between columns, the nodes whose edges go around through it. */
   readonly beside: readonly (readonly string[])[];
 }
-
-const keyOf = (spot: Spot): string => `${spot.step}:${spot.place}`;
 
 function spotOf(spots: ReadonlyMap<string, Spot>, id: string): Spot {
   const spot = spots.get(id);
@@ -126,7 +116,7 @@ class LaneOrder {
  * beside its source to the lane of its target, in the corridor before the target's row. All the edges
  * that come around to a node share that lane.
  *
- * @param spots The nodes of the grid, in the order they are listed.
+ * @param spots The nodes of the grid in the order they are listed, with no row or column left empty.
  * @param edges Edges between nodes of this grid.
  */
 export function assignLanes(spots: ReadonlyMap<string, Spot>, edges: readonly GraphEdge[]): Lanes {
