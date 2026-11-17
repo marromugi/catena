@@ -146,8 +146,8 @@ class LaneOrder {
  * past it, and where two nodes would each have to come first, the later edge goes around instead. An
  * edge straight from that node into the target is one the drop may join. Every other edge goes around: through a corridor
  * beside its source to the lane of its target, in the corridor before the target's row. Every edge that
- * runs to a node along a lane, whether it comes around, joins, or comes in from the outside beside the
- * columns, shares that lane.
+ * runs to a node along a lane, whether it comes around or comes in from the outside beside the columns,
+ * shares that lane.
  *
  * Where the border is crossed along the flow, the outside has a lane like a node's at each end of the
  * grid: the one its edges come in along is the first of the corridor before the first row, and the one
