@@ -40,11 +40,7 @@
           {
             "patterns": [
               {
-                "group": ["../*/*", "./../**", "../../**"],
-                "message": "Import another module through its index, as \"../<module>\", not a file inside it or a longer way round."
-              },
-              {
-                "group": ["../*"],
+                "group": ["../**", "./../**"],
                 "message": "layout holds the types the other modules share, so it imports nothing outside layout."
               }
             ]

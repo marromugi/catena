@@ -11,7 +11,7 @@ CI runs `fmt:check`, `lint`, `typecheck` and `test` on every PR (`.github/workfl
 
 # Breaking changed lines
 
-Run these in a copy of the repo under `/private/tmp`, never in this checkout.
+Run these in a clone of the repo under `/private/tmp`, at the commit under review and after `pnpm install`, never in this checkout.
 
 StrykerJS, on the changed lines of one file, from the copy's root. Each mutant runs only the tests that cover it.
 
@@ -21,7 +21,7 @@ pnpm exec stryker run --mutate "packages/<package>/src/<file>.ts:<from>-<to>"
 
 The report and sandboxes go to `.<copy's directory name>-stryker-tmp` beside the copy (`stryker.config.mjs`).
 
-Break rules are ast-grep rules with a `fix`, kept in `break-rules/`. Run them from the copy's root, where Vitest finds tests across packages, so only the tests that reach the broken file run:
+Break rules are ast-grep rules with a `fix`, kept in `break-rules/`; the directory comes with the first rule a review writes. Run them from the copy's root, where Vitest finds tests across packages, so only the tests that reach the broken file run:
 
 ```sh
 node <is-it-right>/scripts/break-changed.mts --rules break-rules origin/main -- sh -c 'pnpm vitest related "$BREAK_CHANGED_FILE" --run'

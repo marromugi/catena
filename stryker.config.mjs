@@ -2,7 +2,6 @@ import path from "node:path";
 
 const outside = `../.${path.basename(process.cwd())}-stryker-tmp`;
 
-/** @type {import("@stryker-mutator/api/core").PartialStrykerOptions} */
 export default {
   testRunner: "vitest",
   coverageAnalysis: "perTest",
