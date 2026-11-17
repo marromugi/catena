@@ -1,0 +1,4 @@
+render2x.png: 864x912, region 0,1-64,896
+  canvas #f5f5f5 (56384 px), darkest dot pixel #c4c4c4
+  dot columns 2, pitch at 2x: [32.0]; dot rows 28, pitch at 2x: [32.0]
+  first dot centre at 2x (15.50, 15.50); dot area at 1x 3.08 px^2 -> radius 0.99

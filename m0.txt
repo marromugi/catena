@@ -1,0 +1,4 @@
+picture.png: 1226x822, region 0,0-1226,822
+  canvas #f5f5f5 (984060 px), darkest dot pixel #c4c4c4
+  dot columns 38, pitch at 2x: [32.0]; dot rows 26, pitch at 2x: [32.0]
+  first dot centre at 2x (17.50, 13.50); dot area at 1x 3.24 px^2 -> radius 1.02
