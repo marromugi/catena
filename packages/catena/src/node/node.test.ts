@@ -1482,6 +1482,12 @@ describe("shadows, the pair's panel and the gap beside an icon", () => {
     );
   });
 
+  test("a shadow however faint, above opacity 0, is drawn", () => {
+    expect(shadowedCard({ dx: 0, dy: 0, blur: 4, color: "#000000", opacity: 0.01 })[0]).toMatch(
+      /^<filter /,
+    );
+  });
+
   test("a look whose shadow is at opacity 0 takes no id", () => {
     const block = badge.layout("Badge", themeWith(), 100);
 
@@ -1523,7 +1529,21 @@ describe("shadows, the pair's panel and the gap beside an icon", () => {
     );
   });
 
-  test("an icon text gap of 0 is kept, not taken for its default", () => {
-    expect(defineTheme(fonts, { iconTextGap: 0 }).iconTextGap).toBe(0);
+  test("an icon text gap of 0 and a dot 0 across are kept, not taken for their defaults", () => {
+    const zero = defineTheme(fonts, { iconTextGap: 0, dot: { diameter: 0 } });
+
+    expect(zero.iconTextGap).toBe(0);
+    expect(zero.dot.diameter).toBe(0);
+  });
+
+  test("the active button's disc is drawn in the theme's active button disc look", () => {
+    const changed = themeWith({ activeButtonDisc: { padding: 3, fill: "navy" } });
+    const info = buildNode(activeRoundButton, changed, "b", "info");
+
+    // 12 + 2 × 3 for the disc, + 2 × 9.5 for the button
+    expect(info.leaf.size).toEqual({ width: 37, height: 37 });
+    expect(info.draw({ x: 0, y: 0, width: 37, height: 37 })).toContain(
+      `<rect x="9.5" y="9.5" width="18" height="18" rx="9" fill="navy"`,
+    );
   });
 });

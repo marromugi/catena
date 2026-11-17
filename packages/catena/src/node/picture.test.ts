@@ -314,6 +314,239 @@ describe("the default looks, matched to the picture on #20", () => {
   };
   const sizeOf = (id: string) => nodes.get(id)?.leaf.size;
 
+  test("the default theme holds the looks read off the picture", () => {
+    const { fonts: _, ...looks } = defineTheme(fonts);
+
+    expect(looks).toMatchInlineSnapshot(`
+      {
+        "activeButton": {
+          "fill": "#dce6fd",
+          "padding": 9.5,
+          "shadow": {
+            "blur": 0,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 0,
+            "opacity": 0,
+          },
+          "stroke": "#4666f6",
+          "strokeWidth": 1.5,
+        },
+        "activeButtonDisc": {
+          "fill": "#3254f6",
+          "padding": 1.5,
+          "shadow": {
+            "blur": 0,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 0,
+            "opacity": 0,
+          },
+          "stroke": "none",
+          "strokeWidth": 0,
+        },
+        "activeButtonIcon": {
+          "color": "#ffffff",
+          "colors": {},
+          "size": 12,
+          "strokeWidth": 1.75,
+        },
+        "badges": {
+          "plain": {
+            "color": "#1f1f1f",
+            "fill": "#ffffff",
+            "lineHeight": 1.5,
+            "paddingX": 17,
+            "paddingY": 3,
+            "shadow": {
+              "blur": 0,
+              "color": "#000000",
+              "dx": 0,
+              "dy": 0,
+              "opacity": 0,
+            },
+            "size": 11,
+            "stroke": "#ececec",
+            "strokeWidth": 1,
+            "weight": "bold",
+          },
+          "red": {
+            "color": "#eb524a",
+            "fill": "#fbe5e4",
+            "lineHeight": 1.5,
+            "paddingX": 17,
+            "paddingY": 3,
+            "shadow": {
+              "blur": 0,
+              "color": "#000000",
+              "dx": 0,
+              "dy": 0,
+              "opacity": 0,
+            },
+            "size": 11,
+            "stroke": "#f9dada",
+            "strokeWidth": 1,
+            "weight": "bold",
+          },
+        },
+        "body": {
+          "color": "#8c8c8c",
+          "lineHeight": 1.6,
+          "size": 11,
+          "weight": "regular",
+        },
+        "button": {
+          "fill": "#ffffff",
+          "padding": 9,
+          "shadow": {
+            "blur": 0,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 0,
+            "opacity": 0,
+          },
+          "stroke": "#ececec",
+          "strokeWidth": 1.5,
+        },
+        "buttonIcon": {
+          "color": "#1f1f1f",
+          "colors": {
+            "spark": "#cc7c5e",
+          },
+          "size": 16,
+          "strokeWidth": 1.75,
+        },
+        "caption": {
+          "color": "#1f1f1f",
+          "lineHeight": 1.5,
+          "size": 14,
+          "weight": "regular",
+        },
+        "captionGap": 2,
+        "card": {
+          "fill": "#ffffff",
+          "padding": 20,
+          "radius": 12,
+          "shadow": {
+            "blur": 5,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 0,
+            "opacity": 0.1,
+          },
+          "stroke": "#ebebeb",
+          "strokeWidth": 1,
+        },
+        "divider": {
+          "color": "#e0e0e0",
+          "dash": [
+            3,
+            3,
+          ],
+          "width": 1,
+        },
+        "dot": {
+          "colors": {
+            "plain": "#8c8c8c",
+            "red": "#e93e33",
+          },
+          "diameter": 18,
+        },
+        "gap": 12,
+        "icon": {
+          "color": "#1f1f1f",
+          "colors": {
+            "spark": "#cc7c5e",
+          },
+          "size": 22,
+          "strokeWidth": 1.75,
+        },
+        "iconTextGap": 2,
+        "image": {
+          "aspectRatio": 1.5,
+          "radius": 6,
+        },
+        "itemCard": {
+          "fill": "#ffffff",
+          "padding": 14,
+          "radius": 10,
+          "shadow": {
+            "blur": 4,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 1,
+            "opacity": 0.1,
+          },
+          "stroke": "none",
+          "strokeWidth": 0,
+        },
+        "nodeWidth": 320,
+        "pairPanel": {
+          "fill": "#f9f9f9",
+          "padding": 22,
+          "radius": 14,
+          "shadow": {
+            "blur": 5,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 0,
+            "opacity": 0.1,
+          },
+          "stroke": "#ebebeb",
+          "strokeWidth": 1,
+        },
+        "panel": {
+          "fill": "#ffffff",
+          "padding": 12,
+          "radius": 12,
+          "shadow": {
+            "blur": 4,
+            "color": "#000000",
+            "dx": 0,
+            "dy": 1,
+            "opacity": 0.1,
+          },
+          "stroke": "none",
+          "strokeWidth": 0,
+        },
+        "selectedCard": {
+          "fill": "#fcefe0",
+          "padding": 20,
+          "radius": 12,
+          "shadow": {
+            "blur": 5,
+            "color": "#e09644",
+            "dx": 0,
+            "dy": 0,
+            "opacity": 0.4,
+          },
+          "stroke": "#e09644",
+          "strokeWidth": 1.5,
+        },
+        "subtitle": {
+          "color": "#1f1f1f",
+          "lineHeight": 1.5,
+          "size": 12,
+          "weight": "bold",
+        },
+        "tileIcon": {
+          "color": "#1f1f1f",
+          "colors": {
+            "spark": "#cc7c5e",
+          },
+          "size": 32,
+          "strokeWidth": 2.5,
+        },
+        "title": {
+          "color": "#1f1f1f",
+          "lineHeight": 1.5,
+          "size": 14,
+          "weight": "bold",
+        },
+      }
+    `);
+  });
+
   test("a badge is about 68 × 22.5", () => {
     for (const id of ["plain-badge", "red-badge"]) {
       expect(sizeOf(id)?.width).toBeCloseTo(68.1, 1);
