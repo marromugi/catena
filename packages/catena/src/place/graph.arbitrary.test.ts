@@ -37,10 +37,23 @@ const alternating = (node: GraphNode): number =>
 const edges = sample.flatMap((graph: Graph) => {
   const order = listed(graph.nodes);
   const find = (id: string) => order.findIndex(({ node }) => node.id === id);
+  const flows = new Map(
+    order.flatMap(({ node }) => ("children" in node ? [[node.id, node.direction]] : [])),
+  );
+  /** The outermost of the first three groups around a node, one inside another, whose flows alternate. */
+  const chainAround = (at: number): string | undefined => {
+    const around = order[at]?.around ?? [];
+    return around.find((id, index) => {
+      const [outer, middle, inner] = around.slice(index, index + 3).map((each) => flows.get(each));
+      return inner !== undefined && outer !== middle && middle !== inner;
+    });
+  };
   return graph.edges.map((edge) => {
     const from = find(edge.from);
     const to = find(edge.to);
     return {
+      fromChain: chainAround(from),
+      toChain: chainAround(to),
       from,
       to,
       intoOwnGroup: order[from]?.around.includes(edge.to) === true,
@@ -116,9 +129,34 @@ describe("graphs", () => {
       "an edge between nodes of different grids",
       edges.some((edge) => !edge.sameGrid && !edge.intoOwnGroup && !edge.outOfOwnGroup),
     ],
+    ...[3, 4, 5].map((depth): [string, boolean] => [
+      `an edge with an end ${depth} groups deeper than the grid that holds both ends`,
+      edges.some(
+        (edge) => !edge.intoOwnGroup && !edge.outOfOwnGroup && edge.depthBelowShared === depth,
+      ),
+    ]),
     [
-      "an edge with an end three groups deeper than the grid that holds both ends",
-      edges.some((edge) => !edge.intoOwnGroup && !edge.outOfOwnGroup && edge.depthBelowShared >= 3),
+      "an edge into three groups, one inside another, whose flows alternate",
+      edges.some((edge) => edge.fromChain === undefined && edge.toChain !== undefined),
+    ],
+    [
+      "an edge out of three groups, one inside another, whose flows alternate",
+      edges.some((edge) => edge.fromChain !== undefined && edge.toChain === undefined),
+    ],
+    [
+      "an edge between two sets of three groups, one inside another, whose flows alternate",
+      edges.some(
+        (edge) =>
+          edge.fromChain !== undefined &&
+          edge.toChain !== undefined &&
+          edge.fromChain !== edge.toChain,
+      ),
+    ],
+    [
+      "a group with a group inside it that flows the same way",
+      groups.some((each) =>
+        each.children.some((child) => "children" in child && child.direction === each.direction),
+      ),
     ],
     ["an edge from a node to a group around it", edges.some((edge) => edge.intoOwnGroup)],
     ["an edge from a group to a node inside it", edges.some((edge) => edge.outOfOwnGroup)],
@@ -150,12 +188,18 @@ const chainOf = (node: GraphNode): GraphNode[] =>
 const chains = fc.sample(nestedGroups, { numRuns: 500, seed: 20_261_117 }).map(chainOf);
 
 describe("nestedGroups", () => {
-  test("are each three to five groups, one inside the first child of the next, each flowing the other way than the one around it, with leaves in the innermost", () => {
+  test("are each three to five groups, one inside the first child of the next, each flowing down or right and the other way than the one around it, with at most two leaves beside each and leaves in the innermost", () => {
     for (const chain of chains) {
       expect(chain.length).toBeGreaterThanOrEqual(3);
       expect(chain.length).toBeLessThanOrEqual(5);
       const flows = chain.map((each) => ("children" in each ? each.direction : undefined));
+      expect(flows.every((flow) => flow === "down" || flow === "right")).toBe(true);
       expect(flows.slice(1).every((flow, at) => flow !== flows[at])).toBe(true);
+      for (const each of chain.slice(0, -1)) {
+        const beside = "children" in each ? each.children.slice(1) : [];
+        expect(beside.length).toBeLessThanOrEqual(2);
+        expect(beside.every((node) => !("children" in node))).toBe(true);
+      }
       const inmost = chain.at(-1);
       expect(
         inmost !== undefined &&
@@ -173,6 +217,14 @@ describe("nestedGroups", () => {
     expect(
       chains.some((chain) =>
         chain.slice(0, -1).every((each) => "children" in each && each.children.length > 1),
+      ),
+    ).toBe(true);
+  });
+
+  test.each(["down", "right"])("include a chain whose outermost group flows %s", (flow) => {
+    expect(
+      chains.some(
+        (chain) => chain[0] !== undefined && "children" in chain[0] && chain[0].direction === flow,
       ),
     ).toBe(true);
   });
