@@ -231,6 +231,33 @@ describe("readSvgLogo", () => {
       "*/",
       "<constructor/>",
       "&toString;",
+      ' transform="',
+      "translate(",
+      "rotate(",
+      "scale(",
+      "skewX(",
+      "matrix(1 2 3 4 5 6)",
+      ")",
+      ",",
+      " ",
+      "-",
+      ".",
+      "0",
+      "1",
+      "1e999",
+      "1e308",
+      "e",
+      "M",
+      "m",
+      "A",
+      "a",
+      "H",
+      "v",
+      "Z",
+      "0 0",
+      "1 0 0 1 1 1",
+      ' d="',
+      ' stroke="red" stroke-linecap="round" stroke-linejoin="round"',
     );
     const text = fc.oneof(
       fc.string(),
@@ -510,9 +537,59 @@ describe("readSvgLogo", () => {
       "The stroke of <path> is under a transform that does not scale evenly in both directions; a logo's stroke-width is one number.",
     ],
     [
-      "a root flattened by its transform",
+      "a transform on the root",
+      svg('<path d="M0 0"/>', 'viewBox="0 0 4 4" transform="translate(1)"'),
+      "A logo cannot hold the SVG's transform on <svg>.",
+    ],
+    [
+      "a transform that flattens the root",
       svg('<path d="M0 0"/>', 'viewBox="0 0 4 4" transform="scale(0)"'),
-      "The SVG draws no shape.",
+      "A logo cannot hold the SVG's transform on <svg>.",
+    ],
+    ...[
+      "translate(,1 2)",
+      "translate(1,,2)",
+      "translate(1 2,)",
+      "scale(,2)",
+      "scale(2,,3)",
+      "matrix(1 2 3 4 5)",
+      "scale(1 2 3)",
+      "scale()",
+      "rotate(1 2)",
+      "rotate(1 2 3 4)",
+      "skewX(1 2)",
+      "skewY()",
+      "translate(1e999)",
+    ].map(
+      (transform) =>
+        [
+          `a transform of ${transform}`,
+          svg(`<g transform="${transform}"/>`),
+          `transform "${transform}" on <g> is not a list of SVG transform functions.`,
+        ] as const,
+    ),
+    ...["M,1,,2", "M,1 2", "M1,,2", "M1 2,", "M1 2 L,3 4", "M0 0 A 1 1 0 0 1 2 2,,"].map(
+      (d) =>
+        [
+          `path data ${d} with a comma SVG does not allow, under a transform`,
+          svg(`<path d="${d}" transform="translate(1)"/>`),
+          `d "${d}" on <path> is not path data.`,
+        ] as const,
+    ),
+    [
+      "a number past the largest in path data under a transform",
+      svg('<path d="M 1e400 0 L 1 1" transform="scale(2)"/>'),
+      "The coordinates of <path> run past the largest number.",
+    ],
+    [
+      "a stroke under a matrix that keeps lengths but skews",
+      svg(`<path d="M0 0" stroke="red" ${ROUND} transform="matrix(1 0 0.6 0.8 0 0)"/>`),
+      "The stroke of <path> is under a transform that does not scale evenly in both directions; a logo's stroke-width is one number.",
+    ],
+    [
+      "a stroke a transform widens past the largest number",
+      svg(`<path d="M0 0" stroke="red" stroke-width="1e200" ${ROUND} transform="scale(1e200)"/>`),
+      "The stroke-width of <path> runs past the largest number.",
     ],
     [
       "a gradient",
@@ -728,8 +805,130 @@ const strokeUnder = (transform: string) =>
     ),
   ).shapes[0];
 
-const rectUnderRoot = (root: string) =>
-  readSvgLogo(svg('<rect width="50" height="20"/>', root)).shapes[0]?.pathData;
+/** Every number in path data, in order. */
+const numbersIn = (pathData: string | undefined) =>
+  (pathData?.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi) ?? []).map(Number);
+
+const near = (found: readonly number[], expected: readonly number[]) =>
+  found.length === expected.length &&
+  found.every((value, i) => {
+    const other = expected[i] ?? Number.NaN;
+    return Math.abs(value - other) <= 1e-9 * Math.max(1, Math.abs(value), Math.abs(other));
+  });
+
+type Matrix = readonly [number, number, number, number, number, number];
+
+const apply = ([a, b, c, d, e, f]: Matrix, x: number, y: number) =>
+  [a * x + c * y + e, b * x + d * y + f] as const;
+
+const coordinate = fc.integer({ min: -50, max: 50 });
+
+const scaling = fc
+  .tuple(fc.double({ min: 0.1, max: 4, noNaN: true }), fc.boolean())
+  .map(([size, mirrored]) => (mirrored ? -size : size));
+
+/** The linear part `a b c d` of a matrix that flattens nothing: a scale each way, a shear, a turn. */
+const invertible = fc
+  .tuple(
+    fc.double({ min: -360, max: 360, noNaN: true }),
+    fc.double({ min: -2, max: 2, noNaN: true }),
+    scaling,
+    scaling,
+  )
+  .map(([degrees, shear, across, down]) => {
+    const [cos, sin] = turn(degrees);
+    return [
+      cos * across,
+      sin * across,
+      cos * shear - sin * down,
+      sin * shear + cos * down,
+    ] as const;
+  });
+
+/** An absolute path segment, its points as written: `H` and `V` hold one number, `Z` none. */
+interface Segment {
+  readonly command: string;
+  readonly numbers: readonly number[];
+}
+
+const segment: fc.Arbitrary<Segment> = fc.oneof(
+  ...(
+    [
+      ["L", 2],
+      ["C", 6],
+      ["S", 4],
+      ["Q", 4],
+      ["T", 2],
+      ["H", 1],
+      ["V", 1],
+      ["M", 2],
+    ] as const
+  ).map(([command, count]) =>
+    fc.array(coordinate, { minLength: count, maxLength: count }).map((numbers) => ({
+      command,
+      numbers,
+    })),
+  ),
+  fc
+    .tuple(coordinate, coordinate)
+    .map(([x, y]) => ({ command: "A", numbers: [0, 0, 0, 0, 1, x, y] })),
+  fc.constant({ command: "Z", numbers: [] }),
+);
+
+/** The segments written absolute, and written relative to where each one starts. */
+function absoluteAndRelative(start: readonly [number, number], segments: readonly Segment[]) {
+  const absolute = [`M ${start.join(" ")}`];
+  const relative = [`m ${start.join(" ")}`];
+  let [x, y] = start;
+  let [startX, startY] = start;
+  for (const { command, numbers } of segments) {
+    absolute.push(`${command} ${numbers.join(" ")}`.trim());
+    const from = command === "A" ? 5 : 0;
+    const shifted = numbers.map((n, i) => {
+      if (command === "H") return n - x;
+      if (command === "V") return n - y;
+      return i < from ? n : n - ((i - from) % 2 === 0 ? x : y);
+    });
+    relative.push(`${command.toLowerCase()} ${shifted.join(" ")}`.trim());
+    if (command === "Z") [x, y] = [startX, startY];
+    else if (command === "H") x = numbers[0] ?? 0;
+    else if (command === "V") y = numbers[0] ?? 0;
+    else [x, y] = [numbers.at(-2) ?? 0, numbers.at(-1) ?? 0];
+    if (command === "M") [startX, startY] = [x, y];
+  }
+  return { absolute: absolute.join(" "), relative: relative.join(" ") };
+}
+
+/** The points the segments pass, `H` and `V` as the full point, each under `matrix`. */
+function pointsUnder(
+  matrix: Matrix,
+  start: readonly [number, number],
+  segments: readonly Segment[],
+): number[] {
+  const points: number[] = [...apply(matrix, ...start)];
+  let [x, y] = start;
+  let [startX, startY] = start;
+  for (const { command, numbers } of segments) {
+    if (command === "Z") {
+      [x, y] = [startX, startY];
+      continue;
+    }
+    const pairs =
+      command === "H"
+        ? [numbers[0] ?? 0, y]
+        : command === "V"
+          ? [x, numbers[0] ?? 0]
+          : command === "A"
+            ? numbers.slice(5)
+            : numbers;
+    for (let i = 0; i < pairs.length; i += 2) {
+      points.push(...apply(matrix, pairs[i] ?? 0, pairs[i + 1] ?? 0));
+    }
+    [x, y] = [pairs.at(-2) ?? 0, pairs.at(-1) ?? 0];
+    if (command === "M") [startX, startY] = [x, y];
+  }
+  return points;
+}
 
 describe("readSvgLogo with transforms", () => {
   test.each([
@@ -783,16 +982,14 @@ describe("readSvgLogo with transforms", () => {
   });
 
   test("an arc under any transform runs along the ellipse the transform makes of the file's", () => {
-    const factor = fc.double({ min: -4, max: 4, noNaN: true });
     const radius = fc.double({ min: 0.1, max: 10, noNaN: true });
     fc.assert(
       fc.property(
-        fc.tuple(factor, factor, factor, factor),
+        invertible,
         radius,
         radius,
         fc.double({ min: -360, max: 360, noNaN: true }),
         ([a, b, c, d], rx, ry, degrees) => {
-          fc.pre(Math.abs(a * d - b * c) > 0.01);
           const read = pathUnder(
             `matrix(${a} ${b} ${c} ${d} 0 0)`,
             `M0 0 A ${rx} ${ry} ${degrees} 0 1 10 0`,
@@ -834,34 +1031,125 @@ describe("readSvgLogo with transforms", () => {
     expect(paths('<path d="M0 0" stroke="red" transform="scale(1 0)"/>')).toEqual(["M9 9"]);
   });
 
-  test("the root's transform moves its box about the centre, in the units of its width and height", () => {
-    expect(
-      rectUnderRoot('viewBox="0 0 100 100" width="200" height="200" transform="translate(20 0)"'),
-    ).toBe("M 10 0 L 60 0 L 60 20 L 10 20 Z");
-    expect(rectUnderRoot('viewBox="0 0 100 100" transform="rotate(90)"')).toBe(
-      "M 100 0 L 100 50 L 80 50 L 80 0 Z",
-    );
-    expect(rectUnderRoot('width="100" height="100" transform="rotate(90)"')).toBe(
-      "M 100 0 L 100 50 L 80 50 L 80 0 Z",
-    );
-    expect(
-      rectUnderRoot(
-        'viewBox="0 0 100 100" width="200" height="100" preserveAspectRatio="xMinYMin" transform="rotate(180)"',
+  test("quarter turns and eighth-turn skews are exact", () => {
+    expect(pathUnder("rotate(270)")).toBe("M 2 -1");
+    expect(pathUnder("skewX(45)", "M 0 3")).toBe("M 3 3");
+    expect(pathUnder("skewX(-45)")).toBe("M -1 2");
+    expect(pathUnder("skewX(135)")).toBe("M -1 2");
+    expect(pathUnder("skewY(-45)")).toBe("M 1 1");
+  });
+
+  test("an arc with a zero radius becomes its line, and a relative arc ends from where it starts", () => {
+    expect(pathUnder("scale(2)", "M0 0 A 2 0 0 1 1 2 0")).toBe("M 0 0 L 4 0");
+    expect(pathUnder("translate(5 0)", "M1 1 a1 1 0 0 1 2 0")).toBe("M 6 1 A 1 1 0 0 1 8 1");
+  });
+
+  test("path data under a matrix passes the file's points under that matrix, absolute or relative", () => {
+    const matrix = fc
+      .tuple(invertible, coordinate, coordinate)
+      .map(([[a, b, c, d], e, f]): Matrix => [a, b, c, d, e, f]);
+    fc.assert(
+      fc.property(
+        matrix,
+        fc.tuple(coordinate, coordinate),
+        fc.array(segment, { maxLength: 8 }),
+        (given, start, segments) => {
+          const expected = pointsUnder(given, start, segments);
+          const transform = `matrix(${given.join(" ")})`;
+          for (const pathData of Object.values(absoluteAndRelative(start, segments))) {
+            const found = numbersIn(pathUnder(transform, pathData)?.replaceAll(/A( \S+){5}/g, "A"));
+            expect(near(found, expected)).toBe(true);
+          }
+        },
       ),
-    ).toBe("M 200 100 L 150 100 L 150 80 L 200 80 Z");
-    const topAligned = rectUnderRoot(
-      'viewBox="0 0 100 50" width="300" height="200" preserveAspectRatio="xMaxYMin meet" transform="rotate(180)"',
     );
-    expect(
-      topAligned
-        ?.split(" ")
-        .filter((part) => /\d/.test(part))
-        .map(Number),
-    ).toEqual(
-      [100, 200 / 3, 50, 200 / 3, 50, 140 / 3, 100, 140 / 3].map((n) => expect.closeTo(n, 9)),
+  });
+
+  test("a transform list places a point as the same functions on nested groups, and as their product", () => {
+    const degrees = fc.integer({ min: -720, max: 720 });
+    const one: fc.Arbitrary<{ text: string; matrix: Matrix }> = fc.oneof(
+      fc.tuple(coordinate, coordinate).map(([x, y]) => ({
+        text: `translate(${x} ${y})`,
+        matrix: [1, 0, 0, 1, x, y] as const,
+      })),
+      fc.tuple(fc.integer({ min: 1, max: 4 }), fc.integer({ min: -4, max: -1 })).map(([x, y]) => ({
+        text: `scale(${x} ${y})`,
+        matrix: [x, 0, 0, y, 0, 0] as const,
+      })),
+      degrees.map((n) => {
+        const [cos, sin] = turn(n);
+        return { text: `rotate(${n})`, matrix: [cos, sin, -sin, cos, 0, 0] as const };
+      }),
+      fc.integer({ min: -80, max: 80 }).map((n) => ({
+        text: `skewX(${n})`,
+        matrix: [1, 0, Math.tan((n * Math.PI) / 180), 1, 0, 0] as const,
+      })),
+      fc.integer({ min: -80, max: 80 }).map((n) => ({
+        text: `skewY(${n})`,
+        matrix: [1, Math.tan((n * Math.PI) / 180), 0, 1, 0, 0] as const,
+      })),
     );
-    expect(rectUnderRoot('viewBox="0 0 100 100" width="200" transform="scale(0.5)"')).toBe(
-      "M 25 25 L 50 25 L 50 35 L 25 35 Z",
+    fc.assert(
+      fc.property(
+        fc.array(one, { minLength: 1, maxLength: 4 }),
+        coordinate,
+        coordinate,
+        (list, x, y) => {
+          const point = `<path d="M ${x} ${y}"/>`;
+          const listed = readSvgLogo(
+            svg(`<g transform="${list.map((f) => f.text).join(" ")}">${point}</g>`),
+          ).shapes[0]?.pathData;
+          const nested = readSvgLogo(
+            svg(list.reduceRight((inner, f) => `<g transform="${f.text}">${inner}</g>`, point)),
+          ).shapes[0]?.pathData;
+          const expected = list.reduceRight<readonly number[]>(
+            ([px = 0, py = 0], f) => apply(f.matrix, px, py),
+            [x, y],
+          );
+          expect(near(numbersIn(listed), expected)).toBe(true);
+          expect(near(numbersIn(nested), expected)).toBe(true);
+        },
+      ),
+    );
+  });
+
+  test("a transform that changes nothing gives the logo no transform gives", () => {
+    const identity = fc.constantFrom(
+      "",
+      "translate(0)",
+      "translate(0 0)",
+      "scale(1)",
+      "rotate(0)",
+      "rotate(360)",
+      "rotate(720 5 5)",
+      "rotate(90) rotate(-90)",
+      "rotate(90 5 5) rotate(-90 5 5)",
+      "skewX(0)",
+      "skewY(180)",
+      "skewX(360)",
+      "matrix(1 0 0 1 0 0)",
+      "translate(3) translate(-3)",
+      "scale(2) scale(0.5)",
+    );
+    const d = fc.constantFrom(
+      "M0 0",
+      "m1 1 h2 v2 l-1 0 z",
+      "M0 0 A 1 1 0 0 1 2 0",
+      "m 1 2 a 2 2 0 012 0",
+      "M1 1 H 5 V 3",
+    );
+    const paint = fc.constantFrom(
+      `fill="none" stroke="red" stroke-width="3" ${ROUND}`,
+      'fill="blue"',
+      "",
+    );
+    fc.assert(
+      fc.property(identity, identity, d, paint, (onGroup, onShape, pathData, given) => {
+        const shape = (transform: string) => `<path d="${pathData}" ${given}${transform}/>`;
+        expect(
+          readSvgLogo(svg(`<g transform="${onGroup}">${shape(` transform="${onShape}"`)}</g>`)),
+        ).toEqual(readSvgLogo(svg(`<g>${shape("")}</g>`)));
+      }),
     );
   });
 

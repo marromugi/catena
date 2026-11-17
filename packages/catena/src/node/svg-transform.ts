@@ -17,7 +17,7 @@ export function multiply(outer: Matrix, inner: Matrix): Matrix {
   ];
 }
 
-export const translation = (x: number, y: number): Matrix => [1, 0, 0, 1, x, y];
+const translation = (x: number, y: number): Matrix => [1, 0, 0, 1, x, y];
 
 export const isIdentity = (matrix: Matrix): boolean =>
   matrix.every((value, i) => value === IDENTITY[i]);
@@ -51,12 +51,29 @@ export function transformList(given: string): Matrix | undefined {
     TRANSFORM.lastIndex = at;
     const found = TRANSFORM.exec(text);
     if (found === null || (at === 0 && found[1] !== undefined)) return undefined;
-    const numbers = numberList(found[3] ?? "");
+    const numbers = argumentList(found[3] ?? "");
     const one = numbers === undefined ? undefined : transformFunction(found[2] ?? "", numbers);
     if (one === undefined) return undefined;
     matrix = multiply(matrix, one);
   }
   return matrix;
+}
+
+/** A transform function's numbers, apart by space or one comma, as SVG writes them. */
+function argumentList(given: string): number[] | undefined {
+  const numbers: number[] = [];
+  let at = 0;
+  for (;;) {
+    const pattern = numbers.length === 0 ? FIRST_NUMBER : NEXT_NUMBER;
+    pattern.lastIndex = at;
+    const found = pattern.exec(given)?.[1];
+    if (found === undefined) break;
+    const value = number(found);
+    if (value === undefined) return undefined;
+    numbers.push(value);
+    at = pattern.lastIndex;
+  }
+  return given.slice(at).trim() === "" ? numbers : undefined;
 }
 
 function transformFunction(name: string, numbers: readonly number[]): Matrix | undefined {
@@ -121,8 +138,12 @@ const ARGUMENTS: ReadonlyMap<string, number> = new Map([
 ]);
 
 const COMMAND = /\s*([MLHVCSQTAZ])/iy;
-const LISTED_NUMBER = /[\s,]*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)/iy;
-const FLAG = /[\s,]*([01])/y;
+const NUMBER_TEXT = String.raw`[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?`;
+/** A command's or a transform function's first number. */
+const FIRST_NUMBER = new RegExp(String.raw`\s*(${NUMBER_TEXT})`, "y");
+/** Any later number, apart from the one before by space, one comma, or nothing where it can start. */
+const NEXT_NUMBER = new RegExp(String.raw`\s*,?\s*(${NUMBER_TEXT})`, "y");
+const NEXT_FLAG = /\s*,?\s*([01])/y;
 
 /**
  * SVG path data with `matrix` applied, in absolute commands, so it draws where the original drew under
@@ -144,8 +165,8 @@ export function transformPathData(pathData: string, matrix: Matrix): string | un
     return found;
   };
   const numberFollows = (): boolean => {
-    LISTED_NUMBER.lastIndex = at;
-    return LISTED_NUMBER.test(text);
+    NEXT_NUMBER.lastIndex = at;
+    return NEXT_NUMBER.test(text);
   };
   let x = 0;
   let y = 0;
@@ -164,14 +185,18 @@ export function transformPathData(pathData: string, matrix: Matrix): string | un
       y = startY;
       continue;
     }
+    let firstGroup = true;
     do {
       const given: number[] = [];
       for (let i = 0; i < count; i += 1) {
-        const found = command === "A" && (i === 3 || i === 4) ? read(FLAG) : read(LISTED_NUMBER);
-        const value = found === undefined ? Number.NaN : Number(found);
-        if (!Number.isFinite(value)) return undefined;
-        given.push(value);
+        const flag = command === "A" && (i === 3 || i === 4);
+        const pattern = flag ? NEXT_FLAG : firstGroup && i === 0 ? FIRST_NUMBER : NEXT_NUMBER;
+        const found = read(pattern);
+        // A number past the largest one stays Infinity, for the caller to refuse as overflow.
+        if (found === undefined) return undefined;
+        given.push(Number(found));
       }
+      firstGroup = false;
       const [first = 0] = given;
       if (command === "H") given.splice(0, 1, relative ? x + first : first, y);
       else if (command === "V") given.splice(0, 1, x, relative ? y + first : first);
@@ -230,6 +255,8 @@ function arc(matrix: Matrix, given: readonly number[], end: string): string {
 }
 
 /** Numbers apart by space, a comma, or nothing where the next sign or point starts one, as SVG lists them. */
+const LISTED_NUMBER = new RegExp(String.raw`[\s,]*(${NUMBER_TEXT})`, "y");
+
 export function numberList(given: string): number[] | undefined {
   const text = given.trim();
   const numbers: number[] = [];

@@ -10,7 +10,6 @@ import {
   numberList,
   transformList,
   transformPathData,
-  translation,
 } from "./svg-transform";
 import { MalformedXmlError, parseXml, type XmlElement } from "./xml";
 
@@ -28,20 +27,19 @@ export class UnreadableSvgError extends Error {
  * inline `style`; a shape that draws nothing is left out. A stroke's caps and joins must both be round,
  * as a logo's strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
  *
- * The `transform` attributes of the root, the `<g>`s and the shapes are applied to each shape's path
- * data, in absolute commands, so it draws where the file draws it; a stroke's width is scaled with it.
- * The root's transform moves its box about the centre, as a browser draws it. A shape a transform
- * flattens to nothing is left out.
+ * The `transform` attributes of the `<g>`s and the shapes are applied to each shape's path data, in
+ * absolute commands, so it draws where the file draws it; a stroke's width is scaled with it. A shape a
+ * transform flattens to nothing is left out.
  *
  * The logo is the caller's to use, following that brand's own guidelines.
  * @throws UnreadableSvgError naming the element or attribute when:
  * - the file is not well-formed XML, or nests elements deeper than this reader follows;
  * - its root is not `<svg>`, gives no size, or has `preserveAspectRatio` `none` or `slice`;
  * - it draws nothing;
+ * - the root `<svg>` has a `transform`, whose place depends on the size the file is shown at;
  * - a `transform` is not a list of SVG's transform functions in plain numbers, or is given in `style`
- *   or with `transform-origin` or `transform-box`; the root's `width` or `height` under a transform is
- *   not in user units or `px`; path data under a transform is not path data; or a stroke is under a
- *   transform that does not scale evenly in both directions;
+ *   or with `transform-origin` or `transform-box`; path data under a transform is not path data; or a
+ *   stroke is under a transform that does not scale evenly in both directions;
  * - it holds the CSS `translate`, `rotate` or `scale`, `url(...)` paint, `currentColor`, `<use>`,
  *   `<text>`, `<image>`, `clip-path`, `mask`, `filter`, `<style>` anywhere or `class`, an opacity below
  *   1, an even-odd fill, dashes, markers, a stroke painted under its fill, a blend mode, a shape's
@@ -66,57 +64,15 @@ export function readSvgLogo(svg: string): OwnLogo {
   if (holds(root, "style")) throw refused("<style>");
   const viewBox = viewBoxOf(root);
   const properties = propertiesOf(root);
-  const shapes = hidden(properties) ? [] : rootShapes(root, properties, viewBox);
+  const shapes = hidden(properties) ? [] : rootShapes(root, properties);
   if (shapes.length === 0) throw new UnreadableSvgError("The SVG draws no shape.");
   return { viewBox, shapes };
 }
 
-function rootShapes(
-  root: XmlElement,
-  properties: ReadonlyMap<string, string>,
-  viewBox: OwnLogo["viewBox"],
-): LogoShape[] {
+function rootShapes(root: XmlElement, properties: ReadonlyMap<string, string>): LogoShape[] {
   const paint = paintOf(root, properties, INITIAL_PAINT);
-  const placed = rootTransform(root, ownTransform(root, properties), viewBox);
-  return determinant(placed) === 0 ? [] : shapesIn(root, paint, placed);
-}
-
-/**
- * The root's own transform in the view box's units. A root `<svg>` is transformed as a CSS box: about
- * its centre, in the units of its width and height, which the view box is fitted into.
- */
-function rootTransform(root: XmlElement, own: Matrix, viewBox: OwnLogo["viewBox"]): Matrix {
-  if (isIdentity(own)) return own;
-  const { width, height } = viewportOf(root, viewBox);
-  const scale = Math.min(width / viewBox.width, height / viewBox.height);
-  const aspect = root.attributes.get("preserveAspectRatio") ?? "";
-  const [, alignX, alignY] = /x(Min|Mid|Max)Y(Min|Mid|Max)/.exec(aspect) ?? [];
-  const left = spareShare(alignX) * (width - viewBox.width * scale) - viewBox.x * scale;
-  const top = spareShare(alignY) * (height - viewBox.height * scale) - viewBox.y * scale;
-  const fitted: Matrix = [scale, 0, 0, scale, left, top];
-  const unfitted: Matrix = [1 / scale, 0, 0, 1 / scale, -left / scale, -top / scale];
-  const aroundCentre = multiply(
-    multiply(translation(width / 2, height / 2), own),
-    translation(-width / 2, -height / 2),
-  );
-  return multiply(multiply(unfitted, aroundCentre), fitted);
-}
-
-/** How much of the room the fitted view box leaves along one side lies before it, by its alignment. */
-const spareShare = (align: string | undefined): number =>
-  align === "Min" ? 0 : align === "Max" ? 1 : 0.5;
-
-/** The root's width and height, each taken from the view box's shape when not given. */
-function viewportOf(
-  root: XmlElement,
-  viewBox: OwnLogo["viewBox"],
-): { width: number; height: number } {
-  const width = optionalLength(root, "width");
-  const height = optionalLength(root, "height");
-  if (width !== undefined && height !== undefined) return { width, height };
-  if (width !== undefined) return { width, height: (width * viewBox.height) / viewBox.width };
-  if (height !== undefined) return { width: (height * viewBox.width) / viewBox.height, height };
-  return { width: viewBox.width, height: viewBox.height };
+  if (properties.has("transform")) throw refused("transform on <svg>");
+  return shapesIn(root, paint, IDENTITY);
 }
 
 /** The matrix the element's `transform` attribute gives. */
