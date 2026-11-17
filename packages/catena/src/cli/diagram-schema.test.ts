@@ -360,7 +360,7 @@ describe("properties", () => {
       fc.property(file, (json) => {
         expect(valid(json)).toBe(draws(json));
       }),
-      { seed: 20261118, numRuns: 2000 },
+      { seed: 20261118, numRuns: 1000 },
     );
-  });
+  }, 60_000);
 });

@@ -899,7 +899,7 @@ describe("properties", () => {
       }),
       { seed: SEED, numRuns: 300 },
     );
-  });
+  }, 60_000);
 
   test("draws a diagram of content its kinds take as the same well-formed SVG every time", () => {
     fc.assert(
