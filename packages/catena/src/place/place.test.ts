@@ -63,6 +63,16 @@ describe("placeGraph: the canvas", () => {
       edges: [],
     });
   });
+
+  test.each([
+    ["a row of nodes of no height", 10, 0, [30, 20]],
+    ["a column of nodes of no width", 0, 10, [20, 30]],
+  ] as const)("gives no room to %s", (_, width, height, size) => {
+    const placement = place("down", [leaf("A", width, height)]);
+
+    expect([placement.width, placement.height]).toEqual(size);
+    expect(boxes(placement)).toEqual({ A: [10, 10, width, height] });
+  });
 });
 
 describe("placeGraph: order along the flow", () => {
