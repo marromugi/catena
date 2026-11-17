@@ -28,6 +28,7 @@ const layout: Layout = placeGraph(
   },
   spacing,
 );
+const boxAt = (x: number): Rect => ({ x, y: 0, width: 10, height: 10 });
 const nodes = new Map([a, b, c].map((node) => [node.leaf.id, node]));
 
 describe("drawDiagram", () => {
@@ -79,9 +80,32 @@ describe("drawDiagram", () => {
     ).toBe(drawDiagram(layout, nodes));
   });
 
-  test("refuses a dot radius below 0 or a spacing of 0 or less", () => {
-    expect(() => drawDiagram(layout, nodes, { background: { dotRadius: -1 } })).toThrow(RangeError);
-    expect(() => drawDiagram(layout, nodes, { background: { spacing: 0 } })).toThrow(RangeError);
+  test("refuses an edge stroke width below 0 or not finite, and takes 0", () => {
+    for (const strokeWidth of [-1, Number.NaN, Infinity]) {
+      expect(() => drawDiagram(layout, nodes, { edgePaint: { strokeWidth } })).toThrow(RangeError);
+    }
+    expect(drawDiagram(layout, nodes, { edgePaint: { strokeWidth: 0 } })).toContain(
+      'stroke-width="0"',
+    );
+  });
+
+  test("takes a dot radius of 0", () => {
+    expect(drawDiagram(layout, nodes, { background: { dotRadius: 0 } })).toContain('r="0"');
+  });
+
+  test("refuses a dot radius below 0, a spacing of 0 or less, and either not finite", () => {
+    for (const background of [{ dotRadius: Infinity }, { spacing: Infinity }, { spacing: -4 }]) {
+      expect(() => drawDiagram(layout, nodes, { background })).toThrow(RangeError);
+    }
+    expect(() => drawDiagram(layout, nodes, { background: { dotRadius: -1 } })).toThrow(
+      new RangeError("A dot's radius must be a finite number 0 or more, not -1."),
+    );
+    expect(() => drawDiagram(layout, nodes, { background: { dotRadius: Number.NaN } })).toThrow(
+      RangeError,
+    );
+    expect(() => drawDiagram(layout, nodes, { background: { spacing: 0 } })).toThrow(
+      new RangeError("The dots' spacing must be a finite number more than 0, not 0."),
+    );
     expect(() => drawDiagram(layout, nodes, { background: { spacing: Number.NaN } })).toThrow(
       RangeError,
     );
@@ -95,11 +119,13 @@ describe("drawDiagram", () => {
     );
   });
 
-  test("paints and shapes the edges as the options say", () => {
-    const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge, { radius: 0 }))).join("");
+  test("paints the edges as the options say", () => {
+    const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
     expect(
-      drawDiagram(layout, nodes, { edgePaint: { stroke: "#123456" }, edge: { radius: 0 } }),
-    ).toContain(`<g fill="none" stroke="#123456" stroke-width="1.5">${paths}</g>`);
+      drawDiagram(layout, nodes, {
+        edgePaint: { stroke: "#123456", strokeWidth: 3 },
+      }),
+    ).toContain(`<g fill="none" stroke="#123456" stroke-width="3">${paths}</g>`);
   });
 
   test("draws every placed node with a Node at its box, group children too, and skips the rest", () => {
@@ -111,6 +137,47 @@ describe("drawDiagram", () => {
       expect(svg).toContain(nodes.get(id)?.draw(box));
     }
     expect(svg).not.toContain('data-node="g"');
+  });
+
+  test("draws nothing for a placed node with no Node", () => {
+    const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
+    expect(drawDiagram(layout, new Map())).toMatch(
+      new RegExp(
+        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g></svg>$`,
+      ),
+    );
+  });
+
+  test("draws the children of groups nested in groups", () => {
+    const nested: Layout = {
+      width: 100,
+      height: 20,
+      edges: [],
+      nodes: [
+        {
+          id: "outer",
+          box: boxAt(0),
+          children: [
+            {
+              id: "inner",
+              box: boxAt(10),
+              children: [{ id: "deep", box: boxAt(20), children: [] }],
+            },
+          ],
+        },
+      ],
+    };
+    const deep = markerNode("deep", 10, 10);
+    const inner = markerNode("inner", 10, 10);
+    expect(
+      drawDiagram(
+        nested,
+        new Map([
+          ["deep", deep],
+          ["inner", inner],
+        ]),
+      ),
+    ).toContain(inner.draw(boxAt(10)) + deep.draw(boxAt(20)));
   });
 
   test("draws a group's Node before its children", () => {

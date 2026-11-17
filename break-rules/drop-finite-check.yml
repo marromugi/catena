@@ -1,0 +1,5 @@
+id: drop-finite-check
+language: TypeScript
+rule:
+  pattern: "$CHECK && Number.isFinite($X)"
+fix: "$CHECK"

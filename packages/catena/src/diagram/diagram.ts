@@ -1,4 +1,4 @@
-import { drawEdge, type EdgeOptions } from "../edge";
+import { drawEdge } from "../edge";
 import type { Layout, PlacedNode } from "../layout";
 import { element, writeSvg, type Node, type SvgElement } from "../node";
 
@@ -21,8 +21,6 @@ export interface EdgePaint {
 export interface DiagramOptions {
   readonly background?: Partial<DotGrid>;
   readonly edgePaint?: Partial<EdgePaint>;
-  /** How each edge's path is shaped, passed on to `drawEdge`. */
-  readonly edge?: EdgeOptions;
 }
 
 /** The background a diagram gets when none is given. */
@@ -42,8 +40,10 @@ const DOT_PATTERN_ID = "catena-dots";
 /**
  * The layout as one SVG document of its size: the background over the whole canvas, then every edge,
  * then every placed node, group or child, whose id is in `nodes`, drawn at its box. A placed node with
- * no `Node` is not drawn, though its children are.
- * @throws RangeError when the dot radius is below 0 or the spacing is not above 0.
+ * no `Node` is not drawn, though its children are. Every document names its dot pattern `catena-dots`, so
+ * documents inlined in one HTML page show the first one's dot grid.
+ * @throws RangeError when the dot radius or the edges' stroke width is below 0, the spacing is not above
+ * 0, or any of them is not finite.
  */
 export function drawDiagram(
   layout: Layout,
@@ -52,12 +52,17 @@ export function drawDiagram(
 ): string {
   const grid = withDefaults(DEFAULT_DOT_GRID, options.background);
   const paint = withDefaults(DEFAULT_EDGE_PAINT, options.edgePaint);
+  if (!(paint.strokeWidth >= 0 && Number.isFinite(paint.strokeWidth))) {
+    throw new RangeError(
+      `An edge's stroke width must be a finite number 0 or more, not ${paint.strokeWidth}.`,
+    );
+  }
   const { width, height } = layout;
   const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
   const edges = element(
     "g",
     { fill: "none", stroke: paint.stroke, "stroke-width": paint.strokeWidth },
-    layout.edges.map((edge) => drawEdge(edge, options.edge)),
+    layout.edges.map((edge) => drawEdge(edge)),
   );
   const drawn = placedNodes(layout.nodes).flatMap((placed) => {
     const node = nodes.get(placed.id);
@@ -75,11 +80,11 @@ export function drawDiagram(
 /** The canvas filled with `grid`: its colour, then its dots. */
 function dotGrid(width: number, height: number, grid: DotGrid): SvgElement[] {
   const { canvas, dot, dotRadius, spacing } = grid;
-  if (!(dotRadius >= 0)) {
-    throw new RangeError(`A dot's radius must be 0 or more, not ${dotRadius}.`);
+  if (!(dotRadius >= 0 && Number.isFinite(dotRadius))) {
+    throw new RangeError(`A dot's radius must be a finite number 0 or more, not ${dotRadius}.`);
   }
-  if (!(spacing > 0)) {
-    throw new RangeError(`The dots' spacing must be more than 0, not ${spacing}.`);
+  if (!(spacing > 0 && Number.isFinite(spacing))) {
+    throw new RangeError(`The dots' spacing must be a finite number more than 0, not ${spacing}.`);
   }
   const pattern = element(
     "pattern",

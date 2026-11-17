@@ -1,0 +1,5 @@
+id: undefined-to-null
+language: TypeScript
+rule:
+  pattern: "$V !== undefined"
+fix: "$V !== null"
