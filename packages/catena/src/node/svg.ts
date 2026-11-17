@@ -1,3 +1,5 @@
+import type { Rect } from "../layout";
+
 /** One SVG element and what it holds. Parts draw these, and only {@link writeSvg} turns them into text. */
 export interface SvgElement {
   readonly name: string;
@@ -25,4 +27,26 @@ export function writeSvg({ name, attributes, children }: SvgElement): string {
   return children.length === 0
     ? `<${name}${written}/>`
     : `<${name}${written}>${children.map(writeSvg).join("")}</${name}>`;
+}
+
+/** How an outlined shape is painted. */
+export interface Outline {
+  readonly fill: string;
+  readonly stroke: string;
+  readonly strokeWidth: number;
+}
+
+/** A rectangle with `radius`-round corners whose stroke lies inside `box`. */
+export function outlinedRect(box: Rect, radius: number, outline: Outline): SvgElement {
+  const { fill, stroke, strokeWidth } = outline;
+  return element("rect", {
+    x: box.x + strokeWidth / 2,
+    y: box.y + strokeWidth / 2,
+    width: box.width - strokeWidth,
+    height: box.height - strokeWidth,
+    rx: radius,
+    fill,
+    stroke,
+    "stroke-width": strokeWidth,
+  });
 }

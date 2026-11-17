@@ -2,7 +2,8 @@ import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
 import type { Part } from "./part";
-import { bodyText, frame, stack, title } from "./parts";
+import { frame, optional, row, stack } from "./containers";
+import { bodyText, redBadge, statusDot, title } from "./parts";
 import { element, writeSvg } from "./svg";
 import type { Theme } from "./theme";
 
@@ -20,6 +21,19 @@ export interface Node {
 
 /** A card with a title over wrapping body text. */
 export const titleBodyCard = frame(stack({ title, body: bodyText }));
+
+/** A card with a title, and a badge at its end on the nodes that have one. */
+export const titleBadgeCard = frame(row({ title, badge: optional(redBadge) }, { grow: "title" }));
+
+/** A card with a title over wrapping body text, and a badge under the body on the nodes that have one. */
+export const titleBodyBadgeCard = frame(
+  stack({ title, body: bodyText, badge: optional(redBadge) }),
+);
+
+/** A card with a title, and a status dot before it on the nodes that have a status. */
+export const statusTitleCard = frame(
+  row({ status: optional(statusDot), title }, { grow: "title" }),
+);
 
 /**
  * Checks `content` against `kind`'s schema and lays the node out at the theme's node width.
