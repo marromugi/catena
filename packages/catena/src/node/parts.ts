@@ -115,8 +115,8 @@ export function badgePart(lookOf: (theme: Theme) => BadgeLook): Part<typeof TEXT
       };
       return {
         size,
-        draw: (box) => [
-          outlinedRect({ x: box.x, y: box.y, ...size }, size.height / 2, look),
+        draw: (box, newId) => [
+          ...outlinedRect({ x: box.x, y: box.y, ...size }, size.height / 2, look, newId),
           element("path", {
             d: textPathData(text, box.x + look.paddingX, box.y + look.paddingY),
             fill: look.color,

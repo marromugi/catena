@@ -1,6 +1,6 @@
 import type { IconName } from "../icon";
 import type { FontStack } from "../text";
-import type { Outline } from "./svg";
+import { NO_SHADOW, type Outline, type Shadow } from "./svg";
 
 /** How a piece of text looks. `lineHeight` is a multiple of `size`. */
 export interface TextLook {
@@ -80,6 +80,8 @@ export interface Theme {
   readonly itemCard: CardLook;
   /** A card around a section's list. */
   readonly panel: CardLook;
+  /** A card around two cards side by side, such as the icon-and-title pair. */
+  readonly pairPanel: CardLook;
   readonly title: TextLook;
   readonly body: TextLook;
   readonly subtitle: TextLook;
@@ -89,6 +91,8 @@ export interface Theme {
   readonly image: ImageLook;
   /** An icon set before a title. */
   readonly icon: IconLook;
+  /** The space between a title and the body under it, set beside an icon. */
+  readonly iconTextGap: number;
   /** The icon an icon tile holds. */
   readonly tileIcon: IconLook;
   /** The text under an icon tile; its sub-caption is in the body look. */
@@ -100,6 +104,8 @@ export interface Theme {
   readonly buttonIcon: IconLook;
   /** A round button in its active look. */
   readonly activeButton: ButtonLook;
+  /** The disc inside an active round button, around its icon. */
+  readonly activeButtonDisc: ButtonLook;
   readonly activeButtonIcon: IconLook;
 }
 
@@ -111,6 +117,7 @@ export interface ThemeOverrides {
   readonly selectedCard?: Partial<CardLook>;
   readonly itemCard?: Partial<CardLook>;
   readonly panel?: Partial<CardLook>;
+  readonly pairPanel?: Partial<CardLook>;
   readonly title?: Partial<TextLook>;
   readonly body?: Partial<TextLook>;
   readonly subtitle?: Partial<TextLook>;
@@ -122,42 +129,61 @@ export interface ThemeOverrides {
   };
   readonly image?: Partial<ImageLook>;
   readonly icon?: Partial<IconLook>;
+  readonly iconTextGap?: number;
   readonly tileIcon?: Partial<IconLook>;
   readonly caption?: Partial<TextLook>;
   readonly captionGap?: number;
   readonly button?: Partial<ButtonLook>;
   readonly buttonIcon?: Partial<IconLook>;
   readonly activeButton?: Partial<ButtonLook>;
+  readonly activeButtonDisc?: Partial<ButtonLook>;
   readonly activeButtonIcon?: Partial<IconLook>;
 }
 
+/** The soft shadow around a card. */
+const CARD_SHADOW: Shadow = { dx: 0, dy: 0, blur: 5, color: "#000000", opacity: 0.1 };
+/** The soft shadow around a card held inside another card. */
+const INNER_SHADOW: Shadow = { dx: 0, dy: 1, blur: 4, color: "#000000", opacity: 0.1 };
+
 const DEFAULT_CARD: CardLook = {
   padding: 20,
-  radius: 8,
+  radius: 12,
   fill: "#ffffff",
-  stroke: "#e6e6e6",
+  stroke: "#ebebeb",
   strokeWidth: 1,
+  shadow: CARD_SHADOW,
 };
 const DEFAULT_SELECTED_CARD: CardLook = {
   padding: 20,
-  radius: 8,
-  fill: "#fdeee2",
-  stroke: "#eda866",
-  strokeWidth: 1,
+  radius: 12,
+  fill: "#fcefe0",
+  stroke: "#e09644",
+  strokeWidth: 1.5,
+  shadow: { ...CARD_SHADOW, color: "#e09644", opacity: 0.4 },
 };
 const DEFAULT_ITEM_CARD: CardLook = {
-  padding: 12,
-  radius: 8,
+  padding: 14,
+  radius: 10,
   fill: "#ffffff",
-  stroke: "#ebebeb",
-  strokeWidth: 1,
+  stroke: "none",
+  strokeWidth: 0,
+  shadow: INNER_SHADOW,
 };
 const DEFAULT_PANEL: CardLook = {
   padding: 12,
-  radius: 10,
+  radius: 12,
   fill: "#ffffff",
+  stroke: "none",
+  strokeWidth: 0,
+  shadow: INNER_SHADOW,
+};
+const DEFAULT_PAIR_PANEL: CardLook = {
+  padding: 22,
+  radius: 14,
+  fill: "#f9f9f9",
   stroke: "#ebebeb",
   strokeWidth: 1,
+  shadow: CARD_SHADOW,
 };
 const DEFAULT_TITLE: TextLook = { weight: "bold", size: 14, lineHeight: 1.5, color: "#1f1f1f" };
 const DEFAULT_BODY: TextLook = { weight: "regular", size: 11, lineHeight: 1.6, color: "#8c8c8c" };
@@ -166,27 +192,29 @@ const DEFAULT_DIVIDER: DividerLook = { color: "#e0e0e0", width: 1, dash: [3, 3] 
 
 const BADGE_TEXT = {
   weight: "bold",
-  size: 10,
-  lineHeight: 1.4,
-  paddingX: 16,
+  size: 11,
+  lineHeight: 1.5,
+  paddingX: 17,
   paddingY: 3,
+  strokeWidth: 1,
+  shadow: NO_SHADOW,
 } as const;
 const DEFAULT_BADGES: Record<Tone, BadgeLook> = {
-  plain: { ...BADGE_TEXT, color: "#1f1f1f", fill: "#ffffff", stroke: "#e6e6e6", strokeWidth: 1 },
-  red: { ...BADGE_TEXT, color: "#e5484d", fill: "#fde4e4", stroke: "#fbd0d0", strokeWidth: 1 },
+  plain: { ...BADGE_TEXT, color: "#1f1f1f", fill: "#ffffff", stroke: "#ececec" },
+  red: { ...BADGE_TEXT, color: "#eb524a", fill: "#fbe5e4", stroke: "#f9dada" },
 };
-const DEFAULT_DOT_COLORS: Record<Tone, string> = { plain: "#8c8c8c", red: "#e5484d" };
+const DEFAULT_DOT_COLORS: Record<Tone, string> = { plain: "#8c8c8c", red: "#e93e33" };
 const DEFAULT_IMAGE: ImageLook = { aspectRatio: 3 / 2, radius: 6 };
-const ICON_COLORS = { spark: "#d97757" } as const;
+const ICON_COLORS = { spark: "#cc7c5e" } as const;
 const DEFAULT_ICON: IconLook = {
-  size: 20,
-  strokeWidth: 1.5,
+  size: 22,
+  strokeWidth: 1.75,
   color: "#1f1f1f",
   colors: ICON_COLORS,
 };
 const DEFAULT_TILE_ICON: IconLook = {
   size: 32,
-  strokeWidth: 2,
+  strokeWidth: 2.5,
   color: "#1f1f1f",
   colors: ICON_COLORS,
 };
@@ -197,26 +225,35 @@ const DEFAULT_CAPTION: TextLook = {
   color: "#1f1f1f",
 };
 const DEFAULT_BUTTON: ButtonLook = {
-  padding: 8,
+  padding: 9,
   fill: "#ffffff",
-  stroke: "#e6e6e6",
-  strokeWidth: 1,
+  stroke: "#ececec",
+  strokeWidth: 1.5,
+  shadow: NO_SHADOW,
 };
 const DEFAULT_BUTTON_ICON: IconLook = {
-  size: 14,
-  strokeWidth: 1.5,
+  size: 16,
+  strokeWidth: 1.75,
   color: "#1f1f1f",
   colors: ICON_COLORS,
 };
 const DEFAULT_ACTIVE_BUTTON: ButtonLook = {
   ...DEFAULT_BUTTON,
-  fill: "#edf1fe",
-  stroke: "#3e63dd",
-  strokeWidth: 2,
+  padding: 9.5,
+  fill: "#dce6fd",
+  stroke: "#4666f6",
+};
+const DEFAULT_ACTIVE_BUTTON_DISC: ButtonLook = {
+  padding: 1.5,
+  fill: "#3254f6",
+  stroke: "none",
+  strokeWidth: 0,
+  shadow: NO_SHADOW,
 };
 const DEFAULT_ACTIVE_BUTTON_ICON: IconLook = {
   ...DEFAULT_BUTTON_ICON,
-  color: "#3e63dd",
+  size: 12,
+  color: "#ffffff",
   colors: {},
 };
 
@@ -235,6 +272,7 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
     selectedCard: laidOver(DEFAULT_SELECTED_CARD, overrides.selectedCard),
     itemCard: laidOver(DEFAULT_ITEM_CARD, overrides.itemCard),
     panel: laidOver(DEFAULT_PANEL, overrides.panel),
+    pairPanel: laidOver(DEFAULT_PAIR_PANEL, overrides.pairPanel),
     title: laidOver(DEFAULT_TITLE, overrides.title),
     body: laidOver(DEFAULT_BODY, overrides.body),
     subtitle: laidOver(DEFAULT_SUBTITLE, overrides.subtitle),
@@ -244,17 +282,19 @@ export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {
       red: laidOver(DEFAULT_BADGES.red, overrides.badges?.red),
     },
     dot: {
-      diameter: overrides.dot?.diameter ?? 16,
+      diameter: overrides.dot?.diameter ?? 18,
       colors: laidOver(DEFAULT_DOT_COLORS, overrides.dot?.colors),
     },
     image: laidOver(DEFAULT_IMAGE, overrides.image),
     icon: laidOver(DEFAULT_ICON, overrides.icon),
+    iconTextGap: overrides.iconTextGap ?? 2,
     tileIcon: laidOver(DEFAULT_TILE_ICON, overrides.tileIcon),
     caption: laidOver(DEFAULT_CAPTION, overrides.caption),
     captionGap: overrides.captionGap ?? 2,
     button: laidOver(DEFAULT_BUTTON, overrides.button),
     buttonIcon: laidOver(DEFAULT_BUTTON_ICON, overrides.buttonIcon),
     activeButton: laidOver(DEFAULT_ACTIVE_BUTTON, overrides.activeButton),
+    activeButtonDisc: laidOver(DEFAULT_ACTIVE_BUTTON_DISC, overrides.activeButtonDisc),
     activeButtonIcon: laidOver(DEFAULT_ACTIVE_BUTTON_ICON, overrides.activeButtonIcon),
   };
 }

@@ -47,8 +47,8 @@ export {
   title,
 } from "./parts";
 export type { OwnIcon } from "./parts";
-export { element, writeSvg } from "./svg";
-export type { NewId, Outline, SvgElement } from "./svg";
+export { element, NO_SHADOW, writeSvg } from "./svg";
+export type { NewId, Outline, Shadow, SvgElement } from "./svg";
 export { defineTheme, TONES } from "./theme";
 export type {
   BadgeLook,

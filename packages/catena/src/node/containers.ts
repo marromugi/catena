@@ -119,7 +119,7 @@ function cardAround(inner: Block, look: ButtonLook, radius: number, maxWidth: nu
       height: inner.size.height + 2 * padding,
     },
     draw: (box, newId) => [
-      outlinedRect(box, radius, look),
+      ...outlinedRect(box, radius, look, newId),
       ...inner.draw(
         {
           x: box.x + padding,
