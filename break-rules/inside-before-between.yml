@@ -1,0 +1,5 @@
+id: inside-before-between
+language: TypeScript
+rule:
+  pattern: "[...insideOf($END, $EDGE, $AT), ...between]"
+fix: "[...between, ...insideOf($END, $EDGE, $AT)]"

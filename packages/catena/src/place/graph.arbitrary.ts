@@ -35,7 +35,7 @@ function nested(
   };
 }
 
-const { node: shape } = fc.letrec<{ node: Shape; leaf: Shape; group: Shape; nest: Shape }>(
+const { node: shape, nest } = fc.letrec<{ node: Shape; leaf: Shape; group: Shape; nest: Shape }>(
   (tie) => ({
     node: fc.oneof(tie("leaf"), tie("group"), tie("nest")),
     leaf: fc.record({ size, cell }),
@@ -78,6 +78,15 @@ function named(shapes: readonly Shape[], ids: string[]): GraphNode[] {
     return { id, direction: each.direction, children: [first, ...rest], cell: kept };
   });
 }
+
+/** One kind of node `graphs` holds: a group with groups inside it, three to five deep, each flowing the other way than the one around it, with up to two other nodes beside each group inside it. */
+export const nestedGroups: fc.Arbitrary<GraphNode> = nest.map((each) => {
+  const [node] = named([each], []);
+  if (node === undefined) {
+    throw new Error("A generated chain of groups is no node.");
+  }
+  return node;
+});
 
 /**
  * Graphs of the kinds `placeGraph` lays out when their leaves are large enough for their edges, which

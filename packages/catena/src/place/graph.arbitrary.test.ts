@@ -1,7 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import type { Graph, GraphNode } from "./graph";
-import { graphs } from "./graph.arbitrary";
+import { graphs, nestedGroups } from "./graph.arbitrary";
 
 const sample = fc.sample(graphs, { numRuns: 500, seed: 20_261_117 });
 
@@ -140,5 +140,54 @@ describe("graphs", () => {
         graph.edges.filter((edge) => !ids.includes(edge.from) || !ids.includes(edge.to)),
       ).toEqual([]);
     }
+  });
+});
+
+/** The groups from `node` inward through each first child, outermost first. */
+const chainOf = (node: GraphNode): GraphNode[] =>
+  "children" in node ? [node, ...chainOf(node.children[0])] : [];
+
+const chains = fc.sample(nestedGroups, { numRuns: 500, seed: 20_261_117 }).map(chainOf);
+
+describe("nestedGroups", () => {
+  test("are each three to five groups, one inside the first child of the next, each flowing the other way than the one around it, with leaves in the innermost", () => {
+    for (const chain of chains) {
+      expect(chain.length).toBeGreaterThanOrEqual(3);
+      expect(chain.length).toBeLessThanOrEqual(5);
+      const flows = chain.map((each) => ("children" in each ? each.direction : undefined));
+      expect(flows.slice(1).every((flow, at) => flow !== flows[at])).toBe(true);
+      const inmost = chain.at(-1);
+      expect(
+        inmost !== undefined &&
+          "children" in inmost &&
+          inmost.children.every((child) => !("children" in child)),
+      ).toBe(true);
+    }
+  });
+
+  test.each([3, 4, 5])("include a chain of %i groups", (length) => {
+    expect(chains.some((chain) => chain.length === length)).toBe(true);
+  });
+
+  test("include a chain with a node beside the next group in every group but the innermost", () => {
+    expect(
+      chains.some((chain) =>
+        chain.slice(0, -1).every((each) => "children" in each && each.children.length > 1),
+      ),
+    ).toBe(true);
+  });
+
+  test("include a chain whose outermost group names its cell", () => {
+    expect(chains.some((chain) => chain[0]?.cell !== undefined)).toBe(true);
+  });
+});
+
+describe("graphs", () => {
+  test("hold three groups one inside another whose flows alternate in most of those that have nodes", () => {
+    const withNodes = sample.filter((graph) => graph.nodes.length > 0);
+    const nesting = withNodes.filter((graph) =>
+      listed(graph.nodes).some(({ node }) => alternating(node) >= 3),
+    );
+    expect(nesting.length).toBeGreaterThan(withNodes.length / 2);
   });
 });
