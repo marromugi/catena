@@ -1,18 +1,20 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
-import { ValiError } from "valibot";
+import * as v from "valibot";
 import { describe, expect, test } from "vitest";
 import { layoutText, textPathData, Typeface } from "../text";
 import {
   bodyText,
   buildNode,
   defineTheme,
+  element,
   frame,
   stack,
   textPart,
   title,
   titleBodyCard,
+  type Part,
 } from "./index";
 
 const require = createRequire(import.meta.url);
@@ -65,8 +67,8 @@ describe("the title-and-body card", () => {
     expect(() => buildNode(titleBodyCard, theme, "card", { title: "ここで" })).toThrow(
       expect.objectContaining({
         name: "InvalidNodeContentError",
-        message: expect.stringContaining(`"card"`),
-        cause: expect.any(ValiError),
+        message: expect.stringMatching(/"card"[^]*"body"/),
+        cause: expect.any(v.ValiError),
       }),
     );
   });
@@ -84,14 +86,70 @@ describe("the theme", () => {
     );
   });
 
+  test("lays the looks it is given over the defaults, keeping a default given as undefined", () => {
+    const changed = defineTheme(fonts, {
+      gap: 4,
+      title: { weight: "regular", size: 20, color: "navy" },
+      body: { lineHeight: 2, color: undefined },
+    });
+    const node = buildNode(titleBodyCard, changed, "card", { title: "ここで", body: BODY });
+
+    // 20 + 30 (one line of 20 × 1.5) + 4 + 66 (three lines of 11 × 2) + 20
+    expect(node.leaf.size.height).toBeCloseTo(140, 6);
+    const titleData = textPathData(
+      layoutText("ここで", { fonts: fonts.regular, size: 20, lineHeight: 1.5, maxWidth: 280 }),
+      20,
+      20,
+    );
+    const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+    expect(drawn).toContain(`<path d="${titleData}" fill="navy"/>`);
+    expect(drawn).toMatch(/fill="#8c8c8c"\/><\/g>$/);
+  });
+
   test("writes a colour into the SVG as one attribute value, whatever it holds", () => {
-    const quoted = defineTheme(fonts, { card: { fill: `"/><script/>` } });
+    const quoted = defineTheme(fonts, { card: { fill: `"/><script/>&` } });
     const node = buildNode(titleBodyCard, quoted, "card", { title: "", body: "" });
 
     expect(node.draw({ x: 0, y: 0, ...node.leaf.size })).toContain(
-      `fill="&quot;/&gt;&lt;script/&gt;"`,
+      `fill="&quot;/&gt;&lt;script/&gt;&amp;"`,
     );
   });
+});
+
+// A part that shows nothing, of a fixed size, drawing the box it is given.
+const fixed = (width: number, height: number): Part<v.NullSchema<undefined>> => ({
+  schema: v.null(),
+  layout: () => ({ size: { width, height }, draw: (box) => [element("rect", { ...box })] }),
+});
+
+describe("frame and stack", () => {
+  test("hand their parts the box they are drawn in, less the padding and stacked the gap apart", () => {
+    const kind = frame(stack({ a: fixed(50, 10), b: fixed(80, 20) }));
+    const node = buildNode(kind, theme, "k", { a: null, b: null });
+
+    expect(node.leaf.size).toEqual({ width: 320, height: 82 });
+    expect(node.draw({ x: 0, y: 0, width: 400, height: 200 })).toBe(
+      `<g><rect x="0.5" y="0.5" width="399" height="199" rx="8" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>` +
+        `<rect x="20" y="20" width="360" height="10"/><rect x="20" y="42" width="360" height="20"/></g>`,
+    );
+  });
+
+  test("a stack is as wide as its widest part, and an empty one takes no room", () => {
+    expect(
+      stack({ a: fixed(50, 10), b: fixed(80, 20) }).layout({ a: null, b: null }, theme, 100).size,
+    ).toEqual({
+      width: 80,
+      height: 42,
+    });
+    expect(stack({}).layout({}, theme, 100).size).toEqual({ width: 0, height: 0 });
+  });
+
+  test.each(["1", "__proto__"])(
+    "a stack refuses the key %s, whose place in the order is lost",
+    (key) => {
+      expect(() => stack({ a: title, [key]: bodyText })).toThrow(`"${key}"`);
+    },
+  );
 });
 
 describe("a kind made from parts", () => {

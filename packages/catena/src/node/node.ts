@@ -3,6 +3,7 @@ import type { Rect } from "../layout";
 import type { Leaf } from "../place";
 import type { Part } from "./part";
 import { bodyText, frame, stack, title } from "./parts";
+import { element, writeSvg } from "./svg";
 import type { Theme } from "./theme";
 
 /** The content given for a node is not what its kind shows. */
@@ -41,6 +42,6 @@ export function buildNode<TSchema extends v.GenericSchema>(
   const block = kind.layout(parsed.output, theme, theme.nodeWidth);
   return {
     leaf: { id, size: block.size },
-    draw: (box) => `<g>${block.draw(box)}</g>`,
+    draw: (box) => writeSvg(element("g", {}, block.draw(box))),
   };
 }

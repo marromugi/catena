@@ -48,14 +48,19 @@ const DEFAULT_CARD: CardLook = {
 const DEFAULT_TITLE: TextLook = { weight: "bold", size: 14, lineHeight: 1.5, color: "#1f1f1f" };
 const DEFAULT_BODY: TextLook = { weight: "regular", size: 11, lineHeight: 1.6, color: "#8c8c8c" };
 
-/** The default looks with `overrides` laid over them. */
+function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T {
+  const given = Object.entries(overrides).filter(([, value]) => value !== undefined);
+  return { ...defaults, ...Object.fromEntries(given) };
+}
+
+/** The default looks with `overrides` laid over them. A look given as `undefined` keeps its default. */
 export function defineTheme(fonts: Theme["fonts"], overrides: ThemeOverrides = {}): Theme {
   return {
     fonts,
     nodeWidth: overrides.nodeWidth ?? 320,
     gap: overrides.gap ?? 12,
-    card: { ...DEFAULT_CARD, ...overrides.card },
-    title: { ...DEFAULT_TITLE, ...overrides.title },
-    body: { ...DEFAULT_BODY, ...overrides.body },
+    card: laidOver(DEFAULT_CARD, overrides.card),
+    title: laidOver(DEFAULT_TITLE, overrides.title),
+    body: laidOver(DEFAULT_BODY, overrides.body),
   };
 }
