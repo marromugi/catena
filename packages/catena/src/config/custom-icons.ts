@@ -2,21 +2,15 @@ import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import * as v from "valibot";
-import { iconNames } from "../icon";
+import { isIconName } from "../icon";
 import {
-  icon as iconContent,
+  CUSTOM_ICON,
   readSvgLogo,
   UnreadableSvgError,
-  type OwnIcon,
-  type OwnImage,
+  type CustomIcon,
+  type CustomIcons,
   type OwnLogo,
 } from "../node";
-
-/**
- * An icon the user defines in their config file: their own icon, logo of shapes, or image, as the icon
- * part draws it given inline.
- */
-export type CustomIcon = OwnIcon | OwnLogo | OwnImage;
 
 /** The user's config file holds something {@link readCustomIcons} refuses; the message names the file and the entry. */
 export class InvalidConfigError extends Error {
@@ -69,7 +63,7 @@ const CONFIG_KEYS = new Set(["icons"]);
  * forms above, or its SVG file cannot be read or is refused by {@link readSvgLogo}; and naming the file
  * when it is not JSON, or not an object holding at most `icons`, an object.
  */
-export function readCustomIcons(file: string = configFile()): Readonly<Record<string, CustomIcon>> {
+export function readCustomIcons(file: string = configFile()): CustomIcons {
   let text: string;
   try {
     text = readFileSync(file, "utf8");
@@ -96,11 +90,10 @@ export function readCustomIcons(file: string = configFile()): Readonly<Record<st
   if (icons === undefined) return {};
   if (!isPlainObject(icons))
     throw new InvalidConfigError(file, undefined, `holds "icons" that is not an object.`);
-  const builtIn = new Set<string>(iconNames);
   const base = dirname(realpathSync(file));
   return Object.fromEntries(
     Object.entries(icons).map(([name, given]) => {
-      if (builtIn.has(name)) throw new InvalidConfigError(file, name, "is a built-in icon's name.");
+      if (isIconName(name)) throw new InvalidConfigError(file, name, "is a built-in icon's name.");
       return [name, customIcon(file, base, name, given)];
     }),
   );
@@ -108,10 +101,8 @@ export function readCustomIcons(file: string = configFile()): Readonly<Record<st
 
 function customIcon(file: string, base: string, name: string, given: unknown): CustomIcon {
   if (typeof given === "string") return svgFileIcon(file, resolve(base, given), name);
-  const parsed = v.safeParse(iconContent.schema, given);
-  if (parsed.success && typeof parsed.output === "object" && !("logo" in parsed.output)) {
-    return parsed.output;
-  }
+  const parsed = v.safeParse(CUSTOM_ICON, given);
+  if (parsed.success) return parsed.output;
   throw new InvalidConfigError(
     file,
     name,

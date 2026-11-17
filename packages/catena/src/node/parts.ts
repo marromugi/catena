@@ -1,12 +1,15 @@
 import * as v from "valibot";
-import { iconGrid, iconNames, iconPathData, iconStroke } from "../icon";
+import { iconGrid, iconPathData, iconStroke, isIconName, type IconName } from "../icon";
 import type { Rect } from "../layout";
 import { layoutText, textPathData, type TextLayout } from "../text";
 import {
+  OWN_ICON,
   REGISTERED_LOGO,
   REGISTRABLE_LOGO,
+  UnknownIconError,
   UnknownLogoError,
-  VIEW_BOX,
+  type CustomIcon,
+  type OwnIcon,
   type OwnImage,
   type OwnLogo,
   type RegisteredLogo,
@@ -197,18 +200,7 @@ export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF
 
 export const image = imagePart((theme) => theme.image);
 
-/**
- * A user's own icon: path data in the area `viewBox` names, as an SVG `viewBox` does, either stroked as
- * the built-in icons are or filled, in the look's colour.
- */
-const OWN_ICON = v.strictObject({
-  pathData: v.string(),
-  viewBox: VIEW_BOX,
-  paint: v.picklist(["stroke", "fill"]),
-});
-export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
-
-const ICON = v.union([v.picklist(iconNames), OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO]);
+const ICON = v.union([v.string(), OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO]);
 
 const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
 
@@ -216,6 +208,7 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * An icon in the look `lookOf` picks from the theme. It is the look's size across and draws at the
  * top-left of its box. Its content is one of:
  * - a built-in icon's name;
+ * - the name of one of the theme's custom icons, drawn as that icon given here would be;
  * - the user's own icon ({@link OwnIcon}), in the look's colour;
  * - the user's own logo of shapes ({@link OwnLogo}), each in the colour it gives;
  * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square;
@@ -226,6 +219,7 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * catena ships no logos: a logo or image is one the caller passes, and theirs to use, following that
  * brand's own guidelines.
  * @throws UnknownLogoError from `layout` when the content names a logo the theme does not hold.
+ * @throws UnknownIconError from `layout` when the content is a name neither built in nor a custom icon's.
  */
 export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> {
   return {
@@ -233,7 +227,7 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
     layout(given, theme) {
       const look = lookOf(theme);
       const { size } = look;
-      const content = typeof given === "object" && "logo" in given ? logoOn(theme, given) : given;
+      const content = resolved(theme, given);
       return {
         size: { width: size, height: size },
         draw: (box) => {
@@ -282,6 +276,18 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
       };
     },
   };
+}
+
+/** `given` with every name but a built-in icon's replaced by what the theme holds under it. */
+function resolved(theme: Theme, given: v.InferOutput<typeof ICON>): IconName | CustomIcon {
+  if (typeof given === "string") return isIconName(given) ? given : customIconOn(theme, given);
+  return "logo" in given ? logoOn(theme, given) : given;
+}
+
+function customIconOn(theme: Theme, name: string): CustomIcon {
+  const found = Object.hasOwn(theme.icons, name) ? theme.icons[name] : undefined;
+  if (found === undefined) throw new UnknownIconError(name);
+  return found;
 }
 
 function logoOn(theme: Theme, { logo }: RegisteredLogo): OwnLogo | OwnImage {

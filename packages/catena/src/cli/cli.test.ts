@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import * as v from "valibot";
-import { afterAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
+import { readCustomIcons } from "../config";
 import { drawDiagram, type DiagramOptions } from "../diagram";
 import * as nodeModule from "../node";
 import {
@@ -34,6 +35,21 @@ const theme = defineTheme({
   regular: [Typeface.read(readFileSync(sourceHanSansJP.regular))],
   bold: [Typeface.read(readFileSync(sourceHanSansJP.bold))],
 });
+
+// The real reader, watched so one test can make it fail with a fault of catena's own.
+vi.mock(import("../config"), async (original) => {
+  const config = await original();
+  return {
+    ...config,
+    readCustomIcons: vi.fn<typeof config.readCustomIcons>(config.readCustomIcons),
+  };
+});
+
+// `run` reads the user's config on every call: it is read from here, never from the real home.
+const configDirectory = mkdtempSync(join(tmpdir(), "catena-cli-config-"));
+const configPath = join(configDirectory, "config.json");
+vi.stubEnv("CATENA_CONFIG_DIR", configDirectory);
+afterAll(() => rmSync(configDirectory, { recursive: true, force: true }));
 
 const SPACING = { nodeGap: 32, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 8 };
 
@@ -463,6 +479,131 @@ describe("run", () => {
     const { code, stdout, stderr } = runWith(args);
     expect({ code, stdout }).toEqual({ code: 2, stdout: "" });
     expect(stderr.endsWith(`${USAGE}\n`)).toBe(true);
+  });
+});
+
+/** A diagram of one card whose icon is `icon`. */
+const naming = (icon: unknown) => ({
+  direction: "down",
+  nodes: [{ id: "app", kind: "iconTitleCard", content: { icon, title: "App" } }],
+  edges: [],
+});
+
+describe("icons from the user's config", () => {
+  // Made-up shapes: catena's tests carry no real company's mark or colours.
+  const ownIcon = {
+    pathData: "M2 2L8 8",
+    viewBox: { x: 0, y: 0, width: 10, height: 10 },
+    paint: "stroke",
+  };
+  const squareLogo = {
+    viewBox: { x: 0, y: 0, width: 10, height: 10 },
+    shapes: [{ pathData: "M0 0H10V10H0Z", paint: "fill", color: "teal" }],
+  };
+  const squareSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0H10V10H0Z" fill="teal"/></svg>';
+  const ownImage = { href: "data:image/png;base64,AAAA" };
+
+  afterEach(() => rmSync(configPath, { recursive: true, force: true }));
+
+  const writeConfig = (config: unknown) =>
+    writeFileSync(configPath, typeof config === "string" ? config : text(config));
+
+  test.each([
+    ["one-colour icon", ownIcon, ownIcon],
+    ["logo", squareLogo, squareLogo],
+    ["logo read from an SVG file", "square.svg", squareLogo],
+    ["image", ownImage, ownImage],
+  ])(
+    "draws the config's %s named by a bare string as it draws the same one inline",
+    (_, entry, inline) => {
+      writeFileSync(join(configDirectory, "square.svg"), squareSvg);
+      writeConfig({ icons: { mine: entry } });
+      expect(runWith(["draw", fileOf(text(naming("mine")))])).toEqual({
+        code: 0,
+        stdout: `${draw(naming(inline))}\n`,
+        stderr: "",
+      });
+    },
+  );
+
+  test("draws a built-in icon's name as the built-in icon beside the config's icons", () => {
+    writeConfig({ icons: { mine: ownIcon } });
+    expect(runWith(["draw", fileOf(text(naming("spark")))]).stdout).toBe(
+      `${draw(naming("spark"))}\n`,
+    );
+  });
+
+  test.each([
+    ["a config", { icons: { mine: ownIcon } }],
+    ["no config", undefined],
+  ])(
+    "exits 1 with %s for a name neither built in nor the config's, naming the node",
+    (_, config) => {
+      if (config !== undefined) writeConfig(config);
+      const path = fileOf(text(naming("nope")));
+      expect(runWith(["draw", path])).toEqual({
+        code: 1,
+        stdout: "",
+        stderr: `catena: ${path}: The content of node "app" names the icon "nope", which is neither a built-in icon nor a custom one.\n`,
+      });
+    },
+  );
+
+  test.each([
+    ["not JSON", "{", `The catena config ${configPath} is not JSON.`],
+    [
+      "a built-in icon's name",
+      { icons: { spark: ownIcon } },
+      `The catena config ${configPath}: icon "spark" is a built-in icon's name.`,
+    ],
+    [
+      "an icon of no form",
+      { icons: { mine: { letters: "AB" } } },
+      `The catena config ${configPath}: icon "mine" is none of: a path to an SVG file, an OwnIcon, an OwnLogo, an OwnImage.`,
+    ],
+  ])(
+    "exits 1 with the reader's message for a config holding %s, before reading the diagram",
+    (_, config, message) => {
+      writeConfig(config);
+      const expected = { code: 1, stdout: "", stderr: `catena: ${message}\n` };
+      expect(runWith(["draw", fileOf(text(SAMPLE))])).toEqual(expected);
+      expect(runWith(["draw", join(directory, "missing.json")])).toEqual(expected);
+    },
+  );
+
+  test("throws a fault of catena's own in reading the config rather than saying the config is wrong", () => {
+    const fault = new TypeError("a fault of catena's own");
+    vi.mocked(readCustomIcons).mockImplementationOnce(() => {
+      throw fault;
+    });
+    expect(() => runWith(["draw", fileOf(text(SAMPLE))])).toThrow(fault);
+  });
+
+  test("exits 1 for a config the system can't read, after its path", () => {
+    mkdirSync(configPath);
+    expect(runWith(["draw", fileOf(text(SAMPLE))])).toEqual({
+      code: 1,
+      stdout: "",
+      stderr: `catena: ${configPath}: EISDIR: illegal operation on a directory, read\n`,
+    });
+  });
+
+  test("the catena command draws the config's icon by name from a directory outside the repo", () => {
+    writeConfig({ icons: { mine: ownIcon } });
+    const bin = fileURLToPath(new URL("../../bin/catena.js", import.meta.url));
+    const elsewhere = mkdtempSync(join(tmpdir(), "catena-elsewhere-"));
+    try {
+      const svg = execFileSync(bin, ["draw", fileOf(text(naming("mine")))], {
+        cwd: elsewhere,
+        env: { ...process.env, CATENA_CONFIG_DIR: configDirectory },
+        encoding: "utf8",
+      });
+      expect(svg).toBe(`${draw(naming(ownIcon))}\n`);
+      expect(svg).toContain('d="M2 2L8 8"');
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 });
 

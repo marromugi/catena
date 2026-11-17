@@ -46,10 +46,17 @@ export {
   textPart,
   title,
 } from "./parts";
-export { UnknownLogoError } from "./logo";
+export { CUSTOM_ICON, UnknownIconError, UnknownLogoError } from "./logo";
 export { readSvgLogo, UnreadableSvgError } from "./svg-logo";
-export type { LogoShape, OwnImage, OwnLogo, RegisteredLogo, RegistrableLogo } from "./logo";
-export type { OwnIcon } from "./parts";
+export type {
+  CustomIcon,
+  LogoShape,
+  OwnIcon,
+  OwnImage,
+  OwnLogo,
+  RegisteredLogo,
+  RegistrableLogo,
+} from "./logo";
 export { element, NO_SHADOW, writeSvg } from "./svg";
 export type { NewId, Outline, Shadow, SvgElement } from "./svg";
 export { defineTheme, InvalidThemeError, TONES } from "./theme";
@@ -57,6 +64,7 @@ export type {
   BadgeLook,
   ButtonLook,
   CardLook,
+  CustomIcons,
   DividerLook,
   DotLook,
   IconLook,

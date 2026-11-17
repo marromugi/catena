@@ -52,7 +52,7 @@ import {
   type ThemeOverrides,
   writeSvg,
 } from "./index";
-import type { LogoShape, Node, OwnImage, OwnLogo } from "./index";
+import type { LogoShape, Node, OwnIcon, OwnImage, OwnLogo } from "./index";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -1451,6 +1451,155 @@ describe("icons and the kinds that carry one", () => {
           const withLogo = defineTheme(fonts, { logos: Object.fromEntries([[held, madeUpLogo]]) });
           expect(() => icon.layout({ logo: asked }, withLogo, 100)).toThrow(
             expect.objectContaining({ name: "UnknownLogoError", logo: asked }),
+          );
+        }),
+      );
+    });
+  });
+
+  describe("custom icons on the theme, named by a bare string", () => {
+    const madeUpIcon: OwnIcon = {
+      pathData: "M 4 4 L 44 44",
+      viewBox: { x: 0, y: 0, width: 48, height: 48 },
+      paint: "stroke",
+    };
+    const custom = themeWith({
+      icons: { cross: madeUpIcon, mark: madeUpLogo, picture: { href: madeUpImage } },
+      logos: { brand: madeUpLogo },
+    });
+
+    test("a custom icon, logo or image named in an icon draws as the same one given inline does, in a card, a tile and a button", () => {
+      for (const [name, inline] of [
+        ["cross", madeUpIcon],
+        ["mark", madeUpLogo],
+        ["picture", { href: madeUpImage }],
+      ] as const) {
+        expect(
+          drawnAtSize(buildNode(iconTitleCard, custom, "c", { icon: name, title: "ここで" })),
+        ).toBe(
+          drawnAtSize(buildNode(iconTitleCard, custom, "c", { icon: inline, title: "ここで" })),
+        );
+        expect(drawnAtSize(buildNode(iconTile, custom, "t", { icon: name }))).toBe(
+          drawnAtSize(buildNode(iconTile, custom, "t", { icon: inline })),
+        );
+        expect(drawnAtSize(buildNode(activeRoundButton, custom, "b", name))).toBe(
+          drawnAtSize(buildNode(activeRoundButton, custom, "b", inline)),
+        );
+      }
+    });
+
+    test("a custom one-colour icon is drawn in the look's colour", () => {
+      const inked = themeWith({ icon: { color: "#123456" }, icons: { cross: madeUpIcon } });
+      expect(
+        icon
+          .layout("cross", inked, 100)
+          .draw({ x: 0, y: 0, width: 20, height: 20 }, noId)
+          .map(writeSvg),
+      ).toEqual([
+        `<path d="M 4 4 L 44 44" transform="translate(0 0) scale(0.4166666666666667)" fill="none" ` +
+          `stroke-width="3.5999999999999996" stroke-linecap="round" stroke-linejoin="round" stroke="#123456"/>`,
+      ]);
+    });
+
+    test("a built-in icon's name still draws the built-in icon on a theme holding custom ones", () => {
+      const at = { x: 0, y: 0, width: 20, height: 20 };
+      expect(icon.layout("spark", custom, 100).draw(at, noId)).toEqual(
+        icon.layout("spark", theme, 100).draw(at, noId),
+      );
+    });
+
+    test("a node naming an icon that is neither built in nor custom is refused, naming the node and the icon", () => {
+      for (const name of ["sparks", "brand", "", "toString"]) {
+        expect(() =>
+          buildNode(iconTitleCard, custom, "card-7", { icon: name, title: "ここで" }),
+        ).toThrow(
+          expect.objectContaining({
+            name: "InvalidNodeContentError",
+            message: `The content of node "card-7" names the icon "${name}", which is neither a built-in icon nor a custom one.`,
+            cause: expect.objectContaining({ name: "UnknownIconError", icon: name }),
+          }),
+        );
+      }
+      expect(() => icon.layout("cros", custom, 100)).toThrow(
+        expect.objectContaining({
+          name: "UnknownIconError",
+          icon: "cros",
+          message: `No icon is named "cros": neither a built-in icon nor a custom one.`,
+        }),
+      );
+    });
+
+    test("a custom icon is refused when the theme is made if it is none of the forms, or has a built-in icon's name", () => {
+      const notIcons: unknown[] = [
+        "cross",
+        { logo: "brand" },
+        { pathData: "M 0 0", viewBox: { x: 0, y: 0, width: 0, height: 1 }, paint: "fill" },
+        { href: madeUpImage, paint: "fill" },
+      ];
+      for (const bad of notIcons) {
+        // @ts-expect-error not a custom icon
+        expect(() => defineTheme(fonts, { icons: { cross: madeUpIcon, odd: bad } })).toThrow(
+          expect.objectContaining({
+            name: "InvalidThemeError",
+            message: expect.stringMatching(
+              /^The icon "odd" is none of: an OwnIcon, an OwnLogo, an OwnImage: × \S/,
+            ),
+          }),
+        );
+      }
+      expect(() => defineTheme(fonts, { icons: { spark: madeUpIcon } })).toThrow(
+        expect.objectContaining({
+          name: "InvalidThemeError",
+          message: `The icon "spark" has a built-in icon's name.`,
+        }),
+      );
+      // @ts-expect-error not icons by name
+      expect(() => defineTheme(fonts, { icons: [madeUpIcon] })).toThrow(
+        expect.objectContaining({
+          name: "InvalidThemeError",
+          message: "The icons are not an object holding each icon under its name.",
+        }),
+      );
+    });
+
+    test("a theme made with no custom icons holds none", () => {
+      expect(defineTheme(fonts).icons).toEqual({});
+    });
+
+    const customNames = fc
+      .oneof(
+        fc.string(),
+        fc.constantFrom("__proto__", "toString", "constructor", "hasOwnProperty", "logo"),
+      )
+      .filter((name) => !iconNames.some((builtIn) => builtIn === name));
+    const ownIcons: fc.Arbitrary<OwnIcon> = fc.record({
+      pathData: fc.string(),
+      viewBox: viewBoxes,
+      paint: fc.constantFrom("stroke", "fill"),
+    });
+    const customIcons = fc.oneof(ownIcons, logos, fc.record({ href: fc.string() }));
+
+    test("any custom icon, under any name not built in, draws as it does inline", () => {
+      fc.assert(
+        fc.property(customNames, customIcons, offsets, offsets, (name, given, x, y) => {
+          const withIcon = defineTheme(fonts, { icons: Object.fromEntries([[name, given]]) });
+          const at = { x, y, width: 20, height: 20 };
+          expect(icon.layout(name, withIcon, 100).draw(at, noId)).toEqual(
+            icon.layout(given, withIcon, 100).draw(at, noId),
+          );
+        }),
+      );
+    });
+
+    test("any name but a built-in one the theme does not hold is refused, carrying the name", () => {
+      fc.assert(
+        fc.property(customNames, customNames, (held, asked) => {
+          fc.pre(held !== asked);
+          const withIcon = defineTheme(fonts, {
+            icons: Object.fromEntries([[held, madeUpIcon]]),
+          });
+          expect(() => icon.layout(asked, withIcon, 100)).toThrow(
+            expect.objectContaining({ name: "UnknownIconError", icon: asked }),
           );
         }),
       );

@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
-import { UnknownLogoError } from "./logo";
+import { UnknownIconError, UnknownLogoError } from "./logo";
 import type { Part } from "./part";
 import {
   atWidth,
@@ -159,7 +159,8 @@ export const activeRoundButton = pill(
 /**
  * Checks `content` against `kind`'s schema and lays the node out at the theme's node width.
  * @throws InvalidNodeContentError when `content` does not match the schema, with the ValiError as its cause,
- * or names a logo the theme does not hold, with the UnknownLogoError as its cause.
+ * names a logo the theme does not hold, with the UnknownLogoError as its cause, or is a name neither built
+ * in nor one of the theme's custom icons, with the UnknownIconError as its cause.
  * @throws UnreadableFontError when a typeface's data turns out to be damaged.
  */
 export function buildNode<TSchema extends v.GenericSchema>(
@@ -191,10 +192,18 @@ function layoutNode<TSchema extends v.GenericSchema>(
   try {
     return kind.layout(content, theme, theme.nodeWidth);
   } catch (error) {
-    if (!(error instanceof UnknownLogoError)) throw error;
-    throw new InvalidNodeContentError(
-      `The content of node "${id}" names the logo "${error.logo}", which the theme does not hold.`,
-      { cause: error },
-    );
+    if (error instanceof UnknownLogoError) {
+      throw new InvalidNodeContentError(
+        `The content of node "${id}" names the logo "${error.logo}", which the theme does not hold.`,
+        { cause: error },
+      );
+    }
+    if (error instanceof UnknownIconError) {
+      throw new InvalidNodeContentError(
+        `The content of node "${id}" names the icon "${error.icon}", which is neither a built-in icon nor a custom one.`,
+        { cause: error },
+      );
+    }
+    throw error;
   }
 }

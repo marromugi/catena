@@ -136,7 +136,7 @@ export const iconPathData = {
 
 export type IconName = keyof typeof iconPathData;
 
-const isIconName = (name: string): name is IconName => Object.hasOwn(iconPathData, name);
+export const isIconName = (name: string): name is IconName => Object.hasOwn(iconPathData, name);
 
 export const iconNames: readonly IconName[] = Object.keys(iconPathData).filter(isIconName);
 
