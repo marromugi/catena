@@ -1,4 +1,16 @@
 import type { LogoShape, OwnLogo } from "./logo";
+import {
+  determinant,
+  evenScale,
+  IDENTITY,
+  isIdentity,
+  type Matrix,
+  multiply,
+  number,
+  numberList,
+  transformList,
+  transformPathData,
+} from "./svg-transform";
 import { MalformedXmlError, parseXml, type XmlElement } from "./xml";
 
 /** An SVG file holds something {@link readSvgLogo} cannot turn into a logo; the message names it. */
@@ -15,12 +27,20 @@ export class UnreadableSvgError extends Error {
  * inline `style`; a shape that draws nothing is left out. A stroke's caps and joins must both be round,
  * as a logo's strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
  *
+ * The `transform` attributes of the `<g>`s and the shapes are applied to each shape's path data, in
+ * absolute commands, so it draws where the file draws it; a stroke's width is scaled with it. A shape a
+ * transform flattens to nothing is left out.
+ *
  * The logo is the caller's to use, following that brand's own guidelines.
  * @throws UnreadableSvgError naming the element or attribute when:
  * - the file is not well-formed XML, or nests elements deeper than this reader follows;
  * - its root is not `<svg>`, gives no size, or has `preserveAspectRatio` `none` or `slice`;
  * - it draws nothing;
- * - it holds `transform` (or `translate`, `rotate`, `scale`), `url(...)` paint, `currentColor`, `<use>`,
+ * - the root `<svg>` has a `transform`, whose place depends on the size the file is shown at;
+ * - a `transform` is not a list of SVG's transform functions in plain numbers, or is given in `style`
+ *   or with `transform-origin` or `transform-box`; path data under a transform is not path data; or a
+ *   stroke is under a transform that does not scale evenly in both directions;
+ * - it holds the CSS `translate`, `rotate` or `scale`, `url(...)` paint, `currentColor`, `<use>`,
  *   `<text>`, `<image>`, `clip-path`, `mask`, `filter`, `<style>` anywhere or `class`, an opacity below
  *   1, an even-odd fill, dashes, markers, a stroke painted under its fill, a blend mode, a shape's
  *   geometry in `style`, or any element not named above;
@@ -44,9 +64,31 @@ export function readSvgLogo(svg: string): OwnLogo {
   if (holds(root, "style")) throw refused("<style>");
   const viewBox = viewBoxOf(root);
   const properties = propertiesOf(root);
-  const shapes = hidden(properties) ? [] : shapesIn(root, paintOf(root, properties, INITIAL_PAINT));
+  const shapes = hidden(properties) ? [] : rootShapes(root, properties);
   if (shapes.length === 0) throw new UnreadableSvgError("The SVG draws no shape.");
   return { viewBox, shapes };
+}
+
+function rootShapes(root: XmlElement, properties: ReadonlyMap<string, string>): LogoShape[] {
+  const paint = paintOf(root, properties, INITIAL_PAINT);
+  if (properties.has("transform")) throw refused("transform on <svg>");
+  return shapesIn(root, paint, IDENTITY);
+}
+
+/** The matrix the element's `transform` attribute gives. */
+function ownTransform(element: XmlElement, properties: ReadonlyMap<string, string>): Matrix {
+  const given = properties.get("transform");
+  if (given === undefined) return IDENTITY;
+  for (const property of ["transform-origin", "transform-box"]) {
+    if (properties.has(property)) throw refused(`${property} on <${element.name}>`);
+  }
+  const matrix = transformList(given);
+  if (matrix === undefined) {
+    throw new UnreadableSvgError(
+      `transform "${given}" on <${element.name}> is not a list of SVG transform functions.`,
+    );
+  }
+  return matrix;
 }
 
 interface Paint {
@@ -103,7 +145,8 @@ const SHAPES: ReadonlyMap<string, (shape: XmlElement) => string | undefined> = n
 /** A line has no inside to fill. */
 const UNFILLED = new Set(["line"]);
 
-function shapesIn(parent: XmlElement, inherited: Paint): LogoShape[] {
+/** The shapes `parent` holds, placed by `placed`: the transforms of `parent` and those around it. */
+function shapesIn(parent: XmlElement, inherited: Paint, placed: Matrix): LogoShape[] {
   const shapes: LogoShape[] = [];
   for (const child of parent.children) {
     if (SKIPPED.has(child.name)) continue;
@@ -112,25 +155,39 @@ function shapesIn(parent: XmlElement, inherited: Paint): LogoShape[] {
     const properties = propertiesOf(child);
     if (hidden(properties)) continue;
     const paint = paintOf(child, properties, inherited);
+    const childPlaced = multiply(placed, ownTransform(child, properties));
+    if (determinant(childPlaced) === 0) continue;
     if (toPath === undefined) {
-      shapes.push(...shapesIn(child, paint));
+      shapes.push(...shapesIn(child, paint, childPlaced));
       continue;
     }
     const inside = child.children.find(({ name }) => !SKIPPED.has(name));
     if (inside !== undefined) throw refused(`<${inside.name}> inside <${child.name}>`);
-    const pathData = toPath(child);
-    if (pathData === undefined) continue;
-    if (child.name !== "path" && /Infinity|NaN/.test(pathData)) {
-      throw new UnreadableSvgError(
-        `The coordinates of <${child.name}> run past the largest number.`,
-      );
-    }
-    shapes.push(...shapesOf(child.name, pathData, paint));
+    const drawn = toPath(child);
+    if (drawn === undefined) continue;
+    if (child.name !== "path") refuseOverflow(child, drawn);
+    const pathData = isIdentity(childPlaced) ? drawn : placedPath(child, drawn, childPlaced);
+    shapes.push(...shapesOf(child.name, pathData, paint, childPlaced));
   }
   return shapes;
 }
 
-function shapesOf(name: string, pathData: string, paint: Paint): LogoShape[] {
+function placedPath(shape: XmlElement, drawn: string, placed: Matrix): string {
+  const pathData = transformPathData(drawn, placed);
+  if (pathData === undefined) {
+    throw new UnreadableSvgError(`d "${drawn}" on <${shape.name}> is not path data.`);
+  }
+  refuseOverflow(shape, pathData);
+  return pathData;
+}
+
+function refuseOverflow(shape: XmlElement, pathData: string): void {
+  if (/Infinity|NaN/.test(pathData)) {
+    throw new UnreadableSvgError(`The coordinates of <${shape.name}> run past the largest number.`);
+  }
+}
+
+function shapesOf(name: string, pathData: string, paint: Paint, placed: Matrix): LogoShape[] {
   const shapes: LogoShape[] = [];
   if (paint.fill !== null && !UNFILLED.has(name)) {
     shapes.push({ pathData, paint: "fill", color: paint.fill });
@@ -142,7 +199,18 @@ function shapesOf(name: string, pathData: string, paint: Paint): LogoShape[] {
           `${paint.linejoin}; a logo's strokes have both round.`,
       );
     }
-    shapes.push({ pathData, paint: "stroke", color: paint.stroke, width: paint.strokeWidth });
+    const scale = evenScale(placed);
+    if (scale === undefined) {
+      throw new UnreadableSvgError(
+        `The stroke of <${name}> is under a transform that does not scale evenly in both ` +
+          `directions; a logo's stroke-width is one number.`,
+      );
+    }
+    const width = paint.strokeWidth * scale;
+    if (!Number.isFinite(width)) {
+      throw new UnreadableSvgError(`The stroke-width of <${name}> runs past the largest number.`);
+    }
+    if (width > 0) shapes.push({ pathData, paint: "stroke", color: paint.stroke, width });
   }
   return shapes;
 }
@@ -155,8 +223,23 @@ function hidden(properties: ReadonlyMap<string, string>): boolean {
   return properties.get("display")?.trim().toLowerCase() === "none";
 }
 
-/** Geometry a shape takes from its attributes; given in `style` it would win over them. */
-const GEOMETRY = new Set(["x", "y", "cx", "cy", "r", "rx", "ry", "width", "height", "d"]);
+/**
+ * Read only as attributes: a shape's geometry, which given in `style` would win over them, and
+ * `transform`, whose CSS form has a grammar of its own.
+ */
+const ATTRIBUTE_ONLY = new Set([
+  "x",
+  "y",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "width",
+  "height",
+  "d",
+  "transform",
+]);
 
 /** The element's presentation attributes, with its inline `style` given over them. */
 function propertiesOf(element: XmlElement): Map<string, string> {
@@ -173,7 +256,8 @@ function propertiesOf(element: XmlElement): Map<string, string> {
     const isImportant = /!\s*important\s*$/i.test(given);
     if (important.has(property) && !isImportant) continue;
     if (isImportant) important.add(property);
-    if (GEOMETRY.has(property)) throw refused(`${property} in the style of <${element.name}>`);
+    if (ATTRIBUTE_ONLY.has(property))
+      throw refused(`${property} in the style of <${element.name}>`);
     properties.set(property, given.replace(/!\s*important\s*$/i, "").trim());
   }
   return properties;
@@ -181,7 +265,9 @@ function propertiesOf(element: XmlElement): Map<string, string> {
 
 /** Refuses what the element's properties give that a logo cannot hold. */
 function refuseUnheld(element: XmlElement, properties: ReadonlyMap<string, string>): void {
-  noTransform(element, properties);
+  for (const property of ["translate", "rotate", "scale"]) {
+    if (properties.has(property)) throw refused(`${property} on <${element.name}>`);
+  }
   for (const [property, allowed] of LIMITED) {
     const value = properties.get(property)?.trim().toLowerCase();
     if (value !== undefined && !allowed(value)) {
@@ -194,12 +280,6 @@ function refuseUnheld(element: XmlElement, properties: ReadonlyMap<string, strin
     if (opacity(element, property, value) < 1) {
       throw refused(`${property} ${value} on <${element.name}>`);
     }
-  }
-}
-
-function noTransform(element: XmlElement, properties: ReadonlyMap<string, string>): void {
-  for (const property of ["transform", "translate", "rotate", "scale"]) {
-    if (properties.has(property)) throw refused(`${property} on <${element.name}>`);
   }
 }
 
@@ -373,30 +453,6 @@ function opacity(element: XmlElement, property: string, value: string): number {
     throw new UnreadableSvgError(`${property} "${value}" on <${element.name}> is not a number.`);
   }
   return value.endsWith("%") ? found / 100 : found;
-}
-
-const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-
-const LISTED_NUMBER = /[\s,]*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)/iy;
-
-/** Numbers apart by space, a comma, or nothing where the next sign or point starts one, as SVG lists them. */
-function numberList(given: string): number[] | undefined {
-  const text = given.trim();
-  const numbers: number[] = [];
-  for (let at = 0; at < text.length; at = LISTED_NUMBER.lastIndex) {
-    LISTED_NUMBER.lastIndex = at;
-    const found = LISTED_NUMBER.exec(text)?.[1];
-    const value = found === undefined ? undefined : number(found);
-    if (value === undefined) return undefined;
-    numbers.push(value);
-  }
-  return numbers;
-}
-
-function number(given: string): number | undefined {
-  if (!NUMBER.test(given)) return undefined;
-  const found = Number(given);
-  return Number.isFinite(found) ? found : undefined;
 }
 
 function refused(what: string): UnreadableSvgError {
