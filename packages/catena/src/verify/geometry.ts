@@ -35,6 +35,10 @@ export function lengthOf(segment: Segment): number {
   return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
 }
 
+function lengthOfPath(points: readonly Point[]): number {
+  return segmentsOf(points).reduce((length, segment) => length + lengthOf(segment), 0);
+}
+
 export function inflate(rect: Rect, by: number): Rect {
   return {
     x: rect.x - by,
@@ -281,6 +285,43 @@ export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
   }
 }
 
+/** The share of the way from `from` to `to` at which a value between `low` and `high` reaches one of them. More than 1 when it stops short. */
+function shareToBound(from: number, to: number, { low, high }: Span): number {
+  if (to === from) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return ((to > from ? high : low) - from) / (to - from);
+}
+
+interface BorderCut {
+  /** The path as far as the border. */
+  readonly inside: readonly Point[];
+  /** The path from the border on. */
+  readonly outside: readonly Point[];
+}
+
+/** A path that starts inside a box, cut where it first reaches the box's border. Nothing when it starts outside or never reaches it. */
+function cutAtBorder(points: readonly Point[], rect: Rect): BorderCut | undefined {
+  const [start] = points;
+  if (start === undefined || !containsPoint(rect, start)) {
+    return undefined;
+  }
+  for (const [at, segment] of segmentsOf(points).entries()) {
+    const share = Math.min(
+      shareToBound(segment.from.x, segment.to.x, { low: rect.x, high: rect.x + rect.width }),
+      shareToBound(segment.from.y, segment.to.y, { low: rect.y, high: rect.y + rect.height }),
+    );
+    if (share <= 1) {
+      const point = pointAlong(segment, share * lengthOf(segment));
+      return {
+        inside: [...points.slice(0, at + 1), point],
+        outside: [point, ...points.slice(at + 1)],
+      };
+    }
+  }
+  return undefined;
+}
+
 /**
  * Where a stretch of a path lies: its end is `lead` from the path's start, and its start `tail` from the path's end.
  * A stretch said to start at the path's start, whatever the path's length, has an infinite `tail`; one said to end at its end, an infinite `lead`.
@@ -288,6 +329,38 @@ export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
 export interface Stretch {
   readonly lead: number;
   readonly tail: number;
+}
+
+/** The same stretch on the path taken the other way. */
+export function reversedStretch(stretch: Stretch): Stretch {
+  return { lead: stretch.tail, tail: stretch.lead };
+}
+
+/**
+ * The stretch that two paths starting inside a box run as one through the point where each first reaches
+ * its border, as it lies on the first path and on the second.
+ * Nothing when they reach the border at different points, or share nothing on either side of the point.
+ */
+export function sharedThroughBorder(
+  a: readonly Point[],
+  b: readonly Point[],
+  rect: Rect,
+): readonly [Stretch, Stretch] | undefined {
+  const cutOfA = cutAtBorder(a, rect);
+  const cutOfB = cutAtBorder(b, rect);
+  if (cutOfA === undefined || cutOfB === undefined) {
+    return undefined;
+  }
+  const outside = sharedLead(cutOfA.outside, cutOfB.outside);
+  const inside = sharedLead(cutOfA.inside.toReversed(), cutOfB.inside.toReversed());
+  if (outside === 0 && inside === 0) {
+    return undefined;
+  }
+  const on = (cut: BorderCut): Stretch => ({
+    lead: lengthOfPath(cut.inside) + outside,
+    tail: lengthOfPath(cut.outside) + inside,
+  });
+  return [on(cutOfA), on(cutOfB)];
 }
 
 /** Whether `next`, which starts where `segment` ends, goes straight on from it, level or upright. */

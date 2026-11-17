@@ -8,11 +8,13 @@ import {
   isAttached,
   isOrthogonal,
   lengthOf,
+  reversedStretch,
   restsBetween,
   runsAlongside,
   segmentsOf,
   separation,
   sharedLead,
+  sharedThroughBorder,
   sidesAlong,
   straightened,
   TOLERANCE,
@@ -51,8 +53,12 @@ export type Violation =
    * Two stretches, of two edges or of one, come closer than `edgeGap`.
    * Crossing at a right angle is allowed where each stretch reaches `edgeGap` past the other on both sides.
    * Two stretches that meet at a bend of one edge count only when the edge turns straight back.
-   * Two edges that leave the same node may run as one from their start, and two that enter the same node
-   * to their end; the two stretches that meet where they part, or where they join, do not count.
+   * Two edges arrive at a node when each ends at it or at a node inside it, and depart from it when each
+   * starts at it or at a node inside it. Two that both arrive at a node, or both depart from it, and meet
+   * its border at one point may run as one through that point, as far each way as their paths are the
+   * same; the two stretches that meet where they part, or where they join, do not count. An edge meets
+   * the border where it first reaches it, followed from its end at or inside the node; at a node both
+   * edges end at, or both start from, that is the end itself.
    */
   | { readonly kind: "edges-too-close"; readonly edges: readonly [string, string] }
   /** Two labels cover part of each other. Labels that only touch do not. */
@@ -251,14 +257,36 @@ function isTooCloseToItself(edge: PlacedEdge, spacing: Spacing): boolean {
   );
 }
 
+/** The stretches two edges may share through the border of a node that is not the end of both. */
+function sharedThroughBorders(a: PlacedEdge, b: PlacedEdge, index: Index): SharedStretch[] {
+  const boxesAt = (end: "from" | "to"): Rect[] => {
+    const isAt = (edge: PlacedEdge, id: string) =>
+      edge[end] === id || entryOf(index, edge, end).groups.includes(id);
+    return [...index.values()]
+      .filter(({ node }) => isAt(a, node.id) && isAt(b, node.id))
+      .filter(({ node }) => a[end] !== node.id || b[end] !== node.id)
+      .map(({ node }) => node.box);
+  };
+  const departing = boxesAt("from").flatMap((box): SharedStretch[] => {
+    const shared = sharedThroughBorder(a.points, b.points, box);
+    return shared === undefined ? [] : [shared];
+  });
+  const arriving = boxesAt("to").flatMap((box): SharedStretch[] => {
+    const shared = sharedThroughBorder(a.points.toReversed(), b.points.toReversed(), box);
+    return shared === undefined ? [] : [[reversedStretch(shared[0]), reversedStretch(shared[1])]];
+  });
+  return [...departing, ...arriving];
+}
+
 /** The stretches two edges may share, each as it lies on the first edge and on the second. */
-function sharedStretches(a: PlacedEdge, b: PlacedEdge): SharedStretch[] {
+function sharedStretches(a: PlacedEdge, b: PlacedEdge, index: Index): SharedStretch[] {
   const lead = a.from === b.from ? sharedLead(a.points, b.points) : 0;
   const tail = a.to === b.to ? sharedLead(a.points.toReversed(), b.points.toReversed()) : 0;
   const fromStart = { lead, tail: Number.POSITIVE_INFINITY };
   const toEnd = { lead: Number.POSITIVE_INFINITY, tail };
   return [
     ...(lead > TOLERANCE ? [[fromStart, fromStart] as const] : []),
+    ...sharedThroughBorders(a, b, index),
     ...(tail > TOLERANCE ? [[toEnd, toEnd] as const] : []),
   ];
 }
@@ -267,8 +295,8 @@ function shareOne(some: readonly number[], others: readonly number[]): boolean {
   return some.some((one) => others.includes(one));
 }
 
-function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, spacing: Spacing): boolean {
-  const shared = sharedStretches(a, b);
+function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, index: Index, spacing: Spacing): boolean {
+  const shared = sharedStretches(a, b, index);
   const restsOf = (edge: PlacedEdge, which: 0 | 1) =>
     restsBetween(
       edge.points,
@@ -303,14 +331,18 @@ function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, spacing: Spacing): boole
     );
 }
 
-function closenessViolations(edges: readonly PlacedEdge[], spacing: Spacing): Violation[] {
+function closenessViolations(
+  edges: readonly PlacedEdge[],
+  index: Index,
+  spacing: Spacing,
+): Violation[] {
   return edges.flatMap((edge, at): Violation[] => [
     ...(isTooCloseToItself(edge, spacing)
       ? [{ kind: "edges-too-close" as const, edges: [edge.id, edge.id] as const }]
       : []),
     ...edges
       .slice(at + 1)
-      .filter((other) => areEdgesTooClose(edge, other, spacing))
+      .filter((other) => areEdgesTooClose(edge, other, index, spacing))
       .map((other): Violation => ({ kind: "edges-too-close", edges: [edge.id, other.id] })),
   ]);
 }
@@ -402,7 +434,7 @@ export function verify(layout: Layout, spacing: Spacing): Violation[] {
       ...shapeViolations(edge, index, spacing),
       ...routeViolations(edge, index, spacing),
     ]),
-    ...closenessViolations(layout.edges, spacing),
+    ...closenessViolations(layout.edges, index, spacing),
     ...labelViolations(layout.edges, index),
   ];
 }
