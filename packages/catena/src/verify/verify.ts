@@ -1,23 +1,28 @@
-import type { Layout, PlacedEdge, PlacedNode, Rect, Spacing } from "../layout";
+import type { Layout, PlacedEdge, PlacedNode, Point, Rect, Spacing } from "../layout";
 import {
   areTooClose,
   contains,
   containsPoint,
+  cutAtBorder,
+  cutAtStart,
   doubleBack,
   inflate,
   isAttached,
   isOrthogonal,
   lengthOf,
+  reversedStretch,
+  restsBetween,
   runsAlongside,
-  segmentsBetween,
   segmentsOf,
   separation,
   sharedLead,
+  sharedThroughCuts,
   sidesAlong,
   straightened,
   TOLERANCE,
   type Segment,
   type Side,
+  type Stretch,
 } from "./geometry";
 
 /** One way a layout is broken, naming what is involved by id. */
@@ -50,8 +55,12 @@ export type Violation =
    * Two stretches, of two edges or of one, come closer than `edgeGap`.
    * Crossing at a right angle is allowed where each stretch reaches `edgeGap` past the other on both sides.
    * Two stretches that meet at a bend of one edge count only when the edge turns straight back.
-   * Two edges that leave the same node may run as one from their start, and two that enter the same node
-   * to their end; the two stretches that meet where they part, or where they join, do not count.
+   * Two edges arrive at a node when each ends at it or at a node inside it, and depart from it when each
+   * starts at it or at a node inside it. Two that both arrive at a node, or both depart from it, and meet
+   * its border at one point may run as one through that point, as far each way as their paths are the
+   * same; the two stretches that meet where they part, or where they join, do not count. An edge meets
+   * the border of the node at its end at that end, and the border of a group around that end where it
+   * first comes to it from there, a millionth short counting as there.
    */
   | { readonly kind: "edges-too-close"; readonly edges: readonly [string, string] }
   /** Two labels cover part of each other. Labels that only touch do not. */
@@ -80,6 +89,9 @@ interface Entry {
 }
 
 type Index = ReadonlyMap<string, Entry>;
+
+/** A stretch two edges share, as it lies on the first and on the second. */
+type SharedStretch = readonly [Stretch, Stretch];
 
 function indexOf(nodes: readonly PlacedNode[]): Index {
   const index = new Map<string, Entry>();
@@ -247,36 +259,102 @@ function isTooCloseToItself(edge: PlacedEdge, spacing: Spacing): boolean {
   );
 }
 
-function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, spacing: Spacing): boolean {
-  const lead = a.from === b.from ? sharedLead(a.points, b.points) : 0;
-  const tail = a.to === b.to ? sharedLead(a.points.toReversed(), b.points.toReversed()) : 0;
-  const shared = lead > TOLERANCE || tail > TOLERANCE;
-  const rest = (edge: PlacedEdge) => {
-    const segments = segmentsBetween(edge.points, lead, tail);
-    return shared ? straightened(segments) : segments;
+/** The stretches two edges may share through the border of a node that is not the end of both. */
+function sharedThroughBorders(a: PlacedEdge, b: PlacedEdge, index: Index): SharedStretch[] {
+  const through = (end: "from" | "to"): SharedStretch[] => {
+    const isAt = (edge: PlacedEdge, id: string) =>
+      edge[end] === id || entryOf(index, edge, end).groups.includes(id);
+    const fromThatEnd = (edge: PlacedEdge): readonly Point[] =>
+      end === "from" ? edge.points : edge.points.toReversed();
+    const cutOf = (edge: PlacedEdge, node: PlacedNode) =>
+      edge[end] === node.id
+        ? cutAtStart(fromThatEnd(edge))
+        : cutAtBorder(fromThatEnd(edge), node.box);
+    return [...index.values()]
+      .filter(({ node }) => isAt(a, node.id) && isAt(b, node.id))
+      .filter(({ node }) => a[end] !== node.id || b[end] !== node.id)
+      .flatMap(({ node }) => {
+        const cutOfA = cutOf(a, node);
+        const cutOfB = cutOf(b, node);
+        const shared =
+          cutOfA === undefined || cutOfB === undefined
+            ? undefined
+            : sharedThroughCuts(cutOfA, cutOfB);
+        return shared === undefined ? [] : [shared];
+      });
   };
-  const restOfA = rest(a);
-  const restOfB = rest(b);
-  return restOfA.some((first, atA) =>
-    restOfB.some((second, atB) => {
-      if (!isOrthogonal(first) || !isOrthogonal(second)) {
-        return false;
-      }
-      const part = lead > TOLERANCE && atA === 0 && atB === 0;
-      const join = tail > TOLERANCE && atA === restOfA.length - 1 && atB === restOfB.length - 1;
-      return !part && !join && areTooClose(first, second, spacing.edgeGap);
-    }),
-  );
+  const reversed = ([onA, onB]: SharedStretch): SharedStretch => [
+    reversedStretch(onA),
+    reversedStretch(onB),
+  ];
+  return [...through("from"), ...through("to").map(reversed)];
 }
 
-function closenessViolations(edges: readonly PlacedEdge[], spacing: Spacing): Violation[] {
+/** The stretches two edges may share, each as it lies on the first edge and on the second. */
+function sharedStretches(a: PlacedEdge, b: PlacedEdge, index: Index): SharedStretch[] {
+  const lead = a.from === b.from ? sharedLead(a.points, b.points) : 0;
+  const tail = a.to === b.to ? sharedLead(a.points.toReversed(), b.points.toReversed()) : 0;
+  const fromStart = { lead, tail: Number.POSITIVE_INFINITY };
+  const toEnd = { lead: Number.POSITIVE_INFINITY, tail };
+  return [
+    ...(lead > TOLERANCE ? [[fromStart, fromStart] as const] : []),
+    ...sharedThroughBorders(a, b, index),
+    ...(tail > TOLERANCE ? [[toEnd, toEnd] as const] : []),
+  ];
+}
+
+function shareOne(some: readonly number[], others: readonly number[]): boolean {
+  return some.some((one) => others.includes(one));
+}
+
+function areEdgesTooClose(a: PlacedEdge, b: PlacedEdge, index: Index, spacing: Spacing): boolean {
+  const shared = sharedStretches(a, b, index);
+  const restsOf = (edge: PlacedEdge, which: 0 | 1) =>
+    restsBetween(
+      edge.points,
+      shared.map((stretch) => stretch[which]),
+    ).map((rest) => ({
+      ...rest,
+      segments: shared.length > 0 ? straightened(rest.segments) : rest.segments,
+    }));
+  const restsOfA = restsOf(a, 0);
+  const restsOfB = restsOf(b, 1);
+  const meeting = restsOfA.flatMap((restOfA) =>
+    restsOfB.flatMap((restOfB) => [
+      ...(shareOne(restOfA.after, restOfB.after)
+        ? [[restOfA.segments[0], restOfB.segments[0]]]
+        : []),
+      ...(shareOne(restOfA.before, restOfB.before)
+        ? [[restOfA.segments.at(-1), restOfB.segments.at(-1)]]
+        : []),
+    ]),
+  );
+  const allOfB = restsOfB.flatMap((rest) => rest.segments);
+  return restsOfA
+    .flatMap((rest) => rest.segments)
+    .some((first) =>
+      allOfB.some(
+        (second) =>
+          isOrthogonal(first) &&
+          isOrthogonal(second) &&
+          !meeting.some(([ofA, ofB]) => ofA === first && ofB === second) &&
+          areTooClose(first, second, spacing.edgeGap),
+      ),
+    );
+}
+
+function closenessViolations(
+  edges: readonly PlacedEdge[],
+  index: Index,
+  spacing: Spacing,
+): Violation[] {
   return edges.flatMap((edge, at): Violation[] => [
     ...(isTooCloseToItself(edge, spacing)
       ? [{ kind: "edges-too-close" as const, edges: [edge.id, edge.id] as const }]
       : []),
     ...edges
       .slice(at + 1)
-      .filter((other) => areEdgesTooClose(edge, other, spacing))
+      .filter((other) => areEdgesTooClose(edge, other, index, spacing))
       .map((other): Violation => ({ kind: "edges-too-close", edges: [edge.id, other.id] })),
   ]);
 }
@@ -368,7 +446,7 @@ export function verify(layout: Layout, spacing: Spacing): Violation[] {
       ...shapeViolations(edge, index, spacing),
       ...routeViolations(edge, index, spacing),
     ]),
-    ...closenessViolations(layout.edges, spacing),
+    ...closenessViolations(layout.edges, index, spacing),
     ...labelViolations(layout.edges, index),
   ];
 }

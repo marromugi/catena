@@ -49,7 +49,7 @@ export interface Spacing {
   readonly padding: number;
   /** Between an edge and a node, a corner of a node it meets, or the border of a group around one of its ends. A node inside a group the edge connects is left out. */
   readonly edgeToNode: number;
-  /** Between any two stretches of edge, except where they cross at a right angle clear of their ends, meet at a bend without turning straight back, or are shared by edges of one node at that node. */
+  /** Between two stretches of edge, of two edges or of one. */
   readonly edgeGap: number;
   /** The shortest stretch of an edge between two bends, or between a bend and an end. */
   readonly minSegment: number;

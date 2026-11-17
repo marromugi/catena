@@ -35,6 +35,10 @@ export function lengthOf(segment: Segment): number {
   return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
 }
 
+function lengthOfPath(points: readonly Point[]): number {
+  return segmentsOf(points).reduce((length, segment) => length + lengthOf(segment), 0);
+}
+
 export function inflate(rect: Rect, by: number): Rect {
   return {
     x: rect.x - by,
@@ -281,6 +285,83 @@ export function sharedLead(a: readonly Point[], b: readonly Point[]): number {
   }
 }
 
+/**
+ * The share of the way from `from` to `to` at which a value between `low` and `high` reaches one of them.
+ * Stopping within the tolerance of one counts as reaching it; stopping shorter gives infinity.
+ */
+function shareToBound(from: number, to: number, { low, high }: Span): number {
+  if (to === from) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const bound = to > from ? high : low;
+  return Math.abs(bound - from) <= Math.abs(to - from) + TOLERANCE
+    ? (bound - from) / (to - from)
+    : Number.POSITIVE_INFINITY;
+}
+
+/** A path in two parts that meet at one of its points. */
+export interface PathCut {
+  readonly before: readonly Point[];
+  readonly after: readonly Point[];
+}
+
+export function cutAtStart(points: readonly Point[]): PathCut {
+  return { before: points.slice(0, 1), after: points };
+}
+
+/** A path that starts inside a box, cut where it first comes to the box's border. Nothing when it starts outside or never comes to it. */
+export function cutAtBorder(points: readonly Point[], rect: Rect): PathCut | undefined {
+  const [start] = points;
+  if (start === undefined || !containsPoint(rect, start)) {
+    return undefined;
+  }
+  for (const [at, segment] of segmentsOf(points).entries()) {
+    const share = Math.min(
+      shareToBound(segment.from.x, segment.to.x, { low: rect.x, high: rect.x + rect.width }),
+      shareToBound(segment.from.y, segment.to.y, { low: rect.y, high: rect.y + rect.height }),
+    );
+    if (share < Number.POSITIVE_INFINITY) {
+      const point = pointAlong(segment, share * lengthOf(segment));
+      return {
+        before: [...points.slice(0, at + 1), point],
+        after: [point, ...points.slice(at + 1)],
+      };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Where a stretch of a path lies: its end is `lead` from the path's start, and its start `tail` from the path's end.
+ * A stretch said to start at the path's start, whatever the path's length, has an infinite `tail`; one said to end at its end, an infinite `lead`.
+ */
+export interface Stretch {
+  readonly lead: number;
+  readonly tail: number;
+}
+
+/** The same stretch on the path taken the other way. */
+export function reversedStretch(stretch: Stretch): Stretch {
+  return { lead: stretch.tail, tail: stretch.lead };
+}
+
+/**
+ * The stretch two paths run as one through the point each is cut at, as it lies on the first and on the second.
+ * Nothing when they are cut at different points, or share nothing on either side of the point.
+ */
+export function sharedThroughCuts(a: PathCut, b: PathCut): readonly [Stretch, Stretch] | undefined {
+  const after = sharedLead(a.after, b.after);
+  const before = sharedLead(a.before.toReversed(), b.before.toReversed());
+  if (after === 0 && before === 0) {
+    return undefined;
+  }
+  const on = (cut: PathCut): Stretch => ({
+    lead: lengthOfPath(cut.before) + after,
+    tail: lengthOfPath(cut.after) + before,
+  });
+  return [on(a), on(b)];
+}
+
 /** Whether `next`, which starts where `segment` ends, goes straight on from it, level or upright. */
 function continues(segment: Segment, next: Segment): boolean {
   const level = isHorizontal(segment) && isHorizontal(next);
@@ -309,7 +390,7 @@ export function straightened(segments: readonly Segment[]): Segment[] {
  * The stretches left of a path once `lead` is cut from its start and `tail` from its end.
  * A stretch that is not cut is left as it is, whatever its length.
  */
-export function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
+function segmentsBetween(points: readonly Point[], lead: number, tail: number): Segment[] {
   const segments = segmentsOf(points);
   const cutsAtEnd: number[] = [];
   let behind = 0;
@@ -331,4 +412,33 @@ export function segmentsBetween(points: readonly Point[], lead: number, tail: nu
     passed += lengthOf(segment);
   });
   return kept;
+}
+
+/** A piece of a path that lies in none of a set of its stretches. */
+export interface Rest {
+  readonly segments: readonly Segment[];
+  /** The stretches that end where the piece starts, each by its place among those given. */
+  readonly after: readonly number[];
+  /** The stretches that start where the piece ends. */
+  readonly before: readonly number[];
+}
+
+/**
+ * What is left of a path outside the given stretches, piece by piece along it: one piece before each
+ * stretch and one after them all. A piece is empty where stretches meet or lie one on another.
+ */
+export function restsBetween(points: readonly Point[], stretches: readonly Stretch[]): Rest[] {
+  const inOrder = stretches
+    .map((stretch, at) => ({ ...stretch, at }))
+    .toSorted((one, other) => other.tail - one.tail);
+  return [...inOrder, undefined].map((next, passed) => {
+    const earlier = inOrder.slice(0, passed);
+    const from = Math.max(0, ...earlier.map(({ lead }) => lead));
+    const to = next === undefined ? 0 : next.tail;
+    return {
+      segments: segmentsBetween(points, from, to),
+      after: earlier.filter(({ lead }) => lead >= from - TOLERANCE).map(({ at }) => at),
+      before: inOrder.filter(({ tail }) => Math.abs(tail - to) <= TOLERANCE).map(({ at }) => at),
+    };
+  });
 }
