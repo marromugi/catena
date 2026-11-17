@@ -223,6 +223,22 @@ export function frameOf(
     firstLane(columns, corridor, columnStacks[corridor]?.height ?? 0) +
     laneOf(lanes.beside, corridor, end);
 
+  const laneAfter = (end: End): number => {
+    const corridor = end === outside ? 0 : itemOf(end).step + 1;
+    return (
+      firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
+      laneOf(lanes.leaving, corridor, end)
+    );
+  };
+  const laneBefore = (end: End): number => {
+    const corridor = end === outside ? rowSizes.length : itemOf(end).step;
+    return (
+      firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
+      (rowStacks[corridor]?.entering ?? 0) +
+      laneOf(lanes.entering, corridor, end)
+    );
+  };
+
   const turns = edges.flatMap((edge): number[] => {
     if (edge.from !== outside && edge.to !== outside) {
       return [];
@@ -268,21 +284,8 @@ export function frameOf(
       const entry = entryOf(id);
       return { ...entry, along: entry.along + itemOf(id).along };
     },
-    laneAfter: (end) => {
-      const corridor = end === outside ? 0 : itemOf(end).step + 1;
-      return (
-        firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
-        laneOf(lanes.leaving, corridor, end)
-      );
-    },
-    laneBefore: (end) => {
-      const corridor = end === outside ? rowSizes.length : itemOf(end).step;
-      return (
-        firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
-        (rowStacks[corridor]?.entering ?? 0) +
-        laneOf(lanes.entering, corridor, end)
-      );
-    },
+    laneAfter,
+    laneBefore,
     laneBeside: (corridor, end) => shift + laneBeside(corridor, end),
   };
 }
