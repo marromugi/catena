@@ -1230,20 +1230,41 @@ describe("icons and the kinds that carry one", () => {
     expect(lettersIn("AB", { x: 0, y: 0 }, regularOnly).d).not.toBe(drawn);
   });
 
-  test("letters sit in a tile's square and on a button's background as any icon there does", () => {
+  test("letters sit in a tile's and a button's square, in its look's colour, on the background any icon there has", () => {
+    const looked = themeWith({
+      tileIcon: { color: "#2a6f4e" },
+      buttonIcon: { size: 18, color: "#7a4fd0" },
+    });
     const pairs = [
       [
-        buildNode(iconTile, theme, "t", { icon: { letters: "AB" } }),
-        buildNode(iconTile, theme, "t", { icon: "spark" }),
+        buildNode(iconTile, looked, "t", { icon: { letters: "AB" } }),
+        buildNode(iconTile, looked, "t", { icon: "spark" }),
+        "#2a6f4e",
       ],
       [
-        buildNode(activeRoundButton, theme, "b", { letters: "AB" }),
-        buildNode(activeRoundButton, theme, "b", "spark"),
+        buildNode(roundButton, looked, "b", { letters: "AB" }),
+        buildNode(roundButton, looked, "b", "spark"),
+        "#7a4fd0",
       ],
     ] as const;
-    for (const [letters, spark] of pairs) {
+    for (const [letters, spark, color] of pairs) {
       expect(letters.leaf.size).toEqual(spark.leaf.size);
       expect(background(letters)).toBe(background(spark));
+
+      // The spark's transform puts its 24 grid on the icon's square.
+      const sparkDrawn = spark.draw({ x: 0, y: 0, ...spark.leaf.size });
+      const [, x, y, scale] =
+        /translate\(([\d.]+) ([\d.]+)\) scale\(([\d.]+)\)/u.exec(
+          sparkDrawn.slice(sparkDrawn.lastIndexOf("<path")),
+        ) ?? [];
+      const square = { x: Number(x), y: Number(y), size: Number(scale) * 24 };
+      const drawn = letters.draw({ x: 0, y: 0, ...letters.leaf.size });
+      const path = drawn.slice(drawn.lastIndexOf("<path"));
+      expect(path).toContain(`fill="${color}"`);
+      const box = controlBox(/ d="([^"]*)"/u.exec(path)?.[1] ?? "");
+      expect(box.x + box.width / 2).toBeCloseTo(square.x + square.size / 2, 1);
+      expect(box.y + box.height / 2).toBeCloseTo(square.y + square.size / 2, 1);
+      expect(box.height).toBeCloseTo(0.68 * square.size * 0.7275, 1);
     }
   });
 
