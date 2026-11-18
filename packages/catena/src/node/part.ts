@@ -1,12 +1,14 @@
 import type * as v from "valibot";
 import type { Rect } from "../layout";
-import type { Size } from "../place";
+import type { LineUp, Size } from "../place";
 import type { SvgElement } from "../svg";
 import type { NewId } from "./svg";
 import type { Theme } from "./theme";
 
 export interface Block {
   readonly size: Size;
+  /** Measured at its own size. Left out, the block lines up by its middle, and edges meet its sides. */
+  readonly lineUp?: LineUp;
   /** `box` is at least as large as `size`. */
   draw(box: Rect, newId: NewId): readonly SvgElement[];
 }

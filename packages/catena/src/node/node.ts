@@ -6,7 +6,7 @@ import { UnknownIconError, UnknownLogoError } from "./logo";
 import type { Part } from "./part";
 import {
   atWidth,
-  centered,
+  captioned,
   fitted,
   frame,
   list,
@@ -97,12 +97,10 @@ export const iconTitleCardPair = frame(
 );
 
 function iconTileIn(lookOf: (theme: Theme) => CardLook) {
-  return stack({
-    icon: centered(
-      fitted(
-        iconPart((theme) => theme.tileIcon),
-        lookOf,
-      ),
+  return captioned({
+    icon: fitted(
+      iconPart((theme) => theme.tileIcon),
+      lookOf,
     ),
     label: optional(
       stack(
@@ -154,7 +152,7 @@ export function buildNode<TSchema extends v.GenericSchema>(
   }
   const block = layoutNode(kind, parsed.output, theme, id);
   return {
-    leaf: { id, size: block.size },
+    leaf: { id, size: block.size, lineUp: block.lineUp },
     draw: (box) => writeSvg(element("g", {}, block.draw(box, idsOfNode(id)))),
     covers: (box, point, reach) => onFilledRectSide(block.draw(box, idsOfNode(id)), point, reach),
   };

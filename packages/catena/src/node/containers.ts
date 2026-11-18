@@ -68,19 +68,21 @@ function atOwnSize(block: Block): Block {
   };
 }
 
+/** `block` drawn at its own size, centred across whatever box it is given. */
+function atCentre(block: Block): Block {
+  const { width, height } = block.size;
+  return {
+    size: block.size,
+    draw: (box, newId) =>
+      block.draw({ x: box.x + (box.width - width) / 2, y: box.y, width, height }, newId),
+  };
+}
+
 /** `child` drawn at its own size, centred across the box it is given. */
 export function centered<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
   return {
     schema: child.schema,
-    layout(content, theme, maxWidth) {
-      const inner = child.layout(content, theme, maxWidth);
-      const { width, height } = inner.size;
-      return {
-        size: inner.size,
-        draw: (box, newId) =>
-          inner.draw({ x: box.x + (box.width - width) / 2, y: box.y, width, height }, newId),
-      };
-    },
+    layout: (content, theme, maxWidth) => atCentre(child.layout(content, theme, maxWidth)),
   };
 }
 
@@ -194,6 +196,35 @@ export function stack<const TParts extends Record<string, Part>>(
         entries.map(([key, part]) => part.layout(content[key], theme, maxWidth)),
         gap(theme),
       ),
+  };
+}
+
+/**
+ * Parts set one over the next as {@link stack} sets them, the first drawn at its own size and centred
+ * across the box, and the parts after it under it as its caption. The block lines up by the first part: its
+ * middle is that part's, and edges meet that part's sides across the stack, and the stack's top and bottom.
+ * @throws Error when a key looks like an integer or is `__proto__`, since its place in the order is lost.
+ */
+export function captioned<const TParts extends Record<string, Part>>(
+  parts: TParts,
+): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
+  const { entries, schema } = keyedParts("captioned stack", parts);
+  return {
+    schema,
+    layout(content, theme, maxWidth) {
+      const [subject = EMPTY, ...caption] = entries.map(([key, part]) =>
+        part.layout(content[key], theme, maxWidth),
+      );
+      const block = stacked([atCentre(subject), ...caption], theme.gap);
+      const { width, height } = block.size;
+      return {
+        ...block,
+        lineUp: {
+          middle: { x: width / 2, y: subject.size.height / 2 },
+          edgeBox: { x: (width - subject.size.width) / 2, y: 0, width: subject.size.width, height },
+        },
+      };
+    },
   };
 }
 

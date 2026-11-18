@@ -334,7 +334,7 @@ describe("drawDiagramFile", () => {
       ],
       edges: graph.edges,
     });
-    expect(drawn).toContain(`<g fill="#8c8c8c"><circle cx="${end?.x}" cy="${end?.y}" r="4"/></g>`);
+    expect(drawn).toContain(`<g fill="#ebebeb"><circle cx="${end?.x}" cy="${end?.y}" r="4"/></g>`);
   });
 
   test("draws no header and the default background when the file gives none", () => {

@@ -141,9 +141,9 @@ describe("drawDiagram", () => {
 
   test("draws every edge through drawEdge in one painted group", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
-    expect(DEFAULT_EDGE_PAINT).toEqual({ stroke: "#8c8c8c", strokeWidth: 1.5 });
+    expect(DEFAULT_EDGE_PAINT).toEqual({ stroke: "#ebebeb", strokeWidth: 1.5 });
     expect(drawDiagram(layout, nodes)).toContain(
-      `<g fill="none" stroke="#8c8c8c" stroke-width="1.5">${paths}</g>`,
+      `<g fill="none" stroke="#ebebeb" stroke-width="1.5">${paths}</g>`,
     );
   });
 
@@ -158,7 +158,7 @@ describe("drawDiagram", () => {
 
   test("draws a dot at both ends of every edge in one group filled with the edges' stroke", () => {
     const dots = endDotsOf(layout);
-    expect(drawDiagram(layout, nodes)).toContain(`<g fill="#8c8c8c">${dots}</g>`);
+    expect(drawDiagram(layout, nodes)).toContain(`<g fill="#ebebeb">${dots}</g>`);
     expect(drawDiagram(layout, nodes, { edgePaint: { stroke: "#123456" } })).toContain(
       `<g fill="#123456">${dots}</g>`,
     );
@@ -168,10 +168,10 @@ describe("drawDiagram", () => {
     const flat: Node = { ...b, covers: () => false };
     const [toB, toC] = layout.edges;
     expect(drawDiagram(layout, new Map([...nodes, ["b", flat]]))).toContain(
-      `<g fill="#8c8c8c">${dotsAt(toB?.points[0], toC?.points[0], toC?.points.at(-1))}</g>`,
+      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0], toC?.points.at(-1))}</g>`,
     );
     expect(drawDiagram(layout, new Map([["a", a]]))).toContain(
-      `<g fill="#8c8c8c">${dotsAt(toB?.points[0], toC?.points[0])}</g>`,
+      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0])}</g>`,
     );
   });
 
@@ -200,7 +200,7 @@ describe("drawDiagram", () => {
     const [edge] = toGroup.edges;
     expect(edge).toBeDefined();
     expect(drawDiagram(toGroup, nodes)).toContain(
-      `<g fill="#8c8c8c">${writeSvg(drawEdgeEnd(edge?.points[0] ?? { x: 0, y: 0 }))}</g>`,
+      `<g fill="#ebebeb">${writeSvg(drawEdgeEnd(edge?.points[0] ?? { x: 0, y: 0 }))}</g>`,
     );
   });
 
@@ -219,7 +219,7 @@ describe("drawDiagram", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
     expect(drawDiagram(layout, new Map())).toMatch(
       new RegExp(
-        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g fill="#8c8c8c"/></svg>$`,
+        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g fill="#ebebeb"/></svg>$`,
       ),
     );
   });
@@ -267,7 +267,7 @@ describe("drawDiagram", () => {
     const svg = drawDiagram(layout, nodes);
     const background = svg.indexOf("<defs>");
     const edges = svg.indexOf('<g fill="none"');
-    const dots = svg.indexOf('<g fill="#8c8c8c"><circle');
+    const dots = svg.indexOf('<g fill="#ebebeb"><circle');
     const firstNode = svg.indexOf("data-node=");
     expect(background).toBeGreaterThan(-1);
     expect(background).toBeLessThan(edges);
@@ -409,7 +409,7 @@ describe("drawDiagram with a header", () => {
       .join("");
     expect(
       svg.endsWith(
-        `<g transform="translate(0 72)"><g fill="none" stroke="#8c8c8c" stroke-width="1.5">${paths}</g><g fill="#8c8c8c">${dots}</g>${drawn}</g></svg>`,
+        `<g transform="translate(0 72)"><g fill="none" stroke="#ebebeb" stroke-width="1.5">${paths}</g><g fill="#ebebeb">${dots}</g>${drawn}</g></svg>`,
       ),
     ).toBe(true);
     const background = svg.indexOf('fill="url(#catena-dots)"');

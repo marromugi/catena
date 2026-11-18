@@ -31,7 +31,7 @@ export const DEFAULT_DOT_GRID: DotGrid = {
   spacing: 16,
 };
 
-export const DEFAULT_EDGE_PAINT: EdgePaint = { stroke: "#8c8c8c", strokeWidth: 1.5 };
+export const DEFAULT_EDGE_PAINT: EdgePaint = { stroke: "#ebebeb", strokeWidth: 1.5 };
 
 /** The id of the dot grid's `<pattern>`. A node's ids end in a count, so none is this one. */
 const DOT_PATTERN_ID = "catena-dots";
