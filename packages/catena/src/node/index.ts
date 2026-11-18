@@ -60,7 +60,7 @@ export type {
   RegistrableLogo,
 } from "./logo";
 export { NO_SHADOW } from "./svg";
-export type { NewId, Outline, Shadow } from "./svg";
+export type { Shadow } from "./svg";
 export { defineTheme, InvalidThemeError, TONES } from "./theme";
 export type {
   BadgeLook,
