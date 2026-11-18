@@ -3,9 +3,9 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { drawEdge, drawEdgeEnds } from "../edge";
+import { drawEdge, drawEdgeEnd } from "../edge";
 import { filledIconPathData } from "../icon";
-import type { Layout, Rect } from "../layout";
+import type { Layout, Point, Rect } from "../layout";
 import type { Node } from "../node";
 import { writeSvg } from "../svg";
 import { placeGraph } from "../place";
@@ -14,11 +14,21 @@ import { DEFAULT_DOT_GRID, DEFAULT_EDGE_PAINT, drawDiagram, type DiagramHeader }
 
 const spacing = { nodeGap: 40, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 16 };
 
-/** A node that draws a marker naming its id and box. */
+/** Whether `point` is on a side of `box`, not at a corner. */
+const onSideOf = (box: Rect, point: Point) =>
+  ((point.x === box.x || point.x === box.x + box.width) &&
+    point.y > box.y &&
+    point.y < box.y + box.height) ||
+  ((point.y === box.y || point.y === box.y + box.height) &&
+    point.x > box.x &&
+    point.x < box.x + box.width);
+
+/** A node that draws a marker naming its id and box, and covers the sides of its box. */
 const markerNode = (id: string, width: number, height: number): Node => ({
   leaf: { id, size: { width, height } },
   draw: (box: Rect) =>
     `<g data-node="${id}" data-box="${box.x},${box.y},${box.width},${box.height}"/>`,
+  covers: onSideOf,
 });
 
 const a = markerNode("a", 120, 60);
@@ -35,8 +45,16 @@ const layout: Layout = placeGraph(
   },
   spacing,
 );
-const placedBoxes = (placed: Layout["nodes"]): [string, Rect][] =>
-  placed.flatMap((node) => [[node.id, node.box] as [string, Rect], ...placedBoxes(node.children)]);
+/** The dots at `points`, in order. */
+const dotsAt = (...points: (Point | undefined)[]) =>
+  points.map((point) => writeSvg(drawEdgeEnd(point ?? { x: 0, y: 0 }))).join("");
+
+/** The dots of both ends of every edge of `layout`, first end then last. */
+const endDotsOf = (drawnLayout: Layout) =>
+  drawnLayout.edges
+    .flatMap(({ points }) => [points[0], points.at(-1) ?? points[0]])
+    .map((point) => writeSvg(drawEdgeEnd(point)))
+    .join("");
 const boxAt = (x: number): Rect => ({ x, y: 0, width: 10, height: 10 });
 const nodes = new Map([a, b, c].map((node) => [node.leaf.id, node]));
 
@@ -139,35 +157,38 @@ describe("drawDiagram", () => {
   });
 
   test("draws a dot at both ends of every edge in one group filled with the edges' stroke", () => {
-    const dots = layout.edges.flatMap((edge) => drawEdgeEnds(edge).map(writeSvg)).join("");
+    const dots = endDotsOf(layout);
     expect(drawDiagram(layout, nodes)).toContain(`<g fill="#8c8c8c">${dots}</g>`);
     expect(drawDiagram(layout, nodes, { edgePaint: { stroke: "#123456" } })).toContain(
       `<g fill="#123456">${dots}</g>`,
     );
   });
 
-  test("centres each node end's dot on the node's border, so the node covers half of it", () => {
-    const boxes = new Map(placedBoxes(layout.nodes));
-    for (const edge of layout.edges) {
-      const ends = [
-        [edge.from, edge.points[0]],
-        [edge.to, edge.points.at(-1)],
-      ] as const;
-      for (const [id, point] of ends) {
-        const box = boxes.get(id);
-        expect(box).toBeDefined();
-        expect(point).toBeDefined();
-        if (box === undefined || point === undefined) continue;
-        const onSide =
-          ((point.x === box.x || point.x === box.x + box.width) &&
-            point.y > box.y &&
-            point.y < box.y + box.height) ||
-          ((point.y === box.y || point.y === box.y + box.height) &&
-            point.x > box.x &&
-            point.x < box.x + box.width);
-        expect(onSide).toBe(true);
-      }
-    }
+  test("draws no dot at an end whose node doesn't cover it, nor at one with no Node", () => {
+    const flat: Node = { ...b, covers: () => false };
+    const [toB, toC] = layout.edges;
+    expect(drawDiagram(layout, new Map([...nodes, ["b", flat]]))).toContain(
+      `<g fill="#8c8c8c">${dotsAt(toB?.points[0], toC?.points[0], toC?.points.at(-1))}</g>`,
+    );
+    expect(drawDiagram(layout, new Map([["a", a]]))).toContain(
+      `<g fill="#8c8c8c">${dotsAt(toB?.points[0], toC?.points[0])}</g>`,
+    );
+  });
+
+  test("draws no dot at an end on a group with no Node", () => {
+    const toGroup = placeGraph(
+      {
+        direction: "down",
+        nodes: [a.leaf, { id: "g", direction: "right", children: [b.leaf] }],
+        edges: [{ id: "a>g", from: "a", to: "g" }],
+      },
+      spacing,
+    );
+    const [edge] = toGroup.edges;
+    expect(edge).toBeDefined();
+    expect(drawDiagram(toGroup, nodes)).toContain(
+      `<g fill="#8c8c8c">${writeSvg(drawEdgeEnd(edge?.points[0] ?? { x: 0, y: 0 }))}</g>`,
+    );
   });
 
   test("draws every placed node with a Node at its box, group children too, and skips the rest", () => {
@@ -183,10 +204,9 @@ describe("drawDiagram", () => {
 
   test("draws nothing for a placed node with no Node", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
-    const dots = layout.edges.flatMap((edge) => drawEdgeEnds(edge).map(writeSvg)).join("");
     expect(drawDiagram(layout, new Map())).toMatch(
       new RegExp(
-        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g [^>]*>${dots}</g></svg>$`,
+        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g fill="#8c8c8c"/></svg>$`,
       ),
     );
   });
@@ -369,7 +389,7 @@ describe("drawDiagram with a header", () => {
   test("draws the header over the background, then the edges, their dots and the nodes 72 lower", () => {
     const svg = drawDiagram(layout, nodes, { header });
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
-    const dots = layout.edges.flatMap((edge) => drawEdgeEnds(edge).map(writeSvg)).join("");
+    const dots = endDotsOf(layout);
     const group = layout.nodes.find((node) => node.id === "g");
     const drawn = [...layout.nodes, ...(group?.children ?? [])]
       .flatMap(({ id, box }) => nodes.get(id)?.draw(box) ?? [])

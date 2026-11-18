@@ -1,5 +1,5 @@
-import { drawEdge, drawEdgeEnds } from "../edge";
-import type { Layout, PlacedNode } from "../layout";
+import { drawEdge, drawEdgeEnd } from "../edge";
+import type { Layout, PlacedEdge, PlacedNode, Point, Rect } from "../layout";
 import type { Node } from "../node";
 import { element, writeSvg, type SvgElement } from "../svg";
 import { drawHeader, HEADER_HEIGHT, type DiagramHeader } from "./header";
@@ -37,9 +37,9 @@ export const DEFAULT_EDGE_PAINT: EdgePaint = { stroke: "#8c8c8c", strokeWidth: 1
 const DOT_PATTERN_ID = "catena-dots";
 
 /**
- * A placed node with no `Node` is not drawn, though its children are. Each end of an edge gets a dot in
- * the edges' stroke colour, drawn before the nodes so a node covers the half inside it; a dot on a group,
- * which has no `Node`, stays whole. Every document names its dot
+ * A placed node with no `Node` is not drawn, though its children are. An end of an edge gets a dot in the
+ * edges' stroke colour where its node's card has the end on one of its sides, drawn before the nodes so
+ * the card covers half of it; any other end, such as one on a group with no `Node`, gets none. Every document names its dot
  * pattern `catena-dots`, so documents inlined in one HTML page show the first one's dot grid. Given a
  * header, the document is 72 higher, the header is drawn over the background at its top, and the edges
  * and nodes 72 lower, below it.
@@ -64,17 +64,22 @@ export function drawDiagram(
     { fill: "none", stroke: paint.stroke, "stroke-width": paint.strokeWidth },
     layout.edges.map((edge) => drawEdge(edge)),
   );
+  const placed = placedNodes(layout.nodes);
+  const boxes = new Map(placed.map(({ id, box }) => [id, box]));
   const ends = element(
     "g",
     { fill: paint.stroke },
-    layout.edges.flatMap((edge) => drawEdgeEnds(edge)),
+    layout.edges
+      .flatMap(edgeEnds)
+      .filter(({ id, point }) => coveredBy(nodes.get(id), boxes.get(id), point))
+      .map(({ point }) => drawEdgeEnd(point)),
   );
   const drawn = [
     writeSvg(edges),
     writeSvg(ends),
-    ...placedNodes(layout.nodes).flatMap((placed) => {
-      const node = nodes.get(placed.id);
-      return node === undefined ? [] : [node.draw(placed.box)];
+    ...placed.flatMap(({ id, box }) => {
+      const node = nodes.get(id);
+      return node === undefined ? [] : [node.draw(box)];
     }),
   ];
   const { header } = options;
@@ -113,6 +118,19 @@ function dotGrid(width: number, height: number, grid: DotGrid): SvgElement[] {
     element("rect", { width, height, fill: canvas }),
     element("rect", { width, height, fill: `url(#${DOT_PATTERN_ID})` }),
   ];
+}
+
+/** The two ends of `edge`, each with the id of the node it meets. */
+function edgeEnds(edge: PlacedEdge): { id: string; point: Point }[] {
+  const [start] = edge.points;
+  return [
+    { id: edge.from, point: start },
+    { id: edge.to, point: edge.points.at(-1) ?? start },
+  ];
+}
+
+function coveredBy(node: Node | undefined, box: Rect | undefined, point: Point): boolean {
+  return node !== undefined && box !== undefined && node.covers(box, point);
 }
 
 function placedNodes(placed: readonly PlacedNode[]): PlacedNode[] {

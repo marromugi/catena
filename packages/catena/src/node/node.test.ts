@@ -5,6 +5,7 @@ import * as fc from "fast-check";
 import * as v from "valibot";
 import { describe, expect, test } from "vitest";
 import { iconNames, iconPathData } from "../icon";
+import type { Rect } from "../layout";
 import { element, writeSvg } from "../svg";
 import { layoutText, textPathData, Typeface } from "../text";
 import {
@@ -52,6 +53,7 @@ import {
   type ThemeOverrides,
 } from "./index";
 import type { LogoShape, Node, OwnIcon, OwnImage, OwnLogo } from "./index";
+import { onFilledOutline } from "./svg";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -2184,5 +2186,110 @@ describe("shadows, the pair's panel and the gap beside an icon", () => {
     expect(info.draw({ x: 0, y: 0, width: 37, height: 37 })).toContain(
       `<rect x="9.5" y="9.5" width="18" height="18" rx="9" fill="navy"`,
     );
+  });
+});
+
+/** The node drawn at its own size at (40, 20). */
+const atOwnSize = (node: Node) => ({ x: 40, y: 20, ...node.leaf.size });
+/** The middle of each side of `box`: top, right, bottom, left. */
+const middles = ({ x, y, width, height }: Rect) => [
+  { x: x + width / 2, y },
+  { x: x + width, y: y + height / 2 },
+  { x: x + width / 2, y: y + height },
+  { x, y: y + height / 2 },
+];
+
+const filledRect = (extra: Record<string, string | number> = {}) =>
+  element("rect", {
+    x: 10.5,
+    y: 10.5,
+    width: 99,
+    height: 49,
+    rx: 8,
+    fill: "#fff",
+    "stroke-width": 1,
+    ...extra,
+  });
+
+describe("what a node covers", () => {
+  test("a card covers the middle of each side of its box, not a corner, its inside or past it", () => {
+    const card = buildNode(titleBodyCard, theme, "c", { title: "ここで", body: "Keeps answers." });
+    const box = atOwnSize(card);
+    for (const point of middles(box)) expect(card.covers(box, point)).toBe(true);
+    expect(card.covers(box, { x: box.x, y: box.y })).toBe(false);
+    expect(card.covers(box, { x: box.x + 30, y: box.y + 30 })).toBe(false);
+    expect(card.covers(box, { x: box.x - 1, y: box.y + box.height / 2 })).toBe(false);
+  });
+
+  test("a card covers every point of its box's sides past its round corners", () => {
+    const card = buildNode(titleBodyCard, theme, "c", { title: "ここで", body: "Keeps answers." });
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -500, max: 500 }),
+        fc.integer({ min: -500, max: 500 }),
+        fc.integer({ min: 0, max: 400 }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.constantFrom("top", "right", "bottom", "left"),
+        (x, y, wider, along, side) => {
+          const box = { x, y, width: card.leaf.size.width + wider, height: card.leaf.size.height };
+          const corner = 9;
+          const across = corner + along * (box.width - 2 * corner);
+          const down = corner + along * (box.height - 2 * corner);
+          const point = {
+            top: { x: x + across, y },
+            bottom: { x: x + across, y: y + box.height },
+            left: { x, y: y + down },
+            right: { x: x + box.width, y: y + down },
+          }[side];
+          expect(card.covers(box, point)).toBe(true);
+        },
+      ),
+    );
+  });
+
+  test("a round button covers the middle of each side of its box, on its curve", () => {
+    const button = buildNode(roundButton, theme, "b", "service");
+    const box = atOwnSize(button);
+    for (const point of middles(box)) expect(button.covers(box, point)).toBe(true);
+  });
+
+  test("a tile covers the middle of each side of its box with no caption, and with one only at the top", () => {
+    const bare = buildNode(iconTile, theme, "t", { icon: "service" });
+    const bareBox = atOwnSize(bare);
+    for (const point of middles(bareBox)) expect(bare.covers(bareBox, point)).toBe(true);
+    const captioned = buildNode(iconTile, theme, "t", {
+      icon: "service",
+      label: { caption: "A caption wider than the tile" },
+    });
+    const box = atOwnSize(captioned);
+    expect(middles(box).map((point) => captioned.covers(box, point))).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  describe("onFilledOutline", () => {
+    const middleOfTop = { x: 60, y: 10 };
+
+    test("takes the stroke as part of the outline", () => {
+      expect(onFilledOutline([filledRect()], middleOfTop)).toBe(true);
+      expect(onFilledOutline([filledRect()], { x: 60, y: 10.5 })).toBe(false);
+    });
+
+    test("finds a rect inside a group", () => {
+      expect(onFilledOutline([element("g", {}, [filledRect()])], middleOfTop)).toBe(true);
+    });
+
+    test("leaves out a rect with no fill, one under a transform, and one in a clip path", () => {
+      expect(onFilledOutline([filledRect({ fill: "none" })], middleOfTop)).toBe(false);
+      expect(
+        onFilledOutline([element("g", { transform: "scale(1)" }, [filledRect()])], middleOfTop),
+      ).toBe(false);
+      expect(onFilledOutline([element("clipPath", { id: "c" }, [filledRect()])], middleOfTop)).toBe(
+        false,
+      );
+    });
   });
 });

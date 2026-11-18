@@ -1,4 +1,4 @@
-import type { Rect } from "../layout";
+import type { Point, Rect } from "../layout";
 import { element, type SvgElement } from "../svg";
 
 /**
@@ -82,4 +82,43 @@ export function outlinedRect(
     ),
     element("rect", { ...rect, filter: `url(#${id})` }),
   ];
+}
+
+/** Elements whose children are not drawn where their own coordinates say. */
+const NOT_DRAWN_IN_PLACE = new Set(["clipPath", "defs", "filter", "mask", "pattern"]);
+
+/** How far apart two coordinates may be and still count as the same, for sums of fractions such as 0.1 + 0.2. */
+const NEAR = 1e-6;
+
+/**
+ * Whether `point` is on the outline of one of the filled `<rect>`s in `drawn`, its stroke and round corners
+ * included, so the rect covers about half of anything centred there. A rect under a `transform`, or
+ * inside an element such as `<clipPath>` that is not drawn in place, is not one of them.
+ */
+export function onFilledOutline(drawn: readonly SvgElement[], point: Point): boolean {
+  return drawn.some(({ name, attributes, children }) => {
+    if (NOT_DRAWN_IN_PLACE.has(name) || "transform" in attributes) return false;
+    if (name === "rect" && attributes.fill !== "none" && onOutline(attributes, point)) return true;
+    return onFilledOutline(children, point);
+  });
+}
+
+/** Read as SVG reads a `<rect>`, `rx` cut to half the width and height. */
+function onOutline(attributes: Readonly<Record<string, string | number>>, point: Point): boolean {
+  const number = (key: string) => Number(attributes[key] ?? 0);
+  const half = number("stroke-width") / 2;
+  const width = number("width");
+  const height = number("height");
+  const round = Math.min(number("rx"), width / 2, height / 2) + half;
+  const left = number("x") - half + round;
+  const top = number("y") - half + round;
+  const right = number("x") + width + half - round;
+  const bottom = number("y") + height + half - round;
+  const inside = point.x > left && point.x < right && point.y > top && point.y < bottom;
+  const nearest = {
+    x: Math.min(Math.max(point.x, left), right),
+    y: Math.min(Math.max(point.y, top), bottom),
+  };
+  const away = Math.hypot(point.x - nearest.x, point.y - nearest.y);
+  return !inside && Math.abs(away - round) <= NEAR;
 }

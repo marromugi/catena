@@ -27,6 +27,7 @@ import {
   iconTile,
   iconTitleCard,
   InvalidNodeContentError,
+  roundButton,
   type Node,
   titleBodyCard,
 } from "../node";
@@ -312,6 +313,28 @@ describe("drawDiagramFile", () => {
         background: SAMPLE.background,
       }),
     );
+  });
+
+  test("draws a dot at an edge's end on a card, and none at its end below a tile's caption", () => {
+    const tile = { icon: "service", label: { caption: "User" } };
+    const graph: Graph = {
+      direction: "down",
+      nodes: [
+        buildNode(iconTile, theme, "a", tile).leaf,
+        buildNode(roundButton, theme, "b", "service").leaf,
+      ],
+      edges: [{ id: "a>b", from: "a", to: "b" }],
+    };
+    const end = placeGraph(graph, SPACING).edges[0]?.points.at(-1);
+    const drawn = draw({
+      direction: "down",
+      nodes: [
+        { id: "a", kind: "iconTile", content: tile },
+        { id: "b", kind: "roundButton", content: "service" },
+      ],
+      edges: graph.edges,
+    });
+    expect(drawn).toContain(`<g fill="#8c8c8c"><circle cx="${end?.x}" cy="${end?.y}" r="4"/></g>`);
   });
 
   test("draws no header and the default background when the file gives none", () => {
