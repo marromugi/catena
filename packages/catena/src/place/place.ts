@@ -8,11 +8,21 @@ import { assignLanes, outside, type BorderCrossing, type Route, type Run } from 
 /** A grid laid out on its own, measured from the top-left corner of the box around it. */
 interface Arrangement {
   readonly size: Size;
+  /** The part of the grid that lines up with its neighbours, and whose sides edges meet. */
+  readonly lineUp: LineUp;
   readonly nodes: readonly PlacedNode[];
   /** The edges drawn from end to end inside the grid. */
   readonly edges: readonly PlacedEdge[];
   /** The part inside the grid of each edge that crosses its border, by the edge's id, measured from the point where the edge crosses. */
   readonly crossings: ReadonlyMap<string, readonly Point[]>;
+}
+
+/** A node of `size` that lines up by its middle, and whose own sides edges meet. */
+function wholeBoxOf(size: Size): LineUp {
+  return {
+    middle: { x: size.width / 2, y: size.height / 2 },
+    edgeBox: { x: 0, y: 0, ...size },
+  };
 }
 
 function idsIn(node: GraphNode): string[] {
@@ -239,14 +249,19 @@ function arrange(
             crossingInto(node.id, runs),
             node.direction === direction ? "along" : "across",
           )
-        : { size: node.size, nodes: [], edges: [], crossings: new Map() };
-    const { width, height } = inner.size;
-    const lineUp = "children" in node ? undefined : node.lineUp;
-    const edgeBox = lineUp?.edgeBox ?? { x: 0, y: 0, width, height };
+        : {
+            size: node.size,
+            lineUp: node.lineUp ?? wholeBoxOf(node.size),
+            nodes: [],
+            edges: [],
+            crossings: new Map(),
+          };
+    const { size, lineUp } = inner;
+    const { edgeBox } = lineUp;
     const item: Item = {
       ...spot,
-      ...flowOf({ x: width, y: height }),
-      middle: flowOf(lineUp?.middle ?? { x: width / 2, y: height / 2 }),
+      ...flowOf({ x: size.width, y: size.height }),
+      middle: flowOf(lineUp.middle),
       edgeBox: {
         start: flowOf(edgeBox),
         end: flowOf({ x: edgeBox.x + edgeBox.width, y: edgeBox.y + edgeBox.height }),
@@ -317,9 +332,11 @@ function arrange(
     }
   }
   const corner = turned(frame.size);
+  const size = { width: corner.x, height: corner.y };
 
   return {
-    size: { width: corner.x, height: corner.y },
+    size,
+    lineUp: { middle: turned(frame.middle), edgeBox: { x: 0, y: 0, ...size } },
     nodes: placed.map((each) => each.node),
     edges: [...drawn, ...placed.flatMap((each) => each.edges)],
     crossings,
@@ -404,8 +421,10 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * it, unless it names its cell. In a grid, an edge counts between the two nodes that hold its ends, so an
  * edge out of a group moves the group. A row or a column reaches as far before and after its middle line as
  * its nodes do, and a node sits with its middle on the middle lines of its row and its column: the middle
- * its line-up names, or the middle of its box. A group is as large as its grid, and the grid of a group and
- * of the canvas keeps at least the padding around its nodes.
+ * a leaf's line-up names, or the middle of its box. A group's middle is moved off the middle of its box, on
+ * each side, as far as the middle line of its one row or column lies off that track's own middle; a group
+ * with more than one row or column that way keeps the middle of its box. A group is as large as its grid,
+ * and the grid of a group and of the canvas keeps at least the padding around its nodes.
  *
  * An edge leaves its source on the middle line of the source's column or row, at the side that faces along
  * the flow, and enters its target on its middle line at the side that faces back; those sides are of the
@@ -415,9 +434,9 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * edges need the room: for their lanes, to keep clear of the next row or column, or for a straight stretch.
  *
  * An edge with an end inside a group runs to the group as an edge to the group itself does, through the
- * middle of the group's side, and on inside the group to the node that is its end or holds it, as far in
+ * group's middle on its side, and on inside the group to the node that is its end or holds it, as far in
  * as that end lies; it enters or leaves that end along the flow of the grid it is in. A group is made
- * longer at one end of that side where that keeps such an edge sound. An edge between a group and a node
+ * longer at one end of that side where that keeps such an edge sound, and lines up by where it crosses. An edge between a group and a node
  * inside it is left out of the layout and orders no nodes.
  *
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of

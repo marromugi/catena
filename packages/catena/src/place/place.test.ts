@@ -605,6 +605,84 @@ describe("placeGraph: a leaf that lines up by a part of it", () => {
   });
 });
 
+/** A 40 by 40 square at the top, centred over a caption 60 wide, 100 high in all. */
+const captionedTile = (id: string): GraphNode => ({
+  id,
+  size: { width: 60, height: 100 },
+  lineUp: { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
+});
+
+describe("placeGraph: a group whose child lines up by a part of it", () => {
+  test("lines up with the node beside it by its child's part, and an edge into the child runs straight, when the flow is right", () => {
+    const placed = place(
+      "right",
+      [leaf("C", 80, 30), group("G", "right", [captionedTile("T")])],
+      ["C>T"],
+    );
+
+    expect(boxes(placed)).toEqual({
+      C: [10, 25, 80, 30],
+      G: [110, 10, 86, 120],
+      T: [126, 20, 60, 100],
+    });
+    expect(paths(placed)).toEqual({
+      "C>T #0": [
+        [90, 40],
+        [136, 40],
+      ],
+    });
+  });
+
+  test("lines up with the node beside it by its child's part when the flow is down", () => {
+    expect(
+      boxes(
+        place("down", [
+          group("G", "down", [captionedTile("T")], { row: 0, column: 0 }),
+          leaf("C", 80, 30, { row: 0, column: 1 }),
+        ]),
+      ),
+    ).toEqual({ G: [10, 10, 80, 120], T: [20, 20, 60, 100], C: [110, 25, 80, 30] });
+  });
+
+  test("lines up by the part of a child of a group inside it", () => {
+    const placed = place(
+      "right",
+      [leaf("C", 80, 30), group("G", "right", [group("H", "right", [captionedTile("T")])])],
+      ["C>T"],
+    );
+
+    expect(boxes(placed)).toEqual({
+      C: [10, 35, 80, 30],
+      G: [110, 10, 112, 140],
+      H: [126, 20, 86, 120],
+      T: [142, 30, 60, 100],
+    });
+    expect(paths(placed)).toEqual({
+      "C>T #0": [
+        [90, 50],
+        [152, 50],
+      ],
+    });
+  });
+
+  test("lines up by its middle when its children lie side by side across the flow", () => {
+    expect(
+      boxes(
+        place(
+          "right",
+          [leaf("C", 80, 30), group("G", "right", [captionedTile("T"), captionedTile("U")])],
+          ["C>T", "C>U"],
+        ),
+      ),
+    ).toEqual({
+      C: [10, 115, 80, 30],
+      G: [110, 10, 86, 240],
+      T: [126, 20, 60, 100],
+      U: [126, 140, 60, 100],
+    });
+  });
+});
+
 describe("placeGraph: an edge to the next row", () => {
   const chain = [leaf("A", 50, 30), leaf("B", 80, 40), leaf("C", 50, 30)];
 
