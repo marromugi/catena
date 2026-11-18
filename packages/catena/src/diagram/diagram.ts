@@ -1,6 +1,7 @@
 import { drawEdge } from "../edge";
 import type { Layout, PlacedNode } from "../layout";
-import { element, writeSvg, type Node, type SvgElement } from "../node";
+import type { Node } from "../node";
+import { element, writeSvg, type SvgElement } from "../svg";
 import { drawHeader, HEADER_HEIGHT, type DiagramHeader } from "./header";
 
 /** A canvas of one colour under a grid of round dots. */

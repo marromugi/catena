@@ -1,5 +1,5 @@
 import type { PlacedEdge, Point } from "../layout";
-import { element, type SvgElement } from "../node";
+import { element, type SvgElement } from "../svg";
 
 /** How an edge is drawn. */
 export interface EdgeOptions {

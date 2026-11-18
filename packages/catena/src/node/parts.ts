@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { iconGrid, iconPathData, iconStroke, isIconName, type IconName } from "../icon";
 import type { Rect } from "../layout";
+import { element, type SvgElement } from "../svg";
 import { layoutText, lineOutline, textPathData, type FontStack, type TextLayout } from "../text";
 import {
   OWN_ICON,
@@ -15,7 +16,7 @@ import {
   type RegisteredLogo,
 } from "./logo";
 import type { Part } from "./part";
-import { element, outlinedRect, type SvgElement } from "./svg";
+import { outlinedRect } from "./svg";
 import {
   TONES,
   type BadgeLook,

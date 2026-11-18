@@ -59,8 +59,8 @@ export type {
   RegisteredLogo,
   RegistrableLogo,
 } from "./logo";
-export { element, NO_SHADOW, writeSvg } from "./svg";
-export type { NewId, Outline, Shadow, SvgElement } from "./svg";
+export { NO_SHADOW } from "./svg";
+export type { NewId, Outline, Shadow } from "./svg";
 export { defineTheme, InvalidThemeError, TONES } from "./theme";
 export type {
   BadgeLook,

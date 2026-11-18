@@ -1,19 +1,5 @@
 import type { Rect } from "../layout";
-
-/** One SVG element and what it holds. Parts draw these, and only {@link writeSvg} turns them into text. */
-export interface SvgElement {
-  readonly name: string;
-  readonly attributes: Readonly<Record<string, string | number>>;
-  readonly children: readonly SvgElement[];
-}
-
-export function element(
-  name: string,
-  attributes: Readonly<Record<string, string | number>> = {},
-  children: readonly SvgElement[] = [],
-): SvgElement {
-  return { name, attributes, children };
-}
+import { element, type SvgElement } from "../svg";
 
 /**
  * Gives an id for an element another refers to, such as a `<clipPath>`. The ids are unique among the
@@ -33,20 +19,6 @@ export function idsOfNode(nodeId: string): NewId {
   ).join("");
   let count = 0;
   return () => `catena-${written}-${++count}`;
-}
-
-const ESCAPES: Record<string, string> = { "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" };
-
-/** The element as SVG markup, its attribute values escaped so any string stays one value. */
-export function writeSvg({ name, attributes, children }: SvgElement): string {
-  const written = Object.entries(attributes)
-    .map(
-      ([key, value]) => ` ${key}="${String(value).replaceAll(/[&"<>]/g, (c) => ESCAPES[c] ?? c)}"`,
-    )
-    .join("");
-  return children.length === 0
-    ? `<${name}${written}/>`
-    : `<${name}${written}>${children.map(writeSvg).join("")}</${name}>`;
 }
 
 /**

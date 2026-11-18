@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
+import { element, writeSvg } from "../svg";
 import { UnknownIconError, UnknownLogoError } from "./logo";
 import type { Part } from "./part";
 import {
@@ -28,7 +29,7 @@ import {
   textPart,
   title,
 } from "./parts";
-import { element, idsOfNode, writeSvg } from "./svg";
+import { idsOfNode } from "./svg";
 import type { CardLook, Theme } from "./theme";
 
 /** The content given for a node is not what its kind shows. */

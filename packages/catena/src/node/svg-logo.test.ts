@@ -1,13 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import {
-  element,
-  readSvgLogo,
-  UnreadableSvgError,
-  writeSvg,
-  type LogoShape,
-  type OwnLogo,
-} from "./index";
+import { element, writeSvg } from "../svg";
+import { readSvgLogo, UnreadableSvgError, type LogoShape, type OwnLogo } from "./index";
 import { MalformedXmlError } from "./xml";
 
 // Made-up shapes: catena's tests carry no real company's mark or colours.

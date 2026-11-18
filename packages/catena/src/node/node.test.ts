@@ -5,6 +5,7 @@ import * as fc from "fast-check";
 import * as v from "valibot";
 import { describe, expect, test } from "vitest";
 import { iconNames, iconPathData } from "../icon";
+import { element, writeSvg } from "../svg";
 import { layoutText, textPathData, Typeface } from "../text";
 import {
   activeRoundButton,
@@ -15,7 +16,6 @@ import {
   centered,
   defineTheme,
   divider,
-  element,
   fitted,
   frame,
   icon,
@@ -50,7 +50,6 @@ import {
   type Part,
   type Shadow,
   type ThemeOverrides,
-  writeSvg,
 } from "./index";
 import type { LogoShape, Node, OwnIcon, OwnImage, OwnLogo } from "./index";
 
@@ -255,14 +254,6 @@ const noId = () => {
 
 /** `node` drawn at (10, 20) at its own size. */
 const drawnAtSize = (node: Node) => node.draw({ x: 10, y: 20, ...node.leaf.size });
-
-describe("writeSvg", () => {
-  test("writes an element's attributes and then its children inside it", () => {
-    expect(writeSvg(element("g", { id: "a" }, [element("rect", { x: 1 })]))).toBe(
-      `<g id="a"><rect x="1"/></g>`,
-    );
-  });
-});
 
 describe("frame and stack", () => {
   test("hand their parts the box they are drawn in, less the padding and stacked the gap apart", () => {

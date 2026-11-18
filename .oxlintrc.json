@@ -49,6 +49,22 @@
       }
     },
     {
+      "files": ["packages/catena/src/svg/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../**", "./../**"],
+                "message": "svg writes the elements every module draws, so it imports nothing outside svg."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["packages/catena/src/verify/**"],
       "rules": {
         "no-restricted-imports": [

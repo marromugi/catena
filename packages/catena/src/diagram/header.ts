@@ -1,5 +1,6 @@
 import { filledIconPaint, filledIconPathData, iconGrid } from "../icon";
-import { element, type SvgElement, type TextLook, type Theme } from "../node";
+import type { TextLook, Theme } from "../node";
+import { element, type SvgElement } from "../svg";
 import { layoutText, textPathData, type TextLayout } from "../text";
 
 /** The repository a diagram was drawn from, as its header names it. */
