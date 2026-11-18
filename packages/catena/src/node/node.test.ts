@@ -1014,6 +1014,29 @@ const captionLine = (text: string, x: number, y: number) =>
     y,
   );
 
+/** The box around every point `pathData` names, its curves' control points among them. */
+const controlBox = (pathData: string) => {
+  const numbers = (pathData.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/gu) ?? []).map(Number);
+  const xs = numbers.filter((_, index) => index % 2 === 0);
+  const ys = numbers.filter((_, index) => index % 2 === 1);
+  const [left, top] = [Math.min(...xs), Math.min(...ys)];
+  return { x: left, y: top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
+};
+
+/** What a node draws before its last path, the icon: the background the icon sits on. */
+const background = (node: Node) => {
+  const drawn = node.draw({ x: 0, y: 0, ...node.leaf.size });
+  return drawn.slice(0, drawn.lastIndexOf("<path"));
+};
+
+/** `letters` drawn as an icon in a square 20 across at `square`: their path data, fill, and control box. */
+const lettersIn = (letters: string, square: { x: number; y: number }, t = theme) => {
+  const drawn = icon.layout({ letters }, t, 100).draw({ ...square, width: 20, height: 20 }, noId);
+  const d = drawn[0]?.attributes.d;
+  if (drawn.length !== 1 || typeof d !== "string") throw new Error("One path is drawn.");
+  return { d, fill: drawn[0]?.attributes.fill, box: controlBox(d) };
+};
+
 describe("icons and the kinds that carry one", () => {
   test("a built-in icon is drawn by name, scaled from its grid to the look's size, in its colour", () => {
     const block = icon.layout("spark", theme, 100);
@@ -1175,6 +1198,112 @@ describe("icons and the kinds that carry one", () => {
     const button = buildNode(roundButton, theme, "b", { href: "logo.png" });
     expect(button.draw({ x: 0, y: 0, width: 30, height: 30 })).toContain(
       `<image x="8" y="8" width="14" height="14" href="logo.png" preserveAspectRatio="xMidYMid meet"/>`,
+    );
+  });
+
+  test("one or two letters are drawn filled in the look's colour, their outline's box centred in the icon's square", () => {
+    for (const letters of ["A", "AB", "Wg", "i", "Il"]) {
+      const { fill, box } = lettersIn(letters, { x: 10, y: 20 });
+      expect(fill).toBe("#1f1f1f");
+      expect(box.x + box.width / 2).toBeCloseTo(20, 6);
+      expect(box.y + box.height / 2).toBeCloseTo(30, 6);
+    }
+  });
+
+  test("one capital and two stand equally tall, a capital about half the square; two too wide for it are made smaller to fit", () => {
+    const one = lettersIn("A", { x: 0, y: 0 }).box;
+    const two = lettersIn("AB", { x: 0, y: 0 }).box;
+    expect(two.height).toBeCloseTo(one.height, 6);
+    expect(one.height).toBeCloseTo(0.68 * 20 * 0.7275, 1);
+    expect(two.width).toBeLessThan(20);
+
+    const wide = lettersIn("WW", { x: 0, y: 0 }).box;
+    expect(wide.width).toBeCloseTo(20, 6);
+    expect(wide.height).toBeLessThan(one.height);
+  });
+
+  test("letters are drawn in the theme's bold fonts", () => {
+    const boldOnly = defineTheme({ regular: fonts.bold, bold: fonts.bold }, TESTED_LOOKS);
+    const regularOnly = defineTheme({ regular: fonts.regular, bold: fonts.regular }, TESTED_LOOKS);
+    const drawn = lettersIn("AB", { x: 0, y: 0 }).d;
+    expect(lettersIn("AB", { x: 0, y: 0 }, boldOnly).d).toBe(drawn);
+    expect(lettersIn("AB", { x: 0, y: 0 }, regularOnly).d).not.toBe(drawn);
+  });
+
+  test("letters sit in a tile's and a button's square, in its look's colour, on the background any icon there has", () => {
+    const looked = themeWith({
+      tileIcon: { color: "#2a6f4e" },
+      buttonIcon: { size: 18, color: "#7a4fd0" },
+    });
+    const pairs = [
+      [
+        buildNode(iconTile, looked, "t", { icon: { letters: "AB" } }),
+        buildNode(iconTile, looked, "t", { icon: "spark" }),
+        "#2a6f4e",
+      ],
+      [
+        buildNode(roundButton, looked, "b", { letters: "AB" }),
+        buildNode(roundButton, looked, "b", "spark"),
+        "#7a4fd0",
+      ],
+    ] as const;
+    for (const [letters, spark, color] of pairs) {
+      expect(letters.leaf.size).toEqual(spark.leaf.size);
+      expect(background(letters)).toBe(background(spark));
+
+      // The spark's transform puts its 24 grid on the icon's square.
+      const sparkDrawn = spark.draw({ x: 0, y: 0, ...spark.leaf.size });
+      const [, x, y, scale] =
+        /translate\(([\d.]+) ([\d.]+)\) scale\(([\d.]+)\)/u.exec(
+          sparkDrawn.slice(sparkDrawn.lastIndexOf("<path")),
+        ) ?? [];
+      const square = { x: Number(x), y: Number(y), size: Number(scale) * 24 };
+      const drawn = letters.draw({ x: 0, y: 0, ...letters.leaf.size });
+      const path = drawn.slice(drawn.lastIndexOf("<path"));
+      expect(path).toContain(`fill="${color}"`);
+      const box = controlBox(/ d="([^"]*)"/u.exec(path)?.[1] ?? "");
+      expect(box.x + box.width / 2).toBeCloseTo(square.x + square.size / 2, 1);
+      expect(box.y + box.height / 2).toBeCloseTo(square.y + square.size / 2, 1);
+      expect(box.height).toBeCloseTo(0.68 * square.size * 0.7275, 1);
+    }
+  });
+
+  test("letters are one or two of A to Z and a to z, and nothing else", () => {
+    const kind = frame(icon);
+    const notLetters: unknown[] = [
+      { letters: "" },
+      { letters: "ABC" },
+      { letters: "A1" },
+      { letters: "É" },
+      { letters: "あ" },
+      { letters: " A" },
+      { letters: "A\n" },
+      { letters: "A-" },
+      { letters: 1 },
+      { letters: "AB", color: "red" },
+    ];
+    for (const content of notLetters) {
+      // @ts-expect-error not an icon
+      expect(() => buildNode(kind, theme, "i", content)).toThrow(
+        expect.objectContaining({ name: "InvalidNodeContentError" }),
+      );
+    }
+    for (const letters of ["A", "z", "Ab", "zZ"]) {
+      expect(() => buildNode(kind, theme, "i", { letters })).not.toThrow();
+    }
+  });
+
+  test("any one or two letters sit inside the icon's square, centred by their outline's box", () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[A-Za-z]{1,2}$/u), (letters) => {
+        const { box } = lettersIn(letters, { x: 0, y: 0 });
+        expect(box.x).toBeGreaterThanOrEqual(-1e-9);
+        expect(box.y).toBeGreaterThanOrEqual(-1e-9);
+        expect(box.x + box.width).toBeLessThanOrEqual(20 + 1e-9);
+        expect(box.y + box.height).toBeLessThanOrEqual(20 + 1e-9);
+        expect(box.x + box.width / 2).toBeCloseTo(10, 6);
+        expect(box.y + box.height / 2).toBeCloseTo(10, 6);
+      }),
     );
   });
 

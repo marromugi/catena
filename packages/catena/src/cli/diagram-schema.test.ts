@@ -179,6 +179,14 @@ describe("diagramJsonSchema", () => {
     ["a logo", SQUARE_LOGO, true],
     ["a logo named on the theme, which catena draw registers none of", { logo: "mine" }, false],
     ["an object of no form", { stars: 5 }, false],
+    ["one letter", { letters: "A" }, true],
+    ["two letters, case kept", { letters: "aB" }, true],
+    ["no letters", { letters: "" }, false],
+    ["three letters", { letters: "ABC" }, false],
+    ["a digit among letters", { letters: "A1" }, false],
+    ["a letter outside A to Z", { letters: "É" }, false],
+    ["two letters and a line break", { letters: "AB\n" }, false],
+    ["letters with another key", { letters: "AB", color: "red" }, false],
   ])("for an icon, takes %s: %s, as catena draw does", (_, icon, accepted) => {
     expect(valid(naming(icon))).toBe(accepted);
     expect(draws(naming(icon))).toBe(accepted);

@@ -45,9 +45,9 @@ export interface DividerLook {
 }
 
 /**
- * How an icon looks. It is drawn `size` across. A built-in icon or a user's one-colour icon is drawn in
- * `color`: a stroked icon's lines are `strokeWidth` wide as drawn, and a filled icon is filled with it. A
- * user's logo or image keeps its own colours and widths.
+ * How an icon looks. It is drawn `size` across. A built-in icon, a user's one-colour icon, or letters are
+ * drawn in `color`: a stroked icon's lines are `strokeWidth` wide as drawn, and a filled icon or letters
+ * are filled with it. A user's logo or image keeps its own colours and widths.
  */
 export interface IconLook {
   readonly size: number;
