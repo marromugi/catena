@@ -226,7 +226,7 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - a built-in icon's name;
  * - the name of one of the theme's custom icons, drawn as that icon given here would be;
  * - the user's own icon ({@link OwnIcon}), in the look's colour;
- * - the user's own logo of shapes ({@link OwnLogo}), each in the colour it gives;
+ * - the user's own logo of shapes ({@link OwnLogo}), each in the colour and fill rule it gives;
  * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square;
  * - a logo or image registered on the theme, named ({@link RegisteredLogo}), drawn as that logo or
  *   image given here would be;
@@ -279,7 +279,11 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
                 { transform },
                 content.shapes.map((shape) =>
                   shape.paint === "fill"
-                    ? element("path", { d: shape.pathData, fill: shape.color })
+                    ? element("path", {
+                        d: shape.pathData,
+                        fill: shape.color,
+                        ...(shape.fillRule === undefined ? {} : { "fill-rule": shape.fillRule }),
+                      })
                     : element("path", {
                         d: shape.pathData,
                         ...iconStroke,

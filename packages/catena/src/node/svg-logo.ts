@@ -24,7 +24,8 @@ export class UnreadableSvgError extends Error {
  * The view box is the root `<svg>`'s `viewBox`, or `0 0 width height` when it has none. Each `<path>`,
  * `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>` and `<polygon>` becomes path data, filled
  * and then stroked in the colours it gives or takes from its `<g>`s and the root, as attributes or in an
- * inline `style`; a shape that draws nothing is left out. A stroke's caps and joins must both be round,
+ * inline `style`, its fill by the `fill-rule` it gives or takes the same way; a shape that draws nothing
+ * is left out. A stroke's caps and joins must both be round,
  * as a logo's strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
  *
  * The `transform` attributes of the `<g>`s and the shapes are applied to each shape's path data, in
@@ -94,6 +95,7 @@ function ownTransform(element: XmlElement, properties: ReadonlyMap<string, strin
 interface Paint {
   /** `null` for `none`. */
   readonly fill: string | null;
+  readonly fillRule: "nonzero" | "evenodd";
   readonly stroke: string | null;
   readonly strokeWidth: number;
   readonly linecap: string;
@@ -102,6 +104,7 @@ interface Paint {
 
 const INITIAL_PAINT: Paint = {
   fill: "black",
+  fillRule: "nonzero",
   stroke: null,
   strokeWidth: 1,
   linecap: "butt",
@@ -190,7 +193,12 @@ function refuseOverflow(shape: XmlElement, pathData: string): void {
 function shapesOf(name: string, pathData: string, paint: Paint, placed: Matrix): LogoShape[] {
   const shapes: LogoShape[] = [];
   if (paint.fill !== null && !UNFILLED.has(name)) {
-    shapes.push({ pathData, paint: "fill", color: paint.fill });
+    shapes.push({
+      pathData,
+      paint: "fill",
+      color: paint.fill,
+      ...(paint.fillRule === "evenodd" ? { fillRule: "evenodd" } : {}),
+    });
   }
   if (paint.stroke !== null && paint.strokeWidth > 0) {
     if (paint.linecap !== "round" || paint.linejoin !== "round") {
@@ -295,7 +303,6 @@ const LIMITED: ReadonlyArray<readonly [string, (value: string) => boolean]> = [
   ["marker-mid", isNone],
   ["marker-end", isNone],
   ["stroke-dasharray", isNone],
-  ["fill-rule", (value) => value === "nonzero" || value === "inherit"],
   ["visibility", (value) => value === "visible" || value === "inherit"],
   ["paint-order", (value) => value === "normal" || value.startsWith("fill")],
   ["vector-effect", isNone],
@@ -325,12 +332,21 @@ function paintOf(
     }
     return value;
   };
+  const fillRule = (): Paint["fillRule"] => {
+    const value = given("fill-rule")?.toLowerCase();
+    if (value === undefined) return inherited.fillRule;
+    if (value !== "nonzero" && value !== "evenodd") {
+      throw refused(`fill-rule ${value} on <${element.name}>`);
+    }
+    return value;
+  };
   const givenWidth = given("stroke-width");
   const strokeWidth =
     givenWidth === undefined ? inherited.strokeWidth : length(element, "stroke-width", givenWidth);
   if (strokeWidth < 0) throw refused(`stroke-width ${strokeWidth} on <${element.name}>`);
   return {
     fill: color("fill"),
+    fillRule: fillRule(),
     stroke: color("stroke"),
     strokeWidth,
     linecap: given("stroke-linecap")?.toLowerCase() ?? inherited.linecap,
