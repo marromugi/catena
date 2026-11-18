@@ -3,7 +3,14 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { layoutText, textPathData, Typeface, UnreadableFontError, type FontStack } from "./index";
+import {
+  layoutText,
+  lineOutline,
+  textPathData,
+  Typeface,
+  UnreadableFontError,
+  type FontStack,
+} from "./index";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -239,5 +246,30 @@ describe("Typeface.read", () => {
     const cutShort = readFileSync(sourceHanSansJP.regular).subarray(0, length);
 
     expect(() => Typeface.read(cutShort)).toThrow(UnreadableFontError);
+  });
+});
+
+describe("lineOutline", () => {
+  test("is the outlines of each run in its typeface, and the smallest box holding them all", () => {
+    const [latin, japanese] = bold;
+    if (japanese === undefined) throw new Error("The bold stack holds a Japanese typeface.");
+    const a = latin.outline("A", 10, 5, 20);
+    const kana = japanese.outline("あ", 10, 5 + a.advance, 20);
+    if (a.box === undefined || kana.box === undefined) throw new Error("Both have an outline.");
+    const line = lineOutline("Aあ", bold, 10, 5, 20);
+
+    expect(line.pathData).toBe(a.pathData + kana.pathData);
+    const left = Math.min(a.box.x, kana.box.x);
+    const top = Math.min(a.box.y, kana.box.y);
+    const right = Math.max(a.box.x + a.box.width, kana.box.x + kana.box.width);
+    const bottom = Math.max(a.box.y + a.box.height, kana.box.y + kana.box.height);
+    expect(line.box).toEqual({ x: left, y: top, width: right - left, height: bottom - top });
+    // A capital stands on the baseline and あ dips below it, so the box is neither run's alone.
+    expect(a.box.y + a.box.height).toBeCloseTo(20, 9);
+    expect(bottom).toBeGreaterThan(20);
+  });
+
+  test("has no box for a line with no outline", () => {
+    expect(lineOutline(" ", bold, 10, 0, 0)).toEqual({ pathData: "", box: undefined });
   });
 });

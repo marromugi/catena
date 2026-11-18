@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { iconGrid, iconPathData, iconStroke, isIconName, type IconName } from "../icon";
 import type { Rect } from "../layout";
-import { layoutText, textPathData, type TextLayout } from "../text";
+import { layoutText, lineOutline, textPathData, type FontStack, type TextLayout } from "../text";
 import {
   OWN_ICON,
   REGISTERED_LOGO,
@@ -203,7 +203,20 @@ export const image = imagePart((theme) => theme.image);
 /** An icon's content as a bare string: the name of a built-in icon or of one of the theme's custom icons. */
 export const ICON_NAME = v.string();
 
-const ICON = v.union([ICON_NAME, OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO]);
+/** An icon's content as one or two Latin letters, A to Z and a to z, drawn bold. */
+const LETTERS = v.strictObject({
+  letters: v.pipe(
+    v.string(),
+    v.regex(/^[A-Za-z]{1,2}$/, "Give one or two letters, A to Z or a to z."),
+  ),
+});
+
+export type Letters = v.InferOutput<typeof LETTERS>;
+
+const ICON = v.union([ICON_NAME, OWN_ICON, REGISTRABLE_LOGO, REGISTERED_LOGO, LETTERS]);
+
+/** The letters' font size as a share of the icon's square: a capital stands about half the square tall. */
+const LETTERS_SIZE = 0.68;
 
 const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
 
@@ -216,7 +229,9 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - the user's own logo of shapes ({@link OwnLogo}), each in the colour it gives;
  * - the user's own image ({@link OwnImage}), drawn whole, fitted and centred in the square;
  * - a logo or image registered on the theme, named ({@link RegisteredLogo}), drawn as that logo or
- *   image given here would be.
+ *   image given here would be;
+ * - one or two letters ({@link Letters}), in the theme's bold fonts and the look's colour, centred in
+ *   the square by the box their outline takes, and made smaller only where they would not fit it.
  * An icon or logo has its view box scaled to fit the square and centred in it.
  *
  * catena ships no logos: a logo or image is one the caller passes, and theirs to use, following that
@@ -239,6 +254,9 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
             return [
               oneColourIcon(iconPathData[content], BUILT_IN_VIEW_BOX, "stroke", ink, look, box),
             ];
+          }
+          if ("letters" in content) {
+            return lettersIn(content.letters, theme.fonts.bold, look.color, size, box);
           }
           if ("href" in content) {
             const { href } = content;
@@ -282,7 +300,10 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
 }
 
 /** `given` with every name but a built-in icon's replaced by what the theme holds under it. */
-function resolved(theme: Theme, given: v.InferOutput<typeof ICON>): IconName | CustomIcon {
+function resolved(
+  theme: Theme,
+  given: v.InferOutput<typeof ICON>,
+): IconName | CustomIcon | Letters {
   if (typeof given === "string") return isIconName(given) ? given : customIconOn(theme, given);
   return "logo" in given ? logoOn(theme, given) : given;
 }
@@ -328,6 +349,27 @@ function oneColourIcon(
       ? { fill: ink }
       : { ...iconStroke, stroke: ink, "stroke-width": strokeWidth / scale }),
   });
+}
+
+/**
+ * `letters` filled in `ink`, centred by their outline's box in the square `size` across at the top-left
+ * of `box`: at {@link LETTERS_SIZE} of the square, or smaller where that box would not fit in it.
+ */
+function lettersIn(
+  letters: string,
+  fonts: FontStack,
+  ink: string,
+  size: number,
+  box: Rect,
+): SvgElement[] {
+  // An outline grows with its font size, so its box at size 1 from the origin gives it at any size.
+  const unit = lineOutline(letters, fonts, 1, 0, 0).box;
+  if (unit === undefined) return [];
+  const fontSize = Math.min(LETTERS_SIZE * size, size / unit.width, size / unit.height);
+  const x = box.x + (size - unit.width * fontSize) / 2 - unit.x * fontSize;
+  const baseline = box.y + (size - unit.height * fontSize) / 2 - unit.y * fontSize;
+  const { pathData } = lineOutline(letters, fonts, fontSize, x, baseline);
+  return [element("path", { d: pathData, fill: ink })];
 }
 
 /** The icon set before a title. */

@@ -1,14 +1,19 @@
 import { create, type Font, type GlyphRun } from "fontkit";
+import type { Rect } from "../layout";
 
 /** The bytes given to {@link Typeface.read} are not a single font this library can use. */
 export class UnreadableFontError extends Error {
   override name = "UnreadableFontError";
 }
 
-/** A piece of text shaped in one typeface: how far it advances, and its outline as SVG path data. */
+/**
+ * A piece of text shaped in one typeface: how far it advances, its outline as SVG path data, and the
+ * smallest box holding that outline, `undefined` when the outline is empty.
+ */
 export interface Outline {
   readonly advance: number;
   readonly pathData: string;
+  readonly box: Rect | undefined;
 }
 
 /** One font file at one weight. Lengths it returns are in the unit of the `size` passed in. */
@@ -64,19 +69,24 @@ export class Typeface {
     const scale = size / this.#font.unitsPerEm;
     const run = this.#shape(text);
     let pathData = "";
+    let box: Rect | undefined;
     let penX = x;
     run.glyphs.forEach((glyph, index) => {
       const position = run.positions[index];
       if (position === undefined) {
         throw new Error(`fontkit returned no position for glyph ${index} of "${text}".`);
       }
-      pathData += glyph.path
+      const path = glyph.path
         .scale(scale, -scale)
-        .translate(penX + position.xOffset * scale, baseline - position.yOffset * scale)
-        .toSVG();
+        .translate(penX + position.xOffset * scale, baseline - position.yOffset * scale);
+      pathData += path.toSVG();
+      if (path.commands.length > 0) {
+        const { minX, minY, width, height } = path.bbox;
+        box = boxAround(box, { x: minX, y: minY, width, height });
+      }
       penX += position.xAdvance * scale;
     });
-    return { advance: penX - x, pathData };
+    return { advance: penX - x, pathData, box };
   }
 
   #shape(text: string): GlyphRun {
@@ -86,4 +96,14 @@ export class Typeface {
       throw new UnreadableFontError("The font's data is damaged or cut short.", { cause });
     }
   }
+}
+
+/** The smallest box holding both `one`, when there is one, and `other`. */
+export function boxAround(one: Rect | undefined, other: Rect): Rect {
+  if (one === undefined) return other;
+  const x = Math.min(one.x, other.x);
+  const y = Math.min(one.y, other.y);
+  const right = Math.max(one.x + one.width, other.x + other.width);
+  const bottom = Math.max(one.y + one.height, other.y + other.height);
+  return { x, y, width: right - x, height: bottom - y };
 }

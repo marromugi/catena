@@ -540,6 +540,17 @@ describe("icons from the user's config", () => {
     },
   );
 
+  test("draws an icon of letters, and exits 1 naming the node for three of them", () => {
+    const drawn = runWith(["draw", fileOf(text(naming({ letters: "AB" })))]);
+    expect(drawn).toEqual({ code: 0, stdout: `${draw(naming({ letters: "AB" }))}\n`, stderr: "" });
+    expect(drawn.stdout).not.toBe(`${draw(naming("spark"))}\n`);
+
+    const path = fileOf(text(naming({ letters: "ABC" })));
+    const refused = runWith(["draw", path]);
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(`catena: ${path}: The content of node "app"`);
+  });
+
   test("draws a built-in icon's name as the built-in icon beside the config's icons", () => {
     writeConfig({ icons: { mine: ownIcon } });
     expect(runWith(["draw", fileOf(text(naming("spark")))]).stdout).toBe(

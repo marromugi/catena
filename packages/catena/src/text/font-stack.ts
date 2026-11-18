@@ -1,4 +1,5 @@
-import type { Typeface } from "./typeface";
+import type { Rect } from "../layout";
+import { boxAround, type Typeface } from "./typeface";
 
 /**
  * Typefaces of one weight, in order of preference. Each character is drawn in the first one that has it.
@@ -36,6 +37,30 @@ export function lineWidth(text: string, fonts: FontStack, size: number): number 
   );
 }
 
+/**
+ * The outline of `text` on one line, each character in the first of `fonts` that has it, starting at `x`
+ * with its baseline at `baseline`: its SVG path data, and the smallest box holding it, `undefined` when
+ * it is empty.
+ */
+export function lineOutline(
+  text: string,
+  fonts: FontStack,
+  size: number,
+  x: number,
+  baseline: number,
+): { readonly pathData: string; readonly box: Rect | undefined } {
+  let pathData = "";
+  let box: Rect | undefined;
+  let penX = x;
+  for (const run of runsOf(text, fonts)) {
+    const outline = run.typeface.outline(run.text, size, penX, baseline);
+    pathData += outline.pathData;
+    if (outline.box !== undefined) box = boxAround(box, outline.box);
+    penX += outline.advance;
+  }
+  return { pathData, box };
+}
+
 export function linePathData(
   text: string,
   fonts: FontStack,
@@ -43,12 +68,5 @@ export function linePathData(
   x: number,
   baseline: number,
 ): string {
-  let pathData = "";
-  let penX = x;
-  for (const run of runsOf(text, fonts)) {
-    const outline = run.typeface.outline(run.text, size, penX, baseline);
-    pathData += outline.pathData;
-    penX += outline.advance;
-  }
-  return pathData;
+  return lineOutline(text, fonts, size, x, baseline).pathData;
 }

@@ -31,6 +31,7 @@ export {
 } from "./node";
 export type { Node } from "./node";
 export type { Block, Part } from "./part";
+export type { Letters } from "./parts";
 export {
   badge,
   badgePart,
