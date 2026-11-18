@@ -2363,8 +2363,34 @@ describe("what a node covers", () => {
       expect(onFilledRectSide([bare], { x: 0.3001, y: 5 }, REACH)).toBe(false);
     });
 
-    test("finds a rect inside a group", () => {
-      expect(onFilledRectSide([element("g", {}, [filledRect()])], middleOfTop, REACH)).toBe(true);
+    test("finds a rect inside a group, with the same reach", () => {
+      const grouped = [element("g", {}, [filledRect()])];
+      expect(onFilledRectSide(grouped, middleOfTop, REACH)).toBe(true);
+      expect(onFilledRectSide(grouped, { x: 10, y: 13 }, REACH)).toBe(true);
+      expect(onFilledRectSide(grouped, { x: 10, y: 12 }, REACH)).toBe(false);
+    });
+
+    test("counts a point exactly the reach from the round outline", () => {
+      // 8 from the corner's centre across and 6 up: 10 from it, 2 from the curve.
+      const unstroked = element("rect", {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        rx: 8,
+        fill: "#fff",
+      });
+      expect(onFilledRectSide([unstroked], { x: 0, y: 2 }, 2)).toBe(true);
+      expect(onFilledRectSide([unstroked], { x: 0, y: 2 }, 1.99)).toBe(false);
+    });
+
+    test("cuts the round to half the width and half the height, as SVG does", () => {
+      const wide = element("rect", { x: 0, y: 0, width: 100, height: 20, rx: 100, fill: "#fff" });
+      expect(onFilledRectSide([wide], { x: 50, y: 0 }, 0)).toBe(true);
+      expect(onFilledRectSide([wide], { x: 0, y: 10 }, 0)).toBe(true);
+      const tall = element("rect", { x: 0, y: 0, width: 20, height: 100, rx: 100, fill: "#fff" });
+      expect(onFilledRectSide([tall], { x: 0, y: 50 }, 0)).toBe(true);
+      expect(onFilledRectSide([tall], { x: 10, y: 100 }, 0)).toBe(true);
     });
 
     test("leaves out a rect with no fill, one under a transform, one in a clip path, and what is no rect", () => {

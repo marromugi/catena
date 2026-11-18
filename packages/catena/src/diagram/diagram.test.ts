@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { drawEdge, drawEdgeEnd } from "../edge";
+import { drawEdge, drawEdgeEnd, EDGE_END_RADIUS } from "../edge";
 import { filledIconPathData } from "../icon";
 import type { Layout, Point, Rect } from "../layout";
 import type { Node } from "../node";
@@ -173,6 +173,19 @@ describe("drawDiagram", () => {
     expect(drawDiagram(layout, new Map([["a", a]]))).toContain(
       `<g fill="#8c8c8c">${dotsAt(toB?.points[0], toC?.points[0])}</g>`,
     );
+  });
+
+  test("asks each end's node whether it covers the end within half the dot's radius", () => {
+    const asked: number[] = [];
+    const asking: Node = {
+      ...b,
+      covers: (box, point, reach) => {
+        asked.push(reach);
+        return onSideOf(box, point);
+      },
+    };
+    drawDiagram(layout, new Map([...nodes, ["b", asking]]));
+    expect(asked).toEqual([EDGE_END_RADIUS / 2]);
   });
 
   test("draws no dot at an end on a group with no Node", () => {
