@@ -4,7 +4,7 @@ import type { FontStack } from "../text";
 import { CUSTOM_ICON, REGISTRABLE_LOGO, type CustomIcon, type RegistrableLogo } from "./logo";
 import { NO_SHADOW, type Outline, type Shadow } from "./svg";
 
-/** How a piece of text looks. `lineHeight` is a multiple of `size`. */
+/** `lineHeight` is a multiple of `size`. */
 export interface TextLook {
   readonly weight: "regular" | "bold";
   readonly size: number;
@@ -12,18 +12,18 @@ export interface TextLook {
   readonly color: string;
 }
 
-/** How a card's frame looks. `padding` lies between the frame's edge and what it holds. */
+/** `padding` lies between the frame's edge and what it holds. */
 export interface CardLook extends Outline {
   readonly padding: number;
   readonly radius: number;
 }
 
-/** How a round button looks. `padding` lies between the button's edge and what it holds. */
+/** `padding` lies between the button's edge and what it holds. */
 export interface ButtonLook extends Outline {
   readonly padding: number;
 }
 
-/** How a pill holding short text looks. Its ends are half its height round. */
+/** Its ends are half its height round. */
 export interface BadgeLook extends TextLook, Outline {
   /** Between the pill's edge and its text, at either end. */
   readonly paddingX: number;
@@ -45,9 +45,9 @@ export interface DividerLook {
 }
 
 /**
- * How an icon looks. It is drawn `size` across. A built-in icon, a user's one-colour icon, or letters are
- * drawn in `color`: a stroked icon's lines are `strokeWidth` wide as drawn, and a filled icon or letters
- * are filled with it. A user's logo or image keeps its own colours and widths.
+ * It is drawn `size` across. A built-in icon, a user's one-colour icon, or letters are drawn in
+ * `color`: a stroked icon's lines are `strokeWidth` wide as drawn, and a filled icon or letters are
+ * filled with it. A user's logo or image keeps its own colours and widths.
  */
 export interface IconLook {
   readonly size: number;
@@ -57,7 +57,6 @@ export interface IconLook {
   readonly colors: Readonly<Partial<Record<IconName, string>>>;
 }
 
-/** The names a badge's or a status dot's colouring is chosen by. */
 export const TONES = ["plain", "red"] as const;
 export type Tone = (typeof TONES)[number];
 
@@ -66,13 +65,8 @@ export interface DotLook {
   readonly colors: Readonly<Record<Tone, string>>;
 }
 
-/**
- * The looks parts share, and the logos and custom icons an icon can name. A part reads the ones it draws
- * with, so a change here reaches every kind.
- */
 export interface Theme {
   readonly fonts: { readonly regular: FontStack; readonly bold: FontStack };
-  /** How wide a node is laid out. */
   readonly nodeWidth: number;
   /**
    * The space between parts stacked one over the next, unless the stack is given its own gap, between
@@ -80,7 +74,6 @@ export interface Theme {
    */
   readonly gap: number;
   readonly card: CardLook;
-  /** A card drawn as selected, such as the selected icon tile. */
   readonly selectedCard: CardLook;
   /** A card held in a list inside another card. */
   readonly itemCard: CardLook;
@@ -99,23 +92,16 @@ export interface Theme {
   readonly icon: IconLook;
   /** The space between a title and the body under it, set beside an icon. */
   readonly iconTextGap: number;
-  /** The icon an icon tile holds. */
   readonly tileIcon: IconLook;
   /** The text under an icon tile; its sub-caption is in the body look. */
   readonly caption: TextLook;
-  /** The space between a caption and its sub-caption, the gap of the stack holding them. */
   readonly captionGap: number;
-  /** A round button around an icon. */
   readonly button: ButtonLook;
   readonly buttonIcon: IconLook;
-  /** A round button in its active look. */
   readonly activeButton: ButtonLook;
-  /** The disc inside an active round button, around its icon. */
   readonly activeButtonDisc: ButtonLook;
   readonly activeButtonIcon: IconLook;
-  /** The logos and images an icon's content can name, by name. */
   readonly logos: Logos;
-  /** The icons an icon's content can name as a bare string, beside the built-in ones. */
   readonly icons: CustomIcons;
 }
 
@@ -132,7 +118,6 @@ export type Logos = Readonly<Record<string, RegistrableLogo>>;
  */
 export type CustomIcons = Readonly<Record<string, CustomIcon>>;
 
-/** Any look of a {@link Theme} but its fonts, each given in part, and the logos it holds. */
 export interface ThemeOverrides {
   readonly nodeWidth?: number;
   readonly gap?: number;
@@ -165,14 +150,11 @@ export interface ThemeOverrides {
   readonly icons?: CustomIcons;
 }
 
-/** A theme was given something it can't hold. */
 export class InvalidThemeError extends Error {
   override readonly name = "InvalidThemeError";
 }
 
-/** The soft shadow around a card. */
 const CARD_SHADOW: Shadow = { dx: 0, dy: 0, blur: 5, color: "#000000", opacity: 0.1 };
-/** The soft shadow around a card held inside another card. */
 const INNER_SHADOW: Shadow = { dx: 0, dy: 1, blur: 4, color: "#000000", opacity: 0.1 };
 
 const DEFAULT_CARD: CardLook = {
@@ -292,10 +274,6 @@ function laidOver<T extends object>(defaults: T, overrides: Partial<T> = {}): T 
   return { ...defaults, ...Object.fromEntries(given) };
 }
 
-/**
- * Each of `given`'s entries checked against `schema`, the one an icon's inline content is checked
- * against; `noun` names one entry, and `forms` what it may be, in the error.
- */
 function checkedByName<TSchema extends v.GenericSchema>(
   given: Readonly<Record<string, unknown>>,
   schema: TSchema,
@@ -337,8 +315,7 @@ function checkedIcons(icons: CustomIcons): CustomIcons {
 }
 
 /**
- * The default looks with `overrides` laid over them, and the logos and custom icons `overrides` gives,
- * each checked. A look given as `undefined` keeps its default.
+ * A look given as `undefined` keeps its default.
  * @throws InvalidThemeError when a logo in `overrides.logos` is neither an `OwnLogo` nor an `OwnImage`, or
  * an icon in `overrides.icons` is none of an `OwnIcon`, an `OwnLogo`, an `OwnImage`, or has a built-in
  * icon's name.

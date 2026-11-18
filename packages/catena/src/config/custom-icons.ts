@@ -12,7 +12,6 @@ import {
   type OwnLogo,
 } from "../node";
 
-/** The user's config file holds something {@link readCustomIcons} refuses; the message names the file and the entry. */
 export class InvalidConfigError extends Error {
   override readonly name = "InvalidConfigError";
 

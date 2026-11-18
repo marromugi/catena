@@ -18,17 +18,12 @@ export const USAGE = [
   "points a diagram file at it. Keep the path in full: editors don't expand ~ or $HOME in it.",
 ].join("\n");
 
-/** Where the command writes what it says. */
 export interface Output {
   write(text: string): unknown;
 }
 
 const read = (url: URL) => Typeface.read(readFileSync(url));
 
-/**
- * The theme every diagram is drawn in: the default looks, set in Source Han Sans JP, holding the custom
- * icons of the user's config.
- */
 function defaultTheme(icons: CustomIcons): Theme {
   return defineTheme(
     { regular: [read(sourceHanSansJP.regular)], bold: [read(sourceHanSansJP.bold)] },
@@ -36,10 +31,6 @@ function defaultTheme(icons: CustomIcons): Theme {
   );
 }
 
-/**
- * The custom icons the user's config file defines, or why they can't be read.
- * @throws what reading them throws that is neither the config's refusal nor the system's.
- */
 function configIcons(): { value: CustomIcons } | { refusal: string } {
   const file = configFile();
   try {
@@ -50,7 +41,6 @@ function configIcons(): { value: CustomIcons } | { refusal: string } {
   }
 }
 
-/** A refusal of the diagram file's, as opposed to a fault of catena's own. */
 function isRefusal(error: unknown): error is Error {
   return (
     error instanceof InvalidDiagramFileError ||
@@ -59,15 +49,10 @@ function isRefusal(error: unknown): error is Error {
   );
 }
 
-/** An error the system gave for a file, such as one missing, a directory, or not allowed. */
 function isSystemError(error: unknown): error is Error & { code: string } {
   return error instanceof Error && "code" in error && typeof error.code === "string";
 }
 
-/**
- * What `action` gives, or why the system refused it on `path`, after that path.
- * @throws what `action` throws that the system did not give.
- */
 function onFile<T>(path: string, action: () => T): { value: T } | { refusal: string } {
   try {
     return { value: action() };
@@ -77,16 +62,10 @@ function onFile<T>(path: string, action: () => T): { value: T } | { refusal: str
   }
 }
 
-/** Where the diagram file's JSON Schema is written, as an absolute path: beside the user's config file. */
 function schemaFile(): string {
   return resolve(dirname(configFile()), "diagram.schema.json");
 }
 
-/**
- * Writes the diagram file's JSON Schema, naming the built-in icons and `icons`, to `file` unless `file`
- * holds it already, making its directory when that isn't there.
- * @throws what writing throws that the system did not give.
- */
 function writeSchema(file: string, icons: CustomIcons): { value: void } | { refusal: string } {
   const schema = `${JSON.stringify(diagramJsonSchema(Object.keys(icons)), null, 2)}\n`;
   return onFile(file, () => {
@@ -96,7 +75,6 @@ function writeSchema(file: string, icons: CustomIcons): { value: void } | { refu
   });
 }
 
-/** The text `file` holds, or `undefined` when it isn't there. */
 function textIn(file: string): string | undefined {
   try {
     return readFileSync(file, "utf8");
@@ -110,9 +88,9 @@ function textIn(file: string): string | undefined {
  * Runs `catena` with `args`, the words after the command's name, and gives its exit code.
  *
  * `catena draw` writes the diagram's SVG and exits 0, or exits 1 when the user's config or the diagram
- * file can't be read or the diagram drawn. A bare string as an icon's content names a built-in icon or one
- * of the config's. Once the config is read, it brings the diagram file's JSON Schema beside the config up
- * to date; when that can't be written it says so on stderr and draws all the same.
+ * file can't be read or the diagram drawn. Once the config is read, it brings the diagram file's JSON
+ * Schema beside the config up to date; when that can't be written it says so on stderr and draws all
+ * the same.
  *
  * `catena schema` writes that JSON Schema and prints the `"$schema"` line a diagram file points at it
  * with, its absolute path; or exits 1 when the config can't be read or

@@ -1,4 +1,4 @@
-/** One SVG element and what it holds. Only {@link writeSvg} turns it into text. */
+/** Only {@link writeSvg} turns it into text. */
 export interface SvgElement {
   readonly name: string;
   readonly attributes: Readonly<Record<string, string | number>>;

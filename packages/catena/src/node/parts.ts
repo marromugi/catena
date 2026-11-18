@@ -37,7 +37,6 @@ function setText(content: string, look: TextLook, theme: Theme, maxWidth: number
   });
 }
 
-/** `text`'s outlines with each line centred across `box`. */
 function centredLines(text: TextLayout, box: Rect): string {
   const { size, lineHeight } = text.style;
   return text.lines
@@ -51,10 +50,6 @@ function centredLines(text: TextLayout, box: Rect): string {
     .join("");
 }
 
-/**
- * A part showing a string, wrapped to the width it is given, in the look `lookOf` picks from the theme.
- * Its lines start at the left of its box, or are each centred across it when `align` is `"center"`.
- */
 export function textPart(
   lookOf: (theme: Theme) => TextLook,
   options: { readonly align?: "start" | "center" } = {},
@@ -87,10 +82,7 @@ export const subtitle = textPart((theme) => theme.subtitle);
 
 const NOTHING = v.optional(v.undefined());
 
-/**
- * A line across the width it is given, in the theme's divider look. It shows nothing, so a stack holding
- * it takes no content under its key.
- */
+/** It shows nothing, so a stack holding it takes no content under its key. */
 export const divider: Part<typeof NOTHING> = {
   schema: NOTHING,
   layout(_, theme, maxWidth) {
@@ -112,10 +104,7 @@ export const divider: Part<typeof NOTHING> = {
   },
 };
 
-/**
- * A pill holding a string, in the look `lookOf` picks from the theme. It is as wide as its text, and
- * draws at the top-left of the box it is given.
- */
+/** Draws at the top-left of the box it is given. */
 export function badgePart(lookOf: (theme: Theme) => BadgeLook): Part<typeof TEXT> {
   return {
     schema: TEXT,
@@ -146,7 +135,7 @@ export const redBadge = badgePart((theme) => theme.badges.red);
 
 const TONE = v.picklist(TONES);
 
-/** A dot whose content is its tone, coloured as the theme colours that tone. Draws at the top-left of its box. */
+/** Draws at the top-left of its box. */
 export const statusDot: Part<typeof TONE> = {
   schema: TONE,
   layout(tone, theme) {
@@ -168,9 +157,9 @@ export const statusDot: Part<typeof TONE> = {
 const HREF = v.string();
 
 /**
- * An image whose content is its href, written into the SVG as given: catena never fetches it. It fills
- * the width it is given at the look's aspect ratio, cut to that shape about its centre, with round
- * corners, and draws at the top-left of its box.
+ * Written into the SVG as given: catena never fetches it. It fills the width it is given at the look's
+ * aspect ratio, cut to that shape about its centre, with round corners, and draws at the top-left of
+ * its box.
  */
 export function imagePart(lookOf: (theme: Theme) => ImageLook): Part<typeof HREF> {
   return {
@@ -204,7 +193,6 @@ export const image = imagePart((theme) => theme.image);
 /** An icon's content as a bare string: the name of a built-in icon or of one of the theme's custom icons. */
 export const ICON_NAME = v.string();
 
-/** An icon's content as one or two Latin letters, A to Z and a to z, drawn bold. */
 const LETTERS = v.strictObject({
   letters: v.pipe(
     v.string(),
@@ -304,7 +292,6 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
   };
 }
 
-/** `given` with every name but a built-in icon's replaced by what the theme holds under it. */
 function resolved(
   theme: Theme,
   given: v.InferOutput<typeof ICON>,
@@ -325,7 +312,6 @@ function logoOn(theme: Theme, { logo }: RegisteredLogo): OwnLogo | OwnImage {
   return found;
 }
 
-/** The transform that scales `viewBox` to fit a square `size` across at the top-left of `box`, centred in it. */
 function fitViewBox(
   viewBox: OwnIcon["viewBox"],
   size: number,
@@ -356,10 +342,6 @@ function oneColourIcon(
   });
 }
 
-/**
- * `letters` filled in `ink`, centred by their outline's box in the square `size` across at the top-left
- * of `box`: at {@link LETTERS_SIZE} of the square, or smaller where that box would be wider than it.
- */
 function lettersIn(
   letters: string,
   fonts: FontStack,
@@ -377,5 +359,4 @@ function lettersIn(
   return [element("path", { d: pathData, fill: ink })];
 }
 
-/** The icon set before a title. */
 export const icon = iconPart((theme) => theme.icon);

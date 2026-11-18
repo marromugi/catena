@@ -4,7 +4,6 @@ import type { Node } from "../node";
 import { element, writeSvg, type SvgElement } from "../svg";
 import { drawHeader, HEADER_HEIGHT, type DiagramHeader } from "./header";
 
-/** A canvas of one colour under a grid of round dots. */
 export interface DotGrid {
   readonly canvas: string;
   readonly dot: string;
@@ -13,20 +12,18 @@ export interface DotGrid {
   readonly spacing: number;
 }
 
-/** How every edge's line is painted. */
 export interface EdgePaint {
   readonly stroke: string;
   readonly strokeWidth: number;
 }
 
-/** How a diagram is drawn. What is left out is taken from the defaults; with no header, none is drawn. */
+/** What is left out is taken from the defaults; with no header, none is drawn. */
 export interface DiagramOptions {
   readonly background?: Partial<DotGrid>;
   readonly edgePaint?: Partial<EdgePaint>;
   readonly header?: DiagramHeader;
 }
 
-/** The background a diagram gets when none is given. */
 export const DEFAULT_DOT_GRID: DotGrid = {
   canvas: "#f5f5f5",
   dot: "#c4c4c4",
@@ -34,18 +31,15 @@ export const DEFAULT_DOT_GRID: DotGrid = {
   spacing: 16,
 };
 
-/** The paint of an edge when none is given. */
 export const DEFAULT_EDGE_PAINT: EdgePaint = { stroke: "#8c8c8c", strokeWidth: 1.5 };
 
 /** The id of the dot grid's `<pattern>`. A node's ids end in a count, so none is this one. */
 const DOT_PATTERN_ID = "catena-dots";
 
 /**
- * The layout as one SVG document of its size: the background over the whole canvas, then every edge,
- * then every placed node, group or child, whose id is in `nodes`, drawn at its box. A placed node with
- * no `Node` is not drawn, though its children are. Every document names its dot pattern `catena-dots`, so
- * documents inlined in one HTML page show the first one's dot grid. Given a header, the document is 72
- * higher, the header is drawn over the background at its top, and the edges and nodes 72 lower, below it.
+ * A placed node with no `Node` is not drawn, though its children are. Every document names its dot
+ * pattern `catena-dots`, so documents inlined in one HTML page show the first one's dot grid. Given a
+ * header, the document is 72 higher, the header is drawn over the background at its top, and the edges and nodes 72 lower, below it.
  * @throws RangeError when the dot radius or the edges' stroke width is below 0, the spacing is not above
  * 0, or any of them is not finite.
  */
@@ -92,7 +86,6 @@ export function drawDiagram(
   ].join("");
 }
 
-/** The canvas filled with `grid`: its colour, then its dots. */
 function dotGrid(width: number, height: number, grid: DotGrid): SvgElement[] {
   const { canvas, dot, dotRadius, spacing } = grid;
   if (!(dotRadius >= 0 && Number.isFinite(dotRadius))) {
@@ -113,7 +106,6 @@ function dotGrid(width: number, height: number, grid: DotGrid): SvgElement[] {
   ];
 }
 
-/** Every placed node, each group before its children. */
 function placedNodes(placed: readonly PlacedNode[]): PlacedNode[] {
   return placed.flatMap((node) => [node, ...placedNodes(node.children)]);
 }

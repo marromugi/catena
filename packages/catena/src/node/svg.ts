@@ -3,16 +3,11 @@ import { element, type SvgElement } from "../svg";
 
 /**
  * Gives an id for an element another refers to, such as a `<clipPath>`. The ids are unique among the
- * nodes of one graph drawn once into a document; two graphs, or one node drawn twice, can repeat them. A
- * container passes the one it is given on to the parts it holds.
+ * nodes of one graph drawn once into a document; two graphs, or one node drawn twice, can repeat them.
  */
 export type NewId = () => string;
 
-/**
- * Ids for the elements of the node `nodeId`: `catena-`, the node id with each character but a letter or
- * digit written as `_<code point in hex>_`, `-`, and a count. Two different node ids never give the same
- * id, and each is a valid SVG id.
- */
+/** Two different node ids never give the same id, and each is a valid SVG id. */
 export function idsOfNode(nodeId: string): NewId {
   const written = Array.from(nodeId, (c) =>
     /[A-Za-z0-9]/.test(c) ? c : `_${(c.codePointAt(0) ?? 0).toString(16)}_`,
@@ -21,10 +16,7 @@ export function idsOfNode(nodeId: string): NewId {
   return () => `catena-${written}-${++count}`;
 }
 
-/**
- * A soft shadow cast by a shape: moved by (`dx`, `dy`), blurred by `blur` (the standard deviation of
- * the blur), in `color` at `opacity`. At opacity 0 no shadow is drawn.
- */
+/** `blur` is the standard deviation of the blur. At opacity 0 no shadow is drawn. */
 export interface Shadow {
   readonly dx: number;
   readonly dy: number;
@@ -35,7 +27,6 @@ export interface Shadow {
 
 export const NO_SHADOW: Shadow = { dx: 0, dy: 0, blur: 0, color: "#000000", opacity: 0 };
 
-/** How an outlined shape is painted. */
 export interface Outline {
   readonly fill: string;
   readonly stroke: string;
@@ -45,7 +36,7 @@ export interface Outline {
 
 /**
  * A rectangle with `radius`-round corners whose stroke lies inside `box`, and the filter drawing its
- * shadow. The shadow reaches past `box` by its offset and three times its blur.
+ * shadow.
  */
 export function outlinedRect(
   box: Rect,
