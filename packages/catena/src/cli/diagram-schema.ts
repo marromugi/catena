@@ -4,8 +4,6 @@ import { ICON_NAME, REGISTERED_LOGO } from "../node";
 import { DIAGRAM_FILE_WITH_CONTENT } from "./diagram-file";
 
 /**
- * The JSON Schema (draft-07) of the diagram file, made from the schemas `catena draw` checks it with.
- * Wherever an icon's content is a bare string it lists the built-in icons' names, then `customIconNames`.
  * It leaves out a logo named on the theme (`{ "logo": "<name>" }`): `catena draw` registers none, so it
  * draws none.
  *

@@ -1,7 +1,6 @@
 import type { PlacedEdge, Point } from "../layout";
-import { element, type SvgElement } from "../node";
+import { element, type SvgElement } from "../svg";
 
-/** How an edge is drawn. */
 export interface EdgeOptions {
   /**
    * The radius each bend is rounded by, {@link DEFAULT_EDGE_RADIUS} when not given; 0 draws sharp bends. A
@@ -15,9 +14,9 @@ export interface EdgeOptions {
 export const DEFAULT_EDGE_RADIUS = 8;
 
 /**
- * The edge as an unfilled `<path>` along its points. Where a horizontal stretch meets a vertical one the
- * bend is rounded; any other turn, which `verify` reports as `edge-not-orthogonal`, or a turn back, is
- * drawn sharp. The path carries no stroke, so the caller paints it, for example from a `<g>` around it.
+ * Where a horizontal stretch meets a vertical one the bend is rounded; any other turn, which `verify`
+ * reports as `edge-not-orthogonal`, or a turn back, is drawn sharp. The path carries no stroke, so the
+ * caller paints it, for example from a `<g>` around it.
  */
 export function drawEdge(edge: PlacedEdge, options: EdgeOptions = {}): SvgElement {
   const radius = options.radius ?? DEFAULT_EDGE_RADIUS;
@@ -100,7 +99,6 @@ function isAxial(h: Heading): boolean {
   return h.x === 0 || h.y === 0;
 }
 
-/** One heading is horizontal and the other vertical. */
 function isRightAngle(a: Heading, b: Heading): boolean {
   return isAxial(a) && isAxial(b) && a.x * b.x + a.y * b.y === 0;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { PlacedEdge, Point } from "../layout";
-import { writeSvg } from "../node";
+import { writeSvg } from "../svg";
 import { DEFAULT_EDGE_RADIUS, drawEdge } from "./index";
 
 const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({

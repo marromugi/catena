@@ -27,7 +27,7 @@ const LOGO_SHAPE = v.variant("paint", [
 export type LogoShape = v.InferOutput<typeof LOGO_SHAPE>;
 
 /**
- * A user's own logo: shapes in the area `viewBox` names, drawn in order, each in its own colour.
+ * Shapes drawn in order, each in its own colour.
  * The logo is the caller's to use, following that brand's own guidelines.
  */
 const OWN_LOGO = v.strictObject({
@@ -37,7 +37,7 @@ const OWN_LOGO = v.strictObject({
 export type OwnLogo = v.InferOutput<typeof OWN_LOGO>;
 
 /**
- * A user's own image, by its href, written into the SVG as given: catena never fetches it.
+ * Written into the SVG as given: catena never fetches it.
  * The image is the caller's to use, following that brand's own guidelines when it is a logo.
  */
 const OWN_IMAGE = v.strictObject({ href: v.string() });
@@ -54,19 +54,15 @@ export const OWN_ICON = v.strictObject({
 });
 export type OwnIcon = v.InferOutput<typeof OWN_ICON>;
 
-/** What a theme can hold as a custom icon: a user's own icon, logo or image. */
 export const CUSTOM_ICON = v.union([OWN_ICON, OWN_LOGO, OWN_IMAGE]);
 export type CustomIcon = v.InferOutput<typeof CUSTOM_ICON>;
 
-/** What can be registered on a theme by name: a user's own logo or image. */
 export const REGISTRABLE_LOGO = v.union([OWN_LOGO, OWN_IMAGE]);
 export type RegistrableLogo = v.InferOutput<typeof REGISTRABLE_LOGO>;
 
-/** The name of a logo registered on the theme, as an icon's content gives it. */
 export const REGISTERED_LOGO = v.strictObject({ logo: v.string() });
 export type RegisteredLogo = v.InferOutput<typeof REGISTERED_LOGO>;
 
-/** An icon's content names a logo the theme does not hold. */
 export class UnknownLogoError extends Error {
   override readonly name = "UnknownLogoError";
 
@@ -75,7 +71,6 @@ export class UnknownLogoError extends Error {
   }
 }
 
-/** An icon's content is a name that is neither a built-in icon's nor one of the theme's custom icons'. */
 export class UnknownIconError extends Error {
   override readonly name = "UnknownIconError";
 

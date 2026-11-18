@@ -8,7 +8,6 @@ import { NODE_KINDS, type DiagramFile, type NodeEntry } from "./diagram-file";
 const SPACING: Spacing = { nodeGap: 32, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 8 };
 
 /**
- * `file` as one SVG document: each node built from its kind in `theme`, placed, and drawn.
  * @throws InvalidNodeContentError when a node's content is not what its kind shows, naming the node.
  * @throws InvalidGraphError when the graph cannot be laid out as written.
  */
@@ -26,7 +25,6 @@ export function drawDiagramFile(file: DiagramFile, theme: Theme): string {
   });
 }
 
-/** `entry` as `placeGraph` takes it, and every node built from a kind in it. */
 function build(entry: NodeEntry, theme: Theme): { node: GraphNode; leaves: Node[] } {
   const cell = entry.cell === undefined ? {} : { cell: entry.cell };
   if ("children" in entry) {

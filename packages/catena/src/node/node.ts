@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import type { Rect } from "../layout";
 import type { Leaf } from "../place";
+import { element, writeSvg } from "../svg";
 import { UnknownIconError, UnknownLogoError } from "./logo";
 import type { Part } from "./part";
 import {
@@ -28,15 +29,13 @@ import {
   textPart,
   title,
 } from "./parts";
-import { element, idsOfNode, writeSvg } from "./svg";
+import { idsOfNode } from "./svg";
 import type { CardLook, Theme } from "./theme";
 
-/** The content given for a node is not what its kind shows. */
 export class InvalidNodeContentError extends Error {
   override readonly name = "InvalidNodeContentError";
 }
 
-/** A node of some kind, measured: the `Leaf` to give `placeGraph`, and how to draw it at its placed box. */
 export interface Node {
   readonly leaf: Leaf;
   /**
@@ -46,32 +45,22 @@ export interface Node {
   draw(box: Rect): string;
 }
 
-/** A card with a title over wrapping body text. */
 export const titleBodyCard = frame(stack({ title, body: bodyText }));
 
-/** A card with a title, and a badge at its end on the nodes that have one. */
 export const titleBadgeCard = frame(row({ title, badge: optional(redBadge) }, { grow: "title" }));
 
-/** A card with a title over wrapping body text, and a badge under the body on the nodes that have one. */
 export const titleBodyBadgeCard = frame(
   stack({ title, body: bodyText, badge: optional(redBadge) }),
 );
 
-/** A card with an image over a title over wrapping body text. */
 export const imageTitleBodyCard = frame(stack({ image, title, body: bodyText }));
 
-/** A card with a title, and a status dot before it on the nodes that have a status. */
 export const statusTitleCard = frame(
   row({ status: optional(statusDot), title }, { grow: "title" }),
 );
 
-/** A card in the theme's item card look, holding a line of text. */
 export const itemCard = frame(subtitle, (theme) => theme.itemCard);
 
-/**
- * A card with a title over wrapping body text, a list of item cards, a divider, and a section whose item
- * cards sit in a panel.
- */
 export const titleBodyItemsSectionCard = frame(
   stack({
     title,
@@ -82,10 +71,8 @@ export const titleBodyItemsSectionCard = frame(
   }),
 );
 
-/** A card with an icon before a title. */
 export const iconTitleCard = frame(row({ icon, title }, { grow: "title" }));
 
-/** A card with an icon before a title over wrapping body text, the icon set beside the title. */
 export const iconTitleBodyCard = frame(
   row(
     { icon, text: stack({ title, body: bodyText }, { gap: (theme) => theme.iconTextGap }) },
@@ -93,10 +80,6 @@ export const iconTitleBodyCard = frame(
   ),
 );
 
-/**
- * A card in the theme's pair panel look holding two icon-and-title cards side by side, each as wide as
- * a node and both as high.
- */
 export const iconTitleCardPair = frame(
   row(
     {
@@ -108,10 +91,6 @@ export const iconTitleCardPair = frame(
   (theme) => theme.pairPanel,
 );
 
-/**
- * An icon in a square card in the look `lookOf` picks from the theme, as large as the icon and its
- * padding, with a caption and a sub-caption under it, each line centred, on the nodes that have them.
- */
 function iconTileIn(lookOf: (theme: Theme) => CardLook) {
   return stack({
     icon: centered(
@@ -132,22 +111,15 @@ function iconTileIn(lookOf: (theme: Theme) => CardLook) {
   });
 }
 
-/** An icon tile, with its caption and sub-caption: `{ icon, label: { caption, subcaption } }`. */
 export const iconTile = iconTileIn((theme) => theme.card);
 
-/** An icon tile drawn as selected. Its content is the same as {@link iconTile}'s. */
 export const selectedIconTile = iconTileIn((theme) => theme.selectedCard);
 
-/** A small round button holding an icon. */
 export const roundButton = pill(
   iconPart((theme) => theme.buttonIcon),
   (theme) => theme.button,
 );
 
-/**
- * A small round button in its active look, its icon on a disc inside it. Its content is the same as
- * {@link roundButton}'s.
- */
 export const activeRoundButton = pill(
   pill(
     iconPart((theme) => theme.activeButtonIcon),
@@ -157,7 +129,6 @@ export const activeRoundButton = pill(
 );
 
 /**
- * Checks `content` against `kind`'s schema and lays the node out at the theme's node width.
  * @throws InvalidNodeContentError when `content` does not match the schema, with the ValiError as its cause,
  * names a logo the theme does not hold, with the UnknownLogoError as its cause, or is a name neither built
  * in nor one of the theme's custom icons, with the UnknownIconError as its cause.
