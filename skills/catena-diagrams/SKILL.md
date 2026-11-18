@@ -7,11 +7,16 @@ description: What makes a catena diagram easy to read, checked on the drawn SVG,
 
 Write the diagram file, draw it, look at the drawing, and change the file until every rule below holds or only a known limit breaks it.
 
+`catena` is on the PATH after `pnpm link --global` in `packages/catena` of a catena checkout. Without that, run `node packages/catena/bin/catena.js` from the checkout, after `pnpm install`:
+
 ```sh
 catena draw <diagram.json> -o <out.svg>
+catena schema
 ```
 
-Judge the drawing, not the JSON. Open the SVG in a browser or render it to PNG and look at it whole. The file's shape is in the JSON Schema `catena schema` writes; this skill uses only what that shape allows: `direction`, the order of `nodes`, groups (a node with `direction` and `children`), `cell`, and `edges`.
+`catena schema` writes the diagram file's JSON Schema, `diagram.schema.json`, into catena's config directory and prints the `"$schema": "<path>"` line to put at the top of the diagram file. This skill uses only what that schema allows: `direction`, the order of `nodes`, groups (a node with `direction` and `children`), `cell`, and `edges`.
+
+Judge the drawing, not the JSON. Open the SVG in a browser or render it to PNG and look at it whole.
 
 ## How catena places nodes and lines
 
@@ -21,11 +26,21 @@ The rules rest on these.
 - A node goes one column (in `down`, one row) past the furthest node **listed before it** that has an edge to it. An edge from a node listed later orders nothing. Nodes that land in the same column stack across the flow in the order they are listed, each taking the first free row.
 - `cell` (`{ "row": 0, "column": 2 }`) puts a node in that row and column of its own grid. Rows and columns that hold no node are dropped.
 - A line leaves a node from the side that faces along the flow and enters a node from the side that faces back: in `right`, out of the right side and into the left side. Lines that leave one node run as one until they part.
-- A line to a node in the next column is drawn with at most two bends. A line that skips a column, goes back, or would cross another line between the same two columns goes around, through the gaps beside the nodes.
+- A line between two nodes of one grid in neighbouring columns is straight, or has two bends when the rows differ. A line goes around, through the gaps beside the nodes, when it skips a column, goes back, or would cross another line between the same two columns.
 - A group lays its children out in a grid of their own, flowing in the group's `direction`. The grid of the group is one node in the grid around it: an edge to any child counts as an edge to the group when nodes are ordered.
 - A group is not drawn: no box, no background, no label.
-- Every line into or out of a group crosses the group's border at one point, the middle of the side.
+- Every line into or out of a group crosses the group's border at one point, at or near the middle of the side. The part outside the group and the part inside are each drawn as a line of their own grid and joined there.
 - Each row is as tall as the tallest node in it, and each column as wide as the widest, a group counting as one node.
+
+### Counting bends
+
+Every bend is drawn as a rounded corner. A line that hasn't gone around has:
+
+- 0 bends when it is straight, and 2 when it goes to another row of the next column;
+- up to 2 more for each group border it crosses, from its part inside the group, so a line from a node into a group in the next column can have 4;
+- 3 when it enters or leaves a child of a group that flows across its parent (rule 1).
+
+More bends than that mean the line went around.
 
 ## Rules
 
@@ -35,7 +50,7 @@ Each rule says what to look for in the drawing, then what the file can do.
 
 **Look for:** in `right`, every line leaves the right side of a node and enters the left side of the next; in `down`, bottom to top. A line that touches a node's top or bottom in `right` (left or right side in `down`) breaks this.
 
-**The file:** a group whose `direction` differs from the grid around it draws its children's lines through the other pair of sides, and lays out children that have no line between them along the parent's flow, which makes the drawing longer. Give every group the same `direction` as the grid around it. Children with no edge between them then stack across the flow, which is usually what was wanted. A chain that should run across the flow inside a group can't be drawn without breaking this rule (known limit, #106).
+**The file:** a group whose `direction` differs from the grid around it draws its children's lines through the other pair of sides, and lays out children that have no line between them along the parent's flow, which makes the drawing longer. Give every group the same `direction` as the grid around it. Children with no edge between them then stack across the flow, which is usually what was wanted. A chain that should run across the flow inside a group is a trade between this rule and rule 3: keep the group's `direction` and put each next node of the chain in the next row with `cell`, and its line leaves and enters along the flow but goes around. Whether that reads better than lines through the top and bottom is for the drawing to show (known limit, #106).
 
 ### 2. Lines go forward
 
@@ -45,9 +60,14 @@ Each rule says what to look for in the drawing, then what the file can do.
 
 ### 3. Lines join neighbouring columns
 
-**Look for:** a line with more than two bends, or a line that runs past a node to reach one further along. Count bends: a straight line has none, a line to another row of the next column has two, a line that went around has four or more.
+**Look for:** a line with more bends than [Counting bends](#counting-bends) allows, or a line that runs past a node to reach one further along.
 
-**The file:** a line that skips a column comes from an edge that skips a node, such as `a>c` beside `a>b` and `b>c`. Leave out an edge that a path through other nodes already says, when the diagram's point holds without it. A node that many nodes far apart lead to, such as a shared store, lands after the last of them and pulls long lines from the rest; keep only the edges that matter for what the diagram explains. `cell` can put a node in any row and column, but a column before a node that leads to it makes that line go back (rule 2).
+**The file:** a line that went around comes from one of these:
+
+- An edge that skips a node, such as `a>c` beside `a>b` and `b>c`. Leave out an edge that a path through other nodes already says, when the diagram's point holds without it. A node that many nodes far apart lead to, such as a shared store, lands after the last of them and pulls long lines from the rest; keep only the edges that matter for what the diagram explains.
+- A line that would cross another between the same two columns: see rule 4.
+- An edge back against the flow: see rule 2.
+- A node put with `cell`: a column before a node that leads to it makes that line go back, and a row under a node of the same column makes the line between them go around.
 
 ### 4. Lines don't cross or swap rows
 
@@ -77,34 +97,20 @@ Each rule says what to look for in the drawing, then what the file can do.
 
 catena breaks these whatever the file says. Say so when a drawing shows one, rather than reworking the file to hide it.
 
-- **A group that flows across its parent** draws its lines through the top and bottom (in `right`): a line into it runs over the first child and drops into its top, a line out of it leaves the last child's bottom and comes back around. Only giving the group its parent's `direction` avoids it. #106
-- **Lines into or out of a group meet at one point,** the middle of the group's side, and run on top of each other there, so a reader can't follow which line goes to which child. Only not grouping avoids it. #107
+- **A group that flows across its parent** draws its lines through the top and bottom (in `right`): a line into it runs over the first child and drops into its top, a line out of it leaves the last child's bottom and comes back around. Giving the group its parent's `direction` avoids it, but then a chain across the flow inside the group needs `cell` and goes around (rule 1). #106
+- **Lines into or out of a group meet at one point,** at or near the middle of the group's side, and run on top of each other there, so a reader can't follow which line goes to which child. Only not grouping avoids it. #107
 - **A group is not drawn.** A reader sees only the gaps between nodes; which nodes belong together can't be read from the drawing. #108
 
 ## Example
 
-A diagram with a user, two clients, a gateway, auth, orders, billing, a queue and worker, and three stores, with 14 edges, in `right`:
+The files in `examples/` hold one diagram four ways: a user, two clients, a gateway, auth, orders, billing, a queue and worker, and three stores, with the same 14 edges. Drawn by catena as of this skill:
 
-- With the clients, the gateway and auth, the services, and the stores each in a group, the queue and worker in a group inside the services, the groups in `down` and `right` by turns: 4032 × 317, 66 bends, 3 crossings. Lines leave nodes from the top and bottom, loop under whole groups, and meet at the stores' group in one point.
-- The same nodes and edges with every group in `right`: 2976 × 400, 44 bends, no crossings. Lines still meet where they enter the stores' group and the services' group.
-- Grouping only the two clients and the queue with its worker, everything else as plain nodes, in `right`: 2528 × 522, 26 bends, no crossings, but still a strip (rule 7). The same file in `down`, its groups in `down` too: 1440 × 922, 26 bends, no crossings.
+- `groups-crosswise.json`, in `right`: the clients, the gateway and auth, the services, and the stores each in a group, the queue and worker in a group inside the services, the groups in `down` and `right` by turns. 4032 × 317, 66 bends. Lines leave nodes from the top and bottom, loop under whole groups, cross, and meet at the stores' group in one point.
+- `groups-along.json`: the same with every group in `right`. 2976 × 400, 44 bends. Lines still meet where they enter the stores' group and the services' group.
+- `two-groups.json`, in `right`: only the two clients and the queue with its worker grouped, everything else plain nodes. 2528 × 522, 26 bends. Lines still cross near the stores (`auth>db` and `orders>db` cross `worker>files`), and the drawing is still a strip (rule 7).
+- `two-groups-down.json`: the same in `down`, its groups in `down` too. 1440 × 922, 26 bends, the same crossings.
 
-The kept groups are the two clients, which one user reaches and which both call the gateway, and the queue and worker, which only orders reaches:
-
-```json
-{
-  "id": "client",
-  "direction": "right",
-  "children": [
-    { "id": "web", "kind": "titleBodyCard", "content": { "title": "Web", "body": "Web app" } },
-    {
-      "id": "mobile",
-      "kind": "titleBodyCard",
-      "content": { "title": "Mobile", "body": "Mobile app" }
-    }
-  ]
-}
-```
+The kept groups are the two clients, which one user reaches and which both call the gateway, and the queue and worker, which only orders reaches.
 
 ## Checking a drawing
 
