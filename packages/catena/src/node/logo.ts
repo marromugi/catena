@@ -28,7 +28,6 @@ export type LogoShape = v.InferOutput<typeof LOGO_SHAPE>;
 
 /**
  * Shapes drawn in order, each in its own colour.
- * The logo is the caller's to use, following that brand's own guidelines.
  */
 const OWN_LOGO = v.strictObject({
   viewBox: VIEW_BOX,
@@ -38,7 +37,6 @@ export type OwnLogo = v.InferOutput<typeof OWN_LOGO>;
 
 /**
  * Written into the SVG as given: catena never fetches it.
- * The image is the caller's to use, following that brand's own guidelines when it is a logo.
  */
 const OWN_IMAGE = v.strictObject({ href: v.string() });
 export type OwnImage = v.InferOutput<typeof OWN_IMAGE>;

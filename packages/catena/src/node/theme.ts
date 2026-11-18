@@ -106,15 +106,13 @@ export interface Theme {
 }
 
 /**
- * Logos and images by the names an icon's content gives them as `{ logo: "<name>" }`. catena ships none:
- * each is the caller's to use, following that brand's own guidelines.
+ * Logos and images by the names an icon's content gives them as `{ logo: "<name>" }`.
  */
 export type Logos = Readonly<Record<string, RegistrableLogo>>;
 
 /**
  * Custom icons by the names an icon's content gives them as a bare string, as it gives a built-in icon's
- * name; no name is a built-in icon's. catena ships no logos: a logo or image here is the user's to use,
- * following that brand's own guidelines.
+ * name; no name is a built-in icon's.
  */
 export type CustomIcons = Readonly<Record<string, CustomIcon>>;
 
