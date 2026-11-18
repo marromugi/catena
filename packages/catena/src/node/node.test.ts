@@ -2329,8 +2329,22 @@ describe("what a node covers", () => {
     test("takes the stroke as part of the rect, and leaves its corners out", () => {
       expect(onFilledRectSide([filledRect()], middleOfTop)).toBe(true);
       expect(onFilledRectSide([filledRect()], { x: 60, y: 10.5 })).toBe(false);
-      expect(onFilledRectSide([filledRect()], { x: 10, y: 10 })).toBe(false);
+      for (const corner of [
+        { x: 10, y: 10 },
+        { x: 110, y: 10 },
+        { x: 10, y: 60 },
+        { x: 110, y: 60 },
+      ]) {
+        expect(onFilledRectSide([filledRect()], corner)).toBe(false);
+      }
       expect(onFilledRectSide([filledRect()], { x: 10, y: 11 })).toBe(true);
+    });
+
+    test("reads a rect with no stroke width as unstroked, and a side a sum of fractions away as the side", () => {
+      const bare = element("rect", { x: 0.1, y: 0, width: 0.2, height: 10, fill: "#fff" });
+      expect(onFilledRectSide([bare], { x: 0.3, y: 5 })).toBe(true);
+      expect(onFilledRectSide([bare], { x: 0.1, y: 5 })).toBe(true);
+      expect(onFilledRectSide([bare], { x: 0.31, y: 5 })).toBe(false);
     });
 
     test("finds a rect inside a group", () => {
