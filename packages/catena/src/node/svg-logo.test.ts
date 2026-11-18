@@ -40,6 +40,10 @@ const colors = (body: string) =>
 const fill = (style: string) =>
   readSvgLogo(svg(`<path d="M0 0" style="${style}"/>`)).shapes[0]?.color;
 
+/** A fill-rule written as an attribute or in style, or not written. */
+const writeFillRule = ([value, inStyle]: [string | null, boolean]) =>
+  value === null ? "" : inStyle ? `style="fill-rule:${value}"` : `fill-rule="${value}"`;
+
 describe("readSvgLogo", () => {
   test("a logo written as SVG paths reads back as itself", () => {
     const text = fc.string({ minLength: 1 }).filter((s) => s.trim() === s && !/[\t\n\r]/.test(s));
@@ -47,7 +51,15 @@ describe("readSvgLogo", () => {
       .integer({ min: 0, max: 0xffffff })
       .map((n) => `#${n.toString(16).padStart(6, "0")}`);
     const shape: fc.Arbitrary<LogoShape> = fc.oneof(
-      fc.record({ pathData: text, paint: fc.constant("fill" as const), color }),
+      fc.record(
+        {
+          pathData: text,
+          paint: fc.constant("fill" as const),
+          color,
+          fillRule: fc.constant("evenodd" as const),
+        },
+        { requiredKeys: ["pathData", "paint", "color"] },
+      ),
       fc.record({
         pathData: text,
         paint: fc.constant("stroke" as const),
@@ -74,7 +86,11 @@ describe("readSvgLogo", () => {
             { viewBox: `${x} ${y} ${width} ${height}` },
             given.shapes.map((s) =>
               s.paint === "fill"
-                ? element("path", { d: s.pathData, fill: s.color })
+                ? element("path", {
+                    d: s.pathData,
+                    fill: s.color,
+                    ...(s.fillRule === undefined ? {} : { "fill-rule": s.fillRule }),
+                  })
                 : element("path", {
                     d: s.pathData,
                     fill: "none",
@@ -153,6 +169,53 @@ describe("readSvgLogo", () => {
       { pathData: "M3 3", paint: "fill", color: "purple" },
       { pathData: "M4 4", paint: "fill", color: "orange" },
     ]);
+  });
+
+  test("an even-odd fill is read from the attribute or style, inherited as other paint is, empty taking the parent's, and only a fill takes it", () => {
+    const logo = readSvgLogo(
+      svg(
+        `<g fill-rule="evenodd" stroke="blue" ${ROUND}>` +
+          '<path d="M1 1"/>' +
+          '<path d="M2 2" fill-rule="nonzero"/>' +
+          '<g style="fill-rule: NonZero"><path d="M3 3" fill-rule="inherit"/></g>' +
+          '<path d="M6 6" fill-rule=" "/>' +
+          "</g>" +
+          '<path d="M4 4" style="fill-rule:EVENODD" fill-rule="nonzero"/>' +
+          '<path d="M5 5"/>',
+      ),
+    );
+
+    expect(logo.shapes).toEqual([
+      { pathData: "M1 1", paint: "fill", color: "black", fillRule: "evenodd" },
+      { pathData: "M1 1", paint: "stroke", color: "blue", width: 1 },
+      { pathData: "M2 2", paint: "fill", color: "black" },
+      { pathData: "M2 2", paint: "stroke", color: "blue", width: 1 },
+      { pathData: "M3 3", paint: "fill", color: "black" },
+      { pathData: "M3 3", paint: "stroke", color: "blue", width: 1 },
+      { pathData: "M6 6", paint: "fill", color: "black", fillRule: "evenodd" },
+      { pathData: "M6 6", paint: "stroke", color: "blue", width: 1 },
+      { pathData: "M4 4", paint: "fill", color: "black", fillRule: "evenodd" },
+      { pathData: "M5 5", paint: "fill", color: "black" },
+    ]);
+  });
+
+  test("a fill takes the fill-rule nearest it that is not inherit, through the root and any groups", () => {
+    const rule = fc.option(fc.constantFrom("evenodd", "EvenOdd", "nonzero", "inherit", ""));
+    const written = fc.tuple(rule, fc.boolean());
+    fc.assert(
+      fc.property(written, fc.array(written, { maxLength: 4 }), written, (root, groups, path) => {
+        const body = groups.reduceRight(
+          (inner, group) => `<g ${writeFillRule(group)}>${inner}</g>`,
+          `<path d="M0 0" ${writeFillRule(path)}/>`,
+        );
+        const nearest = [path, ...groups.toReversed(), root]
+          .map(([value]) => value?.toLowerCase())
+          .find((value) => value !== undefined && value !== "" && value !== "inherit");
+        expect(readSvgLogo(svg(body, `viewBox="0 0 48 48" ${writeFillRule(root)}`)).shapes).toEqual(
+          [nearest === "evenodd" ? { ...BLACK, fillRule: "evenodd" } : BLACK],
+        );
+      }),
+    );
   });
 
   test("what draws nothing is left out, and what is skipped is not read", () => {
@@ -277,6 +340,7 @@ describe("readSvgLogo", () => {
       fc.tuple(fc.constantFrom("fill", "stroke"), color),
       fc.tuple(fc.constant("stroke-width"), fc.constantFrom("0", "2", "1.5px", "inherit")),
       fc.tuple(fc.constantFrom("stroke-linecap", "stroke-linejoin"), fc.constantFrom("round")),
+      fc.tuple(fc.constant("fill-rule"), fc.constantFrom("evenodd", "nonzero", "inherit")),
     );
     fc.assert(
       fc.property(fc.uniqueArray(property, { selector: ([name]) => name }), (properties) => {
@@ -296,7 +360,7 @@ describe("readSvgLogo", () => {
     ["marker-mid", ["none"], "url(#m)"],
     ["marker-end", ["none"], "url(#m)"],
     ["stroke-dasharray", ["none"], "2 2"],
-    ["fill-rule", ["nonzero", "NONZERO", "inherit"], "evenodd"],
+    ["fill-rule", ["nonzero", "NONZERO", "inherit"], "even-odd"],
     ["visibility", ["visible", "inherit"], "hidden"],
     ["paint-order", ["normal", "fill stroke", "fill"], "stroke"],
     ["vector-effect", ["none"], "non-scaling-stroke"],
@@ -648,9 +712,9 @@ describe("readSvgLogo", () => {
       "A logo cannot hold the SVG's stroke-opacity .9 on <path>.",
     ],
     [
-      "an even-odd fill",
-      svg('<path d="M0 0" fill-rule="evenodd"/>'),
-      "A logo cannot hold the SVG's fill-rule evenodd on <path>.",
+      "a fill-rule of neither nonzero nor evenodd",
+      svg('<path d="M0 0" style="fill-rule:odd"/>'),
+      "A logo cannot hold the SVG's fill-rule odd on <path>.",
     ],
     [
       "dashes",

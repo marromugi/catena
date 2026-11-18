@@ -177,6 +177,16 @@ describe("diagramJsonSchema", () => {
     ["a custom name of no config", "ours", false],
     ["an own icon", OWN_ICON, true],
     ["a logo", SQUARE_LOGO, true],
+    [
+      "a logo with an even-odd fill",
+      { ...SQUARE_LOGO, shapes: [{ ...SQUARE_LOGO.shapes[0], fillRule: "evenodd" }] },
+      true,
+    ],
+    [
+      "a logo with a fill rule other than evenodd",
+      { ...SQUARE_LOGO, shapes: [{ ...SQUARE_LOGO.shapes[0], fillRule: "nonzero" }] },
+      false,
+    ],
     ["a logo named on the theme, which catena draw registers none of", { logo: "mine" }, false],
     ["an object of no form", { stars: 5 }, false],
     ["one letter", { letters: "A" }, true],

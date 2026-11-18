@@ -1170,6 +1170,19 @@ describe("icons and the kinds that carry one", () => {
     );
   });
 
+  test("a logo's even-odd fill is drawn with fill-rule evenodd, so its holes stay", () => {
+    const holed = "M 0 0 H 48 V 48 H 0 Z M 12 12 H 36 V 36 H 12 Z";
+    const framed: OwnLogo = {
+      viewBox: { x: 0, y: 0, width: 48, height: 48 },
+      shapes: [{ pathData: holed, paint: "fill", color: "#3a6ea5", fillRule: "evenodd" }],
+    };
+    const node = buildNode(iconTitleCard, theme, "c", { icon: framed, title: "ここで" });
+
+    expect(node.draw({ x: 10, y: 20, width: 320, height: 61 })).toContain(
+      `<path d="${holed}" fill="#3a6ea5" fill-rule="evenodd"/>`,
+    );
+  });
+
   test("a logo keeps its own colours where the look would paint a built-in icon white, and is fitted on a view box wider than tall", () => {
     const wide: OwnLogo = {
       viewBox: { x: 0, y: 0, width: 32, height: 16 },
@@ -1331,6 +1344,8 @@ describe("icons and the kinds that carry one", () => {
       { viewBox: box, shapes: [{ ...stroke, pathData: 1 }] },
       { viewBox: box, shapes: [{ ...stroke, dash: [2, 2] }] },
       { viewBox: box, shapes: [{ ...fill, opacity: 0.5 }] },
+      { viewBox: box, shapes: [{ ...fill, fillRule: "nonzero" }] },
+      { viewBox: box, shapes: [{ ...stroke, fillRule: "evenodd" }] },
       { viewBox: box, shapes: [{ ...fill, pathData: 1 }] },
       { viewBox: box, shapes: [fill, "spark"] },
       { href: 1 },
@@ -1350,7 +1365,15 @@ describe("icons and the kinds that carry one", () => {
   const viewBoxes = fc.record({ x: offsets, y: offsets, width: breadths, height: breadths });
   const colours = fc.string({ minLength: 1 });
   const shapes: fc.Arbitrary<LogoShape> = fc.oneof(
-    fc.record({ pathData: fc.string(), paint: fc.constant("fill"), color: colours }),
+    fc.record(
+      {
+        pathData: fc.string(),
+        paint: fc.constant("fill"),
+        color: colours,
+        fillRule: fc.constant("evenodd"),
+      },
+      { requiredKeys: ["pathData", "paint", "color"] },
+    ),
     fc.record({
       pathData: fc.string(),
       paint: fc.constant("stroke"),
@@ -1363,7 +1386,7 @@ describe("icons and the kinds that carry one", () => {
     shapes: fc.array(shapes, { minLength: 1, maxLength: 5 }),
   });
 
-  test("a logo draws the same whatever colours the look holds, each shape in order in its own colour", () => {
+  test("a logo draws the same whatever colours the look holds, each shape in order in its own colour and fill rule", () => {
     fc.assert(
       fc.property(logos, colours, colours, (logo, one, other) => {
         const drawIn = (color: string) =>
@@ -1380,6 +1403,9 @@ describe("icons and the kinds that carry one", () => {
             path.attributes.fill === "none" ? path.attributes.stroke : path.attributes.fill,
           ),
         ).toEqual(logo.shapes.map((shape) => shape.color));
+        expect(drawn[0]?.children.map((path) => path.attributes["fill-rule"])).toEqual(
+          logo.shapes.map((shape) => (shape.paint === "fill" ? shape.fillRule : undefined)),
+        );
       }),
     );
   });

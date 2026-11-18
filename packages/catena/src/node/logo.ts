@@ -6,11 +6,17 @@ export const VIEW_BOX = v.strictObject({ x: FINITE, y: FINITE, width: BREADTH, h
 const COLOR = v.pipe(v.string(), v.nonEmpty());
 
 /**
- * One shape of a logo, in its own colour: filled, or stroked `width` across in its view box's units with
- * the built-in icons' round caps and joins.
+ * One shape of a logo, in its own colour: filled, by SVG's nonzero rule or, with `fillRule` `evenodd`,
+ * by its even-odd rule; or stroked `width` across in its view box's units with the built-in icons' round
+ * caps and joins.
  */
 const LOGO_SHAPE = v.variant("paint", [
-  v.strictObject({ pathData: v.string(), paint: v.literal("fill"), color: COLOR }),
+  v.strictObject({
+    pathData: v.string(),
+    paint: v.literal("fill"),
+    color: COLOR,
+    fillRule: v.optional(v.literal("evenodd")),
+  }),
   v.strictObject({
     pathData: v.string(),
     paint: v.literal("stroke"),
