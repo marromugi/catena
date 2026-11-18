@@ -208,7 +208,7 @@ export function stack<const TParts extends Record<string, Part>>(
 export function captioned<const TParts extends Record<string, Part>>(
   parts: TParts,
 ): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
-  const { entries, schema } = keyedParts("captioned", parts);
+  const { entries, schema } = keyedParts("captioned stack", parts);
   return {
     schema,
     layout(content, theme, maxWidth) {

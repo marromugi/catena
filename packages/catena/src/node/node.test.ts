@@ -287,13 +287,16 @@ describe("frame and stack", () => {
   });
 
   test.each(["0", "1", "10", "__proto__"])(
-    "a stack and a row refuse the key %s, whose place in the order is lost",
+    "a stack, a row and a captioned stack refuse the key %s, whose place in the order is lost",
     (key) => {
       expect(() => stack({ a: title, [key]: bodyText })).toThrow(
         `A stack's part may not be keyed "${key}".`,
       );
       expect(() => row({ a: title, [key]: bodyText })).toThrow(
         `A row's part may not be keyed "${key}".`,
+      );
+      expect(() => captioned({ a: title, [key]: bodyText })).toThrow(
+        `A captioned stack's part may not be keyed "${key}".`,
       );
     },
   );

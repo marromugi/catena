@@ -4,7 +4,7 @@ import type { Layout, PlacedNode, Spacing } from "../layout";
 import { verify } from "../verify";
 import { graphs } from "./graph.arbitrary";
 import { InvalidGraphError, placeGraph } from "./index";
-import type { Cell, Direction, Graph, GraphNode } from "./index";
+import type { Cell, Direction, Graph, GraphNode, Leaf } from "./index";
 
 const spacing = { nodeGap: 20, padding: 10, edgeToNode: 5, edgeGap: 5, minSegment: 8 };
 
@@ -4836,15 +4836,15 @@ const roomy = (any: Graph, { edgeGap, edgeToNode }: Spacing): Graph => ({
   nodes: any.nodes.map((node) => widenedNode(node, Math.max(edgeGap, edgeToNode * 2))),
 });
 
-describe("placeGraph: any graph", () => {
-  const spacings = fc.record({
-    nodeGap: fc.double({ min: 0, max: 60, noNaN: true }),
-    padding: fc.double({ min: 0, max: 40, noNaN: true }),
-    edgeToNode: fc.double({ min: 0.5, max: 30, noNaN: true }),
-    edgeGap: fc.double({ min: 0.5, max: 30, noNaN: true }),
-    minSegment: fc.double({ min: 0.5, max: 30, noNaN: true }),
-  });
+const spacings = fc.record({
+  nodeGap: fc.double({ min: 0, max: 60, noNaN: true }),
+  padding: fc.double({ min: 0, max: 40, noNaN: true }),
+  edgeToNode: fc.double({ min: 0.5, max: 30, noNaN: true }),
+  edgeGap: fc.double({ min: 0.5, max: 30, noNaN: true }),
+  minSegment: fc.double({ min: 0.5, max: 30, noNaN: true }),
+});
 
+describe("placeGraph: any graph", () => {
   test("is laid out with nothing broken", () => {
     fc.assert(
       fc.property(graphs, spacings, (any, anySpacing) => {
@@ -4932,6 +4932,188 @@ describe("placeGraph: any graph", () => {
         );
         const drawn = placeGraph(roomy(any, spacing), spacing).edges;
         expect(drawn.map(({ id, from, to }) => ({ id, from, to }))).toEqual(expected);
+      }),
+    );
+  });
+});
+
+/** Every leaf of the graph given what `lineUpOf` makes of it, in the order the leaves are written. */
+const linedUp = (any: Graph, lineUpOf: (leaf: Leaf, index: number) => Leaf): Graph => {
+  let index = 0;
+  const visit = (node: GraphNode): GraphNode => {
+    if (!("children" in node)) {
+      index += 1;
+      return lineUpOf(node, index - 1);
+    }
+    const [first, ...rest] = node.children;
+    return { ...node, children: [visit(first), ...rest.map(visit)] };
+  };
+  return { ...any, nodes: any.nodes.map(visit) };
+};
+
+/** How far in from each side an edge box lies, as parts of the leaf, and where in its middle half the middle lies. */
+const insets = fc.record({
+  left: fc.double({ min: 0.01, max: 0.24, noNaN: true }),
+  top: fc.double({ min: 0.01, max: 0.24, noNaN: true }),
+  right: fc.double({ min: 0.01, max: 0.24, noNaN: true }),
+  bottom: fc.double({ min: 0.01, max: 0.24, noNaN: true }),
+  across: fc.double({ min: 0.3, max: 0.7, noNaN: true }),
+  down: fc.double({ min: 0.3, max: 0.7, noNaN: true }),
+});
+
+/**
+ * A roomy graph whose leaves are made four times as large and line up by a part of them. The edge box is
+ * at least half the leaf each way and the middle at least a quarter of it in from its sides, so a leaf
+ * `roomy` made room on keeps that room where its edges meet it.
+ */
+const linedUpGraphs = fc
+  .record({
+    any: graphs,
+    anySpacing: spacings,
+    each: fc.array(insets, { minLength: 1, maxLength: 8 }),
+  })
+  .map(({ any, anySpacing, each }) => ({
+    anySpacing,
+    lined: linedUp(roomy(any, anySpacing), (leaf, index): Leaf => {
+      const width = leaf.size.width * 4;
+      const height = leaf.size.height * 4;
+      const { left, top, right, bottom, across, down } = each[index % each.length] ?? {
+        left: 0.1,
+        top: 0.1,
+        right: 0.1,
+        bottom: 0.1,
+        across: 0.5,
+        down: 0.5,
+      };
+      const x = width * left;
+      const y = height * top;
+      const box = { x, y, width: width * (1 - right) - x, height: height * (1 - bottom) - y };
+      return {
+        ...leaf,
+        size: { width, height },
+        lineUp: {
+          middle: { x: x + box.width * across, y: y + box.height * down },
+          edgeBox: box,
+        },
+      };
+    }),
+  }));
+
+describe("placeGraph: any graph whose leaves line up by a part of them", () => {
+  const leavesAtTop = (lined: Graph): Map<string, Leaf> =>
+    new Map(lined.nodes.flatMap((node) => ("children" in node ? [] : [[node.id, node]])));
+
+  test("places a leaf lined up by its middle and its own box as one with no line-up", () => {
+    fc.assert(
+      fc.property(graphs, spacings, (any, anySpacing) => {
+        const plain = roomy(any, anySpacing);
+        const whole = linedUp(plain, (leaf) => ({
+          ...leaf,
+          lineUp: {
+            middle: { x: leaf.size.width / 2, y: leaf.size.height / 2 },
+            edgeBox: { x: 0, y: 0, ...leaf.size },
+          },
+        }));
+        expect(placeGraph(whole, anySpacing)).toEqual(placeGraph(plain, anySpacing));
+      }),
+    );
+  });
+
+  test("is laid out with nothing broken, but edges meeting a leaf's edge box inside the leaf", () => {
+    fc.assert(
+      fc.property(linedUpGraphs, ({ lined, anySpacing }) => {
+        const placed = placeGraph(lined, anySpacing);
+        const ends = new Map(lined.edges.map((edge) => [edge.id, edge]));
+        const leafIds = new Set(
+          lined.nodes.flatMap(function idsOf(node: GraphNode): string[] {
+            return "children" in node ? node.children.flatMap(idsOf) : [node.id];
+          }),
+        );
+        const broken = verify(placed, anySpacing).filter((violation) => {
+          const edge = "edge" in violation ? ends.get(violation.edge) : undefined;
+          if (violation.kind === "edge-not-attached") {
+            return !leafIds.has(edge?.[violation.end] ?? "");
+          }
+          if (violation.kind === "edge-through-node") {
+            const atItsEnd = edge?.from === violation.node || edge?.to === violation.node;
+            return !(atItsEnd && leafIds.has(violation.node));
+          }
+          return true;
+        });
+        expect(broken).toEqual([]);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  test("puts the middles of top-level leaves that name one row on one line, and of those that name one column", () => {
+    fc.assert(
+      fc.property(linedUpGraphs, ({ lined, anySpacing }) => {
+        const placed = new Map(placeGraph(lined, anySpacing).nodes.map((node) => [node.id, node]));
+        const middles = [...leavesAtTop(lined).values()].flatMap((leaf) => {
+          const box = placed.get(leaf.id)?.box;
+          return leaf.cell === undefined || box === undefined || leaf.lineUp === undefined
+            ? []
+            : [
+                {
+                  cell: leaf.cell,
+                  x: box.x + leaf.lineUp.middle.x,
+                  y: box.y + leaf.lineUp.middle.y,
+                },
+              ];
+        });
+        for (const one of middles) {
+          for (const other of middles) {
+            if (one.cell.row === other.cell.row) {
+              expect(one.y).toBeCloseTo(other.y, 6);
+            }
+            if (one.cell.column === other.cell.column) {
+              expect(one.x).toBeCloseTo(other.x, 6);
+            }
+          }
+        }
+      }),
+    );
+  });
+
+  test("starts and ends an edge between two top-level leaves on their middle lines, at the sides of their edge boxes", () => {
+    fc.assert(
+      fc.property(linedUpGraphs, ({ lined, anySpacing }) => {
+        const leaves = leavesAtTop(lined);
+        const placement = placeGraph(lined, anySpacing);
+        const placed = new Map(placement.nodes.map((node) => [node.id, node.box]));
+        /** Where an edge meets `leaf` on its side facing along the flow, or back. */
+        const meeting = (leaf: Leaf, side: "along" | "back"): number[] => {
+          const box = placed.get(leaf.id);
+          const lineUp = leaf.lineUp;
+          if (box === undefined || lineUp === undefined) {
+            throw new Error(`Leaf "${leaf.id}" was not placed, or has no line-up.`);
+          }
+          const { middle, edgeBox } = lineUp;
+          return lined.direction === "down"
+            ? [box.x + middle.x, box.y + edgeBox.y + (side === "along" ? edgeBox.height : 0)]
+            : [box.x + edgeBox.x + (side === "along" ? edgeBox.width : 0), box.y + middle.y];
+        };
+        for (const edge of placement.edges) {
+          const from = leaves.get(edge.from);
+          const to = leaves.get(edge.to);
+          const first = edge.points[0];
+          const last = edge.points.at(-1);
+          if (
+            from === undefined ||
+            to === undefined ||
+            edge.from === edge.to ||
+            last === undefined
+          ) {
+            continue;
+          }
+          const [startX = 0, startY = 0] = meeting(from, "along");
+          const [endX = 0, endY = 0] = meeting(to, "back");
+          expect(first.x).toBeCloseTo(startX, 6);
+          expect(first.y).toBeCloseTo(startY, 6);
+          expect(last.x).toBeCloseTo(endX, 6);
+          expect(last.y).toBeCloseTo(endY, 6);
+        }
       }),
     );
   });

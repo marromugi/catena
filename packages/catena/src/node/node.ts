@@ -147,10 +147,7 @@ export function buildNode<TSchema extends v.GenericSchema>(
   }
   const block = layoutNode(kind, parsed.output, theme, id);
   return {
-    leaf:
-      block.lineUp === undefined
-        ? { id, size: block.size }
-        : { id, size: block.size, lineUp: block.lineUp },
+    leaf: { id, size: block.size, lineUp: block.lineUp },
     draw: (box) => writeSvg(element("g", {}, block.draw(box, idsOfNode(id)))),
   };
 }
