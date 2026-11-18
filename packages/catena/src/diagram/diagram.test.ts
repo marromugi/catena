@@ -121,9 +121,9 @@ describe("drawDiagram", () => {
 
   test("draws every edge through drawEdge in one painted group", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
-    expect(DEFAULT_EDGE_PAINT).toEqual({ stroke: "#8c8c8c", strokeWidth: 1.5 });
+    expect(DEFAULT_EDGE_PAINT).toEqual({ stroke: "#ebebeb", strokeWidth: 1.5 });
     expect(drawDiagram(layout, nodes)).toContain(
-      `<g fill="none" stroke="#8c8c8c" stroke-width="1.5">${paths}</g>`,
+      `<g fill="none" stroke="#ebebeb" stroke-width="1.5">${paths}</g>`,
     );
   });
 
@@ -338,7 +338,7 @@ describe("drawDiagram with a header", () => {
       .join("");
     expect(
       svg.endsWith(
-        `<g transform="translate(0 72)"><g fill="none" stroke="#8c8c8c" stroke-width="1.5">${paths}</g>${drawn}</g></svg>`,
+        `<g transform="translate(0 72)"><g fill="none" stroke="#ebebeb" stroke-width="1.5">${paths}</g>${drawn}</g></svg>`,
       ),
     ).toBe(true);
     const background = svg.indexOf('fill="url(#catena-dots)"');
