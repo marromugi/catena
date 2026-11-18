@@ -24,9 +24,9 @@ export class UnreadableSvgError extends Error {
  * The view box is the root `<svg>`'s `viewBox`, or `0 0 width height` when it has none. Each `<path>`,
  * `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>` and `<polygon>` becomes path data, filled
  * and then stroked in the colours it gives or takes from its `<g>`s and the root, as attributes or in an
- * inline `style`, its fill by the `fill-rule` it gives or takes the same way; a shape that draws nothing
- * is left out. A stroke's caps and joins must both be round,
- * as a logo's strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
+ * inline `style`; a shape that draws nothing is left out. A fill follows the `fill-rule` the shape gives
+ * or takes the same way; a stroke has none. A stroke's caps and joins must both be round, as a logo's
+ * strokes are drawn. `<defs>`, `<title>`, `<desc>` and `<metadata>` are skipped.
  *
  * The `transform` attributes of the `<g>`s and the shapes are applied to each shape's path data, in
  * absolute commands, so it draws where the file draws it; a stroke's width is scaled with it. A shape a
@@ -43,8 +43,8 @@ export class UnreadableSvgError extends Error {
  *   stroke is under a transform that does not scale evenly in both directions;
  * - it holds the CSS `translate`, `rotate` or `scale`, `url(...)` paint, `currentColor`, `<use>`,
  *   `<text>`, `<image>`, `clip-path`, `mask`, `filter`, `<style>` anywhere or `class`, an opacity below
- *   1, an even-odd fill, dashes, markers, a stroke painted under its fill, a blend mode, a shape's
- *   geometry in `style`, or any element not named above;
+ *   1, a `fill-rule` other than `nonzero` or `evenodd`, dashes, markers, a stroke painted under its
+ *   fill, a blend mode, a shape's geometry in `style`, or any element not named above;
  * - a length is in units other than user units or `px`, `points` are not pairs of numbers, or a shape's
  *   coordinates run past the largest number.
  */

@@ -40,6 +40,10 @@ const colors = (body: string) =>
 const fill = (style: string) =>
   readSvgLogo(svg(`<path d="M0 0" style="${style}"/>`)).shapes[0]?.color;
 
+/** A fill-rule written as an attribute or in style, or not written. */
+const writeFillRule = ([value, inStyle]: [string | null, boolean]) =>
+  value === null ? "" : inStyle ? `style="fill-rule:${value}"` : `fill-rule="${value}"`;
+
 describe("readSvgLogo", () => {
   test("a logo written as SVG paths reads back as itself", () => {
     const text = fc.string({ minLength: 1 }).filter((s) => s.trim() === s && !/[\t\n\r]/.test(s));
@@ -167,13 +171,14 @@ describe("readSvgLogo", () => {
     ]);
   });
 
-  test("an even-odd fill is read from the attribute or style, inherited as other paint is, and only a fill takes it", () => {
+  test("an even-odd fill is read from the attribute or style, inherited as other paint is, empty taking the parent's, and only a fill takes it", () => {
     const logo = readSvgLogo(
       svg(
         `<g fill-rule="evenodd" stroke="blue" ${ROUND}>` +
           '<path d="M1 1"/>' +
           '<path d="M2 2" fill-rule="nonzero"/>' +
           '<g style="fill-rule: NonZero"><path d="M3 3" fill-rule="inherit"/></g>' +
+          '<path d="M6 6" fill-rule=" "/>' +
           "</g>" +
           '<path d="M4 4" style="fill-rule:EVENODD" fill-rule="nonzero"/>' +
           '<path d="M5 5"/>',
@@ -187,9 +192,30 @@ describe("readSvgLogo", () => {
       { pathData: "M2 2", paint: "stroke", color: "blue", width: 1 },
       { pathData: "M3 3", paint: "fill", color: "black" },
       { pathData: "M3 3", paint: "stroke", color: "blue", width: 1 },
+      { pathData: "M6 6", paint: "fill", color: "black", fillRule: "evenodd" },
+      { pathData: "M6 6", paint: "stroke", color: "blue", width: 1 },
       { pathData: "M4 4", paint: "fill", color: "black", fillRule: "evenodd" },
       { pathData: "M5 5", paint: "fill", color: "black" },
     ]);
+  });
+
+  test("a fill takes the fill-rule nearest it that is not inherit, through the root and any groups", () => {
+    const rule = fc.option(fc.constantFrom("evenodd", "EvenOdd", "nonzero", "inherit", ""));
+    const written = fc.tuple(rule, fc.boolean());
+    fc.assert(
+      fc.property(written, fc.array(written, { maxLength: 4 }), written, (root, groups, path) => {
+        const body = groups.reduceRight(
+          (inner, group) => `<g ${writeFillRule(group)}>${inner}</g>`,
+          `<path d="M0 0" ${writeFillRule(path)}/>`,
+        );
+        const nearest = [path, ...groups.toReversed(), root]
+          .map(([value]) => value?.toLowerCase())
+          .find((value) => value !== undefined && value !== "" && value !== "inherit");
+        expect(readSvgLogo(svg(body, `viewBox="0 0 48 48" ${writeFillRule(root)}`)).shapes).toEqual(
+          [nearest === "evenodd" ? { ...BLACK, fillRule: "evenodd" } : BLACK],
+        );
+      }),
+    );
   });
 
   test("what draws nothing is left out, and what is skipped is not read", () => {

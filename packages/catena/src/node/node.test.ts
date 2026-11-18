@@ -1365,7 +1365,15 @@ describe("icons and the kinds that carry one", () => {
   const viewBoxes = fc.record({ x: offsets, y: offsets, width: breadths, height: breadths });
   const colours = fc.string({ minLength: 1 });
   const shapes: fc.Arbitrary<LogoShape> = fc.oneof(
-    fc.record({ pathData: fc.string(), paint: fc.constant("fill"), color: colours }),
+    fc.record(
+      {
+        pathData: fc.string(),
+        paint: fc.constant("fill"),
+        color: colours,
+        fillRule: fc.constant("evenodd"),
+      },
+      { requiredKeys: ["pathData", "paint", "color"] },
+    ),
     fc.record({
       pathData: fc.string(),
       paint: fc.constant("stroke"),
@@ -1378,7 +1386,7 @@ describe("icons and the kinds that carry one", () => {
     shapes: fc.array(shapes, { minLength: 1, maxLength: 5 }),
   });
 
-  test("a logo draws the same whatever colours the look holds, each shape in order in its own colour", () => {
+  test("a logo draws the same whatever colours the look holds, each shape in order in its own colour and fill rule", () => {
     fc.assert(
       fc.property(logos, colours, colours, (logo, one, other) => {
         const drawIn = (color: string) =>
@@ -1395,6 +1403,9 @@ describe("icons and the kinds that carry one", () => {
             path.attributes.fill === "none" ? path.attributes.stroke : path.attributes.fill,
           ),
         ).toEqual(logo.shapes.map((shape) => shape.color));
+        expect(drawn[0]?.children.map((path) => path.attributes["fill-rule"])).toEqual(
+          logo.shapes.map((shape) => (shape.paint === "fill" ? shape.fillRule : undefined)),
+        );
       }),
     );
   });
