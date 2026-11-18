@@ -421,9 +421,9 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * it, unless it names its cell. In a grid, an edge counts between the two nodes that hold its ends, so an
  * edge out of a group moves the group. A row or a column reaches as far before and after its middle line as
  * its nodes do, and a node sits with its middle on the middle lines of its row and its column: the middle
- * a leaf's line-up names, or the middle of its box. A group's middle is moved off the middle of its box, on
- * each side, as far as the middle line of its one row or column lies off that track's own middle; a group
- * with more than one row or column that way keeps the middle of its box. A group is as large as its grid,
+ * a leaf's line-up names, or the middle of its box. A group's middle is, on each side, the middle line of
+ * its one row or column where that track reaches further before the line than after it or the other way,
+ * and else the middle of its box. A group is as large as its grid,
  * and the grid of a group and of the canvas keeps at least the padding around its nodes.
  *
  * An edge leaves its source on the middle line of the source's column or row, at the side that faces along

@@ -681,6 +681,45 @@ describe("placeGraph: a group whose child lines up by a part of it", () => {
       U: [126, 140, 60, 100],
     });
   });
+
+  test("lines up by its child's middle line where the corridors before and after its one row differ", () => {
+    const placed = boxes(
+      place(
+        "down",
+        [
+          leaf("X", 80, 30, { row: 0, column: 0 }),
+          group("G", "down", [captionedTile("T")], { row: 1, column: 0 }),
+          leaf("C", 80, 30, { row: 1, column: 1 }),
+        ],
+        ["X>T"],
+      ),
+    );
+    const [, tileY = 0] = placed.T ?? [];
+    const [, cardY = 0, , cardHeight = 0] = placed.C ?? [];
+
+    expect(tileY + 20).toBe(cardY + cardHeight / 2);
+  });
+
+  test("lines up by a child whose middle lies after the middle of its box, and keeps its box as large as the child needs", () => {
+    const low: GraphNode = {
+      id: "T",
+      size: { width: 60, height: 100 },
+      lineUp: { middle: { x: 30, y: 80 }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
+    };
+    const placed = place("right", [leaf("C", 80, 30), group("G", "right", [low])], ["C>T"]);
+
+    expect(boxes(placed)).toEqual({
+      C: [10, 85, 80, 30],
+      G: [110, 10, 86, 120],
+      T: [126, 20, 60, 100],
+    });
+    expect(paths(placed)).toEqual({
+      "C>T #0": [
+        [90, 100],
+        [136, 100],
+      ],
+    });
+  });
 });
 
 describe("placeGraph: an edge to the next row", () => {
@@ -5192,6 +5231,90 @@ describe("placeGraph: any graph whose leaves line up by a part of them", () => {
           expect(last.y).toBeCloseTo(endY, 6);
         }
       }),
+    );
+  });
+});
+
+/** A share of a length that keeps clear of its middle, so a middle placed there lies off it. */
+const offMiddle = fc.oneof(
+  fc.double({ min: 0.3, max: 0.45, noNaN: true }),
+  fc.double({ min: 0.55, max: 0.7, noNaN: true }),
+);
+
+/**
+ * A leaf L that lines up off its middle, in groups 0 to 3 deep that each flow as the canvas does, and a
+ * node C beside the outermost group: before it along the flow with an edge C>L, or beside it across the
+ * flow with a node X before the group and an edge X>L. L may also have an edge to itself.
+ */
+const linedUpInGroups = fc
+  .record({
+    direction: fc.constantFrom<Direction>("down", "right"),
+    depth: fc.integer({ min: 0, max: 3 }),
+    across: fc.boolean(),
+    toItself: fc.boolean(),
+    extra: fc.record({
+      width: fc.double({ min: 0, max: 200, noNaN: true }),
+      height: fc.double({ min: 0, max: 200, noNaN: true }),
+    }),
+    middle: fc.record({ x: offMiddle, y: offMiddle }),
+    card: fc.record({
+      width: fc.double({ min: 0, max: 200, noNaN: true }),
+      height: fc.double({ min: 0, max: 200, noNaN: true }),
+    }),
+    anySpacing: spacings,
+  })
+  .map(({ direction, depth, across, toItself, extra, middle, card, anySpacing }) => {
+    const least = 4 * (anySpacing.edgeToNode + anySpacing.edgeGap);
+    const size = { width: least + extra.width, height: least + extra.height };
+    const tile: Leaf = {
+      id: "L",
+      size,
+      lineUp: {
+        middle: { x: size.width * middle.x, y: size.height * middle.y },
+        edgeBox: { x: 0, y: 0, ...size },
+      },
+    };
+    let held: GraphNode = tile;
+    for (let level = 0; level < depth; level += 1) {
+      held = group(`G${level}`, direction, [held]);
+    }
+    const cardSize = { width: least + card.width, height: least + card.height };
+    const at = (step: number, side: number): Cell =>
+      direction === "down" ? { row: step, column: side } : { row: side, column: step };
+    const nodes: GraphNode[] = across
+      ? [
+          leaf("X", cardSize.width, cardSize.height, at(0, 0)),
+          { ...held, cell: at(1, 0) },
+          leaf("C", cardSize.width, cardSize.height, at(1, 1)),
+        ]
+      : [leaf("C", cardSize.width, cardSize.height, at(0, 0)), { ...held, cell: at(1, 0) }];
+    const links = [across ? "X>L" : "C>L", ...(toItself ? ["L>L"] : [])];
+    return { across, tile, anySpacing, inGroups: graph(direction, nodes, links) };
+  });
+
+describe("placeGraph: any group whose one row and column hold a leaf that lines up by a part of it", () => {
+  test("puts the leaf's middle on the middle line of the node beside the group, and runs the edge into it straight", () => {
+    fc.assert(
+      fc.property(linedUpInGroups, ({ across, tile, anySpacing, inGroups }) => {
+        const placement = placeGraph(inGroups, anySpacing);
+        const placed = new Map(flat(placement.nodes).map((node) => [node.id, node.box]));
+        const leafBox = placed.get("L");
+        const card = placed.get("C");
+        if (leafBox === undefined || card === undefined || tile.lineUp === undefined) {
+          throw new Error("L or C was not placed.");
+        }
+        // C before the group shares the line across the flow; C beside it, the line along the flow.
+        const onX = (inGroups.direction === "down") !== across;
+        const leafMiddle = onX
+          ? leafBox.x + tile.lineUp.middle.x
+          : leafBox.y + tile.lineUp.middle.y;
+        const cardMiddle = onX ? card.x + card.width / 2 : card.y + card.height / 2;
+        expect(leafMiddle).toBeCloseTo(cardMiddle, 6);
+
+        const into = placement.edges.find((edge) => edge.from !== "L");
+        expect(into?.points.length).toBe(2);
+      }),
+      { numRuns: 300 },
     );
   });
 });
