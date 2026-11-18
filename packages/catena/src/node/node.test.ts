@@ -2360,6 +2360,7 @@ describe("what a node covers", () => {
       expect(onFilledRectSide([bare], { x: 0.3, y: 5 }, REACH)).toBe(true);
       expect(onFilledRectSide([bare], { x: 0.1, y: 5 }, REACH)).toBe(true);
       expect(onFilledRectSide([bare], { x: 0.31, y: 5 }, REACH)).toBe(false);
+      expect(onFilledRectSide([bare], { x: 0.3001, y: 5 }, REACH)).toBe(false);
     });
 
     test("finds a rect inside a group", () => {
@@ -2369,7 +2370,7 @@ describe("what a node covers", () => {
     test("leaves out a rect with no fill, one under a transform, one in a clip path, and what is no rect", () => {
       expect(
         onFilledRectSide(
-          [element("circle", { cx: 60, cy: 10, r: 0, x: 10.5, y: 10.5, width: 99, height: 49 })],
+          [element("circle", { cx: 60, cy: 10, r: 0, ...filledRect().attributes })],
           middleOfTop,
           REACH,
         ),
