@@ -31,8 +31,6 @@ export class UnreadableSvgError extends Error {
  * The `transform` attributes of the `<g>`s and the shapes are applied to each shape's path data, in
  * absolute commands, so it draws where the file draws it; a stroke's width is scaled with it. A shape a
  * transform flattens to nothing is left out.
- *
- * The logo is the caller's to use, following that brand's own guidelines.
  * @throws UnreadableSvgError naming the element or attribute when:
  * - the file is not well-formed XML, or nests elements deeper than this reader follows;
  * - its root is not `<svg>`, gives no size, or has `preserveAspectRatio` `none` or `slice`;

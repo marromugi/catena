@@ -222,9 +222,6 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - one or two letters ({@link Letters}), in the theme's bold fonts and the look's colour, centred in
  *   the square by the box their outline takes, and made smaller only where they would not fit across it.
  * An icon or logo has its view box scaled to fit the square and centred in it.
- *
- * catena ships no logos: a logo or image is one the caller passes, and theirs to use, following that
- * brand's own guidelines.
  * @throws UnknownLogoError from `layout` when the content names a logo the theme does not hold.
  * @throws UnknownIconError from `layout` when the content is a name neither built in nor a custom icon's.
  */
