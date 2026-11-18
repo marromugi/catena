@@ -15,7 +15,8 @@ export const DEFAULT_EDGE_RADIUS = 8;
 
 /**
  * Where a horizontal stretch meets a vertical one the bend is rounded; any other turn, which `verify`
- * reports as `edge-not-orthogonal`, or a turn back, is drawn sharp. The path carries no stroke, so the caller paints it, for example from a `<g>` around it.
+ * reports as `edge-not-orthogonal`, or a turn back, is drawn sharp. The path carries no stroke, so the
+ * caller paints it, for example from a `<g>` around it.
  */
 export function drawEdge(edge: PlacedEdge, options: EdgeOptions = {}): SvgElement {
   const radius = options.radius ?? DEFAULT_EDGE_RADIUS;

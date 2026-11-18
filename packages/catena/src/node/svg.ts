@@ -3,7 +3,8 @@ import { element, type SvgElement } from "../svg";
 
 /**
  * Gives an id for an element another refers to, such as a `<clipPath>`. The ids are unique among the
- * nodes of one graph drawn once into a document; two graphs, or one node drawn twice, can repeat them.
+ * nodes of one graph drawn once into a document; two graphs, or one node drawn twice, can repeat them. A
+ * container passes the one it is given on to the parts it holds.
  */
 export type NewId = () => string;
 

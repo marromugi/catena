@@ -4,6 +4,7 @@ import { buildNode, type Node, type Theme } from "../node";
 import { placeGraph, type GraphNode } from "../place";
 import { NODE_KINDS, type DiagramFile, type NodeEntry } from "./diagram-file";
 
+/** The distances every diagram file is laid out with: those of the picture on #20. */
 const SPACING: Spacing = { nodeGap: 32, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 8 };
 
 /**

@@ -39,7 +39,8 @@ const DOT_PATTERN_ID = "catena-dots";
 /**
  * A placed node with no `Node` is not drawn, though its children are. Every document names its dot
  * pattern `catena-dots`, so documents inlined in one HTML page show the first one's dot grid. Given a
- * header, the document is 72 higher, the header is drawn over the background at its top, and the edges and nodes 72 lower, below it.
+ * header, the document is 72 higher, the header is drawn over the background at its top, and the edges
+ * and nodes 72 lower, below it.
  * @throws RangeError when the dot radius or the edges' stroke width is below 0, the spacing is not above
  * 0, or any of them is not finite.
  */
