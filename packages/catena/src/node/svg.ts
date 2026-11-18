@@ -89,14 +89,20 @@ const NEAR = 1e-6;
 
 /**
  * Whether `point` is on a side of one of the filled `<rect>`s in `drawn`, stroke included, between its
- * corners, so the rect covers part of anything centred there. A rect under a `transform`, or in a
+ * corners, with the rect's round outline no more than `reach` from it. A rect under a `transform`, or in a
  * `<clipPath>`, is not drawn in place and is not one of them.
  */
-export function onFilledRectSide(drawn: readonly SvgElement[], point: Point): boolean {
+export function onFilledRectSide(
+  drawn: readonly SvgElement[],
+  point: Point,
+  reach: number,
+): boolean {
   return drawn.some(({ name, attributes, children }) => {
     if (name === "clipPath" || "transform" in attributes) return false;
-    if (name === "rect" && attributes.fill !== "none" && onSide(attributes, point)) return true;
-    return onFilledRectSide(children, point);
+    if (name === "rect" && attributes.fill !== "none" && onSide(attributes, point, reach)) {
+      return true;
+    }
+    return onFilledRectSide(children, point, reach);
   });
 }
 
@@ -108,15 +114,28 @@ function between(value: number, from: number, to: number): boolean {
   return value > from && value < to;
 }
 
-function onSide(attributes: Readonly<Record<string, string | number>>, point: Point): boolean {
+/** Read as SVG reads a `<rect>`, `rx` cut to half its width and height. */
+function onSide(
+  attributes: Readonly<Record<string, string | number>>,
+  point: Point,
+  reach: number,
+): boolean {
   const number = (key: string) => Number(attributes[key] ?? 0);
   const half = number("stroke-width") / 2;
+  const width = number("width");
+  const height = number("height");
   const left = number("x") - half;
   const top = number("y") - half;
-  const right = number("x") + number("width") + half;
-  const bottom = number("y") + number("height") + half;
-  return (
+  const right = number("x") + width + half;
+  const bottom = number("y") + height + half;
+  const onBox =
     ((near(point.x, left) || near(point.x, right)) && between(point.y, top, bottom)) ||
-    ((near(point.y, top) || near(point.y, bottom)) && between(point.x, left, right))
-  );
+    ((near(point.y, top) || near(point.y, bottom)) && between(point.x, left, right));
+  const round = Math.min(number("rx"), width / 2, height / 2) + half;
+  const centre = {
+    x: Math.min(Math.max(point.x, left + round), right - round),
+    y: Math.min(Math.max(point.y, top + round), bottom - round),
+  };
+  const fromOutline = Math.hypot(point.x - centre.x, point.y - centre.y) - round;
+  return onBox && fromOutline <= reach + NEAR;
 }

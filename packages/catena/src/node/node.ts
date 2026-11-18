@@ -43,8 +43,11 @@ export interface Node {
    * graph; nodes of two graphs, or the same node drawn twice, in one document can repeat them.
    */
   draw(box: Rect): string;
-  /** Whether `point` is on a side of a filled card the node draws in `box`, between its corners. */
-  covers(box: Rect, point: Point): boolean;
+  /**
+   * Whether `point` is on a side of a filled card the node draws in `box`, between its corners, with the
+   * card's round outline no more than `reach` from it.
+   */
+  covers(box: Rect, point: Point, reach: number): boolean;
 }
 
 export const titleBodyCard = frame(stack({ title, body: bodyText }));
@@ -153,7 +156,7 @@ export function buildNode<TSchema extends v.GenericSchema>(
   return {
     leaf: { id, size: block.size },
     draw: (box) => writeSvg(element("g", {}, block.draw(box, idsOfNode(id)))),
-    covers: (box, point) => onFilledRectSide(block.draw(box, idsOfNode(id)), point),
+    covers: (box, point, reach) => onFilledRectSide(block.draw(box, idsOfNode(id)), point, reach),
   };
 }
 
