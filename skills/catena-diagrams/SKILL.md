@@ -29,7 +29,7 @@ The rules rest on these.
 - A line between two nodes of one grid in neighbouring columns is straight, or has two bends when the rows differ. A line goes around, through the gaps beside the nodes, when it skips a column, goes back, or would cross another line between the same two columns.
 - A group lays its children out in a grid of their own, flowing in the group's `direction`. The grid of the group is one node in the grid around it: an edge to any child counts as an edge to the group when nodes are ordered.
 - A group is not drawn: no box, no background, no label.
-- Every line into or out of a group crosses the group's border at one point, at or near the middle of the side. The part outside the group and the part inside are each drawn as a line of their own grid and joined there.
+- Every line into or out of a group crosses the group's border at one point: where its one child (or one chain of children along the flow) lines up, such as a captioned tile's square, or else at or near the middle of the side. The group lines up with the nodes beside it there. The part outside the group and the part inside are each drawn as a line of their own grid and joined there.
 - Each row is as tall as the tallest node in it, and each column as wide as the widest, a group counting as one node.
 
 ### Counting bends
@@ -98,7 +98,7 @@ Each rule says what to look for in the drawing, then what the file can do.
 catena breaks these whatever the file says. Say so when a drawing shows one, rather than reworking the file to hide it.
 
 - **A group that flows across its parent** draws its lines through the top and bottom (in `right`): a line into it runs over the first child and drops into its top, a line out of it leaves the last child's bottom and comes back around. Giving the group its parent's `direction` avoids it, but then a chain across the flow inside the group needs `cell` and goes around (rule 1). #106
-- **Lines into or out of a group meet at one point,** at or near the middle of the group's side, and run on top of each other there, so a reader can't follow which line goes to which child. Only not grouping avoids it. #107
+- **Lines into or out of a group meet at one point** on the group's side (rule above), and run on top of each other there, so a reader can't follow which line goes to which child. Only not grouping avoids it. #107
 - **A group is not drawn.** A reader sees only the gaps between nodes; which nodes belong together can't be read from the drawing. #108
 
 ## Example
