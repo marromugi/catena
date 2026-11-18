@@ -1,7 +1,7 @@
 import type { Layout, PlacedEdge, PlacedNode, Point, Spacing } from "../layout";
 import { assignSpots } from "./cells";
 import { frameOf, type FlowPoint, type Frame, type Item } from "./frame";
-import type { Direction, EdgeEnds, Graph, GraphEdge, GraphNode, Size } from "./graph";
+import type { Direction, EdgeEnds, Graph, GraphEdge, GraphNode, LineUp, Size } from "./graph";
 import { InvalidGraphError } from "./graph";
 import { assignLanes, outside, type BorderCrossing, type Route, type Run } from "./lanes";
 
@@ -124,12 +124,15 @@ function requireRoomForEdges(
 ): void {
   const entered = new Set(edges.map((edge) => edge.to));
   const left = new Set(edges.map((edge) => edge.from));
-  for (const [id, { across, along }] of items) {
+  for (const [id, { middle, edgeBox }] of items) {
+    const across =
+      2 * Math.min(middle.across - edgeBox.start.across, edgeBox.end.across - middle.across);
     if ((entered.has(id) || left.has(id)) && across < spacing.edgeToNode * 2) {
       throw new InvalidGraphError(
         `Node "${id}" is ${across} across where its edges meet it, too narrow for an edge to keep ${spacing.edgeToNode} from its corners.`,
       );
     }
+    const along = edgeBox.end.along - edgeBox.start.along;
     if (entered.has(id) && left.has(id) && along < spacing.edgeGap) {
       throw new InvalidGraphError(
         `Node "${id}" is ${along} long between the edges that enter it and the edges that leave it, less than the gap of ${spacing.edgeGap} between edges.`,
@@ -213,6 +216,14 @@ function arrange(
   const spots = assignSpots(nodes, direction, edgesBetween(nodes, edges));
   const runs = runsOf(nodes, edges, crossing);
   const edgesById = new Map(edges.map((edge) => [edge.id, edge]));
+  const turned = (point: FlowPoint): Point =>
+    direction === "down"
+      ? { x: point.across, y: point.along }
+      : { x: point.along, y: point.across };
+  const flowOf = (point: Point): FlowPoint =>
+    direction === "down"
+      ? { across: point.x, along: point.y }
+      : { across: point.y, along: point.x };
   const arranged = nodes.map((node) => {
     const spot = spots.get(node.id);
     if (spot === undefined) {
@@ -229,10 +240,17 @@ function arrange(
             node.direction === direction ? "along" : "across",
           )
         : { size: node.size, nodes: [], edges: [], crossings: new Map() };
+    const { width, height } = inner.size;
+    const lineUp = "children" in node ? undefined : node.lineUp;
+    const edgeBox = lineUp?.edgeBox ?? { x: 0, y: 0, width, height };
     const item: Item = {
       ...spot,
-      across: direction === "down" ? inner.size.width : inner.size.height,
-      along: direction === "down" ? inner.size.height : inner.size.width,
+      ...flowOf({ x: width, y: height }),
+      middle: flowOf(lineUp?.middle ?? { x: width / 2, y: height / 2 }),
+      edgeBox: {
+        start: flowOf(edgeBox),
+        end: flowOf({ x: edgeBox.x + edgeBox.width, y: edgeBox.y + edgeBox.height }),
+      },
     };
     return { id: node.id, inner, item };
   });
@@ -242,10 +260,6 @@ function arrange(
   const lanes = assignLanes(items, runs, border);
   const frame = frameOf(items, runs, lanes, spacing, border);
 
-  const turned = (point: FlowPoint): Point =>
-    direction === "down"
-      ? { x: point.across, y: point.along }
-      : { x: point.along, y: point.across };
   const placed = arranged.map(({ id, inner }) => {
     const corner = turned(frame.cornerOf(id));
     return {
@@ -314,6 +328,23 @@ function arrange(
 
 const isLength = (value: number): boolean => Number.isFinite(value) && value >= 0;
 
+const isBetween = (value: number, from: number, to: number): boolean =>
+  Number.isFinite(value) && from <= value && value <= to;
+
+/** Whether the edge box lies in a leaf of `size`, and the middle in the edge box. */
+function liesInside({ middle, edgeBox }: LineUp, size: Size): boolean {
+  const right = edgeBox.x + edgeBox.width;
+  const bottom = edgeBox.y + edgeBox.height;
+  return (
+    isBetween(edgeBox.x, 0, size.width) &&
+    isBetween(edgeBox.y, 0, size.height) &&
+    isBetween(right, edgeBox.x, size.width) &&
+    isBetween(bottom, edgeBox.y, size.height) &&
+    isBetween(middle.x, edgeBox.x, right) &&
+    isBetween(middle.y, edgeBox.y, bottom)
+  );
+}
+
 function requireSound(graph: Graph, spacing: Spacing): void {
   for (const [name, value] of Object.entries(spacing)) {
     if (!isLength(value)) {
@@ -339,6 +370,11 @@ function requireSound(graph: Graph, spacing: Spacing): void {
             `The ${what} of node "${node.id}" is ${value}, which is not a length.`,
           );
         }
+      }
+      if (node.lineUp !== undefined && !liesInside(node.lineUp, node.size)) {
+        throw new InvalidGraphError(
+          `Node "${node.id}" lines up by a box or a middle that lies outside it, or a middle outside that box.`,
+        );
       }
     }
   };
@@ -366,11 +402,14 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  *
  * The edges decide the order along the flow: a node goes after every node listed before it that leads to
  * it, unless it names its cell. In a grid, an edge counts between the two nodes that hold its ends, so an
- * edge out of a group moves the group. A node sits in the middle of its cell, a group is as large as its
- * grid, and the grid of a group and of the canvas keeps at least the padding around its nodes.
+ * edge out of a group moves the group. A row or a column reaches as far before and after its middle line as
+ * its nodes do, and a node sits with its middle on the middle lines of its row and its column: the middle
+ * its line-up names, or the middle of its box. A group is as large as its grid, and the grid of a group and
+ * of the canvas keeps at least the padding around its nodes.
  *
- * An edge leaves the middle of the side of its source that faces along the flow and enters the middle of
- * the side of its target that faces back, turning only in the corridors between rows and columns. The
+ * An edge leaves its source on the middle line of the source's column or row, at the side that faces along
+ * the flow, and enters its target on its middle line at the side that faces back; those sides are of the
+ * edge box a leaf's line-up names, or else of the node's box. It turns only in the corridors between rows and columns. The
  * edges that leave a node run as one until they part, and so do the edges that enter a node once they
  * have met. A corridor is at least the gap between nodes, or the padding at the outside, and wider where
  * edges need the room: for their lanes, to keep clear of the next row or column, or for a straight stretch.
@@ -385,9 +424,10 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * `graph.edges`, in canvas coordinates.
  * @throws InvalidGraphError when the graph cannot be laid out as written: two nodes share an id or a
  * cell, two edges share an id, an edge connects a node that is not in the graph, a cell is not a pair of
- * whole numbers from 0 up, a size is negative or not finite, a node is narrower than twice `edgeToNode`
- * where edges meet it, or a node is shorter than `edgeGap` between the edges that enter it and those
- * that leave it.
+ * whole numbers from 0 up, a size is negative or not finite, a leaf's line-up lies outside it or its
+ * middle outside its edge box, a node reaches less than `edgeToNode`
+ * to one side of its middle line where edges meet it, or a node is shorter than `edgeGap` between the
+ * edges that enter it and those that leave it.
  * @throws Error when a spacing is negative or not finite.
  */
 export function placeGraph(graph: Graph, spacing: Spacing): Layout {

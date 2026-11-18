@@ -200,6 +200,35 @@ export function stack<const TParts extends Record<string, Part>>(
 }
 
 /**
+ * Parts set one over the next as {@link stack} sets them, the first drawn at its own size and centred
+ * across the box, and the parts after it under it as its caption. The block lines up by the first part: its
+ * middle is that part's, and edges meet that part's sides across the stack, and the stack's top and bottom.
+ * @throws Error when a key looks like an integer or is `__proto__`, since its place in the order is lost.
+ */
+export function captioned<const TParts extends Record<string, Part>>(
+  parts: TParts,
+): Part<v.StrictObjectSchema<Schemas<TParts>, undefined>> {
+  const { entries, schema } = keyedParts("captioned", parts);
+  return {
+    schema,
+    layout(content, theme, maxWidth) {
+      const [subject = EMPTY, ...caption] = entries.map(([key, part]) =>
+        part.layout(content[key], theme, maxWidth),
+      );
+      const block = stacked([atCentre(subject), ...caption], theme.gap);
+      const { width, height } = block.size;
+      return {
+        ...block,
+        lineUp: {
+          middle: { x: width / 2, y: subject.size.height / 2 },
+          edgeBox: { x: (width - subject.size.width) / 2, y: 0, width: subject.size.width, height },
+        },
+      };
+    },
+  };
+}
+
+/**
  * As many items as the content gives, each laid out by `item`, set one over the next the theme's gap
  * apart. Its content is an array of `item`'s content. With no items it takes no room.
  */

@@ -13,6 +13,7 @@ import {
   badge,
   bodyText,
   buildNode,
+  captioned,
   centered,
   defineTheme,
   divider,
@@ -1887,6 +1888,25 @@ describe("icons and the kinds that carry one", () => {
     });
   });
 
+  test("an icon tile with a label lines up by its square, which edges meet at its sides and the label's bottom", () => {
+    const node = buildNode(selectedIconTile, theme, "t", {
+      icon: "spark",
+      label: { caption: "あ", subcaption: "あ".repeat(10) },
+    });
+
+    expect(node.leaf).toEqual({
+      id: "t",
+      size: { width: 110, height: 124.6 },
+      lineUp: {
+        middle: { x: 55, y: 36 },
+        edgeBox: { x: 19, y: 0, width: 72, height: 124.6 },
+      },
+    });
+    expect(node.draw({ x: 0, y: 0, ...node.leaf.size })).toContain(
+      `<rect x="19.5" y="0.5" width="71" height="71"`,
+    );
+  });
+
   test("the selected icon tile is the icon tile in the selected card's look", () => {
     const node = buildNode(selectedIconTile, theme, "t", { icon: "spark" });
 
@@ -1990,6 +2010,24 @@ describe("icons and the kinds that carry one", () => {
     expect(block.draw({ x: 5, y: 7, width: 300, height: 300 }, noId).map(writeSvg)).toEqual([
       `<rect x="5.5" y="7.5" width="55" height="25" rx="13" fill="#ffffff" stroke="#e6e6e6" stroke-width="1"/>`,
       `<rect x="13" y="15" width="40" height="10"/>`,
+    ]);
+  });
+
+  test("a captioned part centres its first part over the others, and lines up by the first part", () => {
+    const block = captioned({ a: fixed(20, 10), b: fixed(80, 6) }).layout(
+      { a: null, b: null },
+      theme,
+      300,
+    );
+
+    expect(block.size).toEqual({ width: 80, height: 28 });
+    expect(block.lineUp).toEqual({
+      middle: { x: 40, y: 5 },
+      edgeBox: { x: 30, y: 0, width: 20, height: 28 },
+    });
+    expect(block.draw({ x: 5, y: 7, width: 80, height: 28 }, noId).map(writeSvg)).toEqual([
+      `<rect x="35" y="7" width="20" height="10"/>`,
+      `<rect x="5" y="29" width="80" height="6"/>`,
     ]);
   });
 

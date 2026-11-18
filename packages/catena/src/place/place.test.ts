@@ -449,6 +449,74 @@ describe("placeGraph: a group", () => {
   });
 });
 
+describe("placeGraph: a leaf that lines up by a part of it", () => {
+  // A 40 by 40 square at the top, centred over a caption 60 wide, 100 high in all.
+  const tile: GraphNode = {
+    id: "T",
+    size: { width: 60, height: 100 },
+    lineUp: { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
+  };
+
+  test("sits with its part's middle on the middle line of its row, beside a node that flows right", () => {
+    const placed = place("right", [tile, leaf("C", 80, 30)], ["T>C"]);
+
+    expect(boxes(placed)).toEqual({ T: [10, 10, 60, 100], C: [90, 15, 80, 30] });
+    expect(paths(placed)).toEqual({
+      "T>C #0": [
+        [60, 30],
+        [90, 30],
+      ],
+    });
+  });
+
+  test("sits with its part's middle on the middle line of its row, beside a node in a grid that flows down", () => {
+    expect(boxes(place("down", [tile, leaf("C", 80, 30)]))).toEqual({
+      T: [10, 10, 60, 100],
+      C: [90, 15, 80, 30],
+    });
+  });
+
+  test("is left by its edges below its edge box when the flow is down", () => {
+    const placed = place("down", [tile, leaf("D", 80, 30)], ["T>D"]);
+
+    expect(boxes(placed)).toEqual({ T: [20, 10, 60, 100], D: [10, 130, 80, 30] });
+    expect(paths(placed)).toEqual({
+      "T>D #0": [
+        [50, 110],
+        [50, 130],
+      ],
+    });
+  });
+
+  test("is too narrow for its edges when its middle lies nearer than edgeToNode to its edge box's side", () => {
+    const near: GraphNode = {
+      id: "N",
+      size: { width: 60, height: 100 },
+      lineUp: { middle: { x: 30, y: 3 }, edgeBox: { x: 0, y: 0, width: 60, height: 100 } },
+    };
+
+    expect(() => place("right", [near, leaf("C", 80, 30)], ["N>C"])).toThrow(
+      new InvalidGraphError(
+        'Node "N" is 6 across where its edges meet it, too narrow for an edge to keep 5 from its corners.',
+      ),
+    );
+  });
+
+  test.each([
+    { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: 40, height: 101 } },
+    { middle: { x: 30, y: 20 }, edgeBox: { x: -1, y: 0, width: 40, height: 100 } },
+    { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: -1, height: 100 } },
+    { middle: { x: 5, y: 20 }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
+    { middle: { x: 30, y: Number.NaN }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
+  ])("refuses a line-up that does not lie inside the leaf: %o", (lineUp) => {
+    expect(() => place("right", [{ ...tile, lineUp }])).toThrow(
+      new InvalidGraphError(
+        'Node "T" lines up by a box or a middle that lies outside it, or a middle outside that box.',
+      ),
+    );
+  });
+});
+
 describe("placeGraph: an edge to the next row", () => {
   const chain = [leaf("A", 50, 30), leaf("B", 80, 40), leaf("C", 50, 30)];
 
