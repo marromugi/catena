@@ -7,7 +7,7 @@ export interface SvgElement {
 
 export function element(
   name: string,
-  attributes: Readonly<Record<string, string | number>> = {},
+  attributes: Readonly<Record<string, string | number>>,
   children: readonly SvgElement[] = [],
 ): SvgElement {
   return { name, attributes, children };

@@ -374,12 +374,12 @@ describe("badges and the status dot", () => {
 
     expect(laidBadge.size).toEqual({ width: text.width + 8, height: 14 });
     expect(
-      writeSvg(laidBadge.draw({ x: 0, y: 0, ...laidBadge.size }, noId)[0] ?? element("none")),
+      writeSvg(laidBadge.draw({ x: 0, y: 0, ...laidBadge.size }, noId)[0] ?? element("none", {})),
     ).toMatch(/ rx="7" fill="pink" stroke="#fbd0d0" /);
     expect(badge.layout("Badge", changed, 300).size.height).toBe(20);
     const dot = statusDot.layout("red", changed, 300);
     expect(dot.size).toEqual({ width: 6, height: 6 });
-    expect(writeSvg(dot.draw({ x: 0, y: 0, ...dot.size }, noId)[0] ?? element("none"))).toBe(
+    expect(writeSvg(dot.draw({ x: 0, y: 0, ...dot.size }, noId)[0] ?? element("none", {}))).toBe(
       `<circle cx="3" cy="3" r="3" fill="crimson"/>`,
     );
   });
