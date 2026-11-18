@@ -53,7 +53,7 @@ import {
   type ThemeOverrides,
 } from "./index";
 import type { LogoShape, Node, OwnIcon, OwnImage, OwnLogo } from "./index";
-import { onFilledOutline } from "./svg";
+import { onFilledRectSide } from "./svg";
 
 const require = createRequire(import.meta.url);
 const inter = (weight: 400 | 700) =>
@@ -2221,20 +2221,19 @@ describe("what a node covers", () => {
     expect(card.covers(box, { x: box.x - 1, y: box.y + box.height / 2 })).toBe(false);
   });
 
-  test("a card covers every point of its box's sides past its round corners", () => {
+  test("a card covers every point of its box's sides between its corners", () => {
     const card = buildNode(titleBodyCard, theme, "c", { title: "ここで", body: "Keeps answers." });
     fc.assert(
       fc.property(
         fc.integer({ min: -500, max: 500 }),
         fc.integer({ min: -500, max: 500 }),
         fc.integer({ min: 0, max: 400 }),
-        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0.01, max: 0.99, noNaN: true }),
         fc.constantFrom("top", "right", "bottom", "left"),
         (x, y, wider, along, side) => {
           const box = { x, y, width: card.leaf.size.width + wider, height: card.leaf.size.height };
-          const corner = 9;
-          const across = corner + along * (box.width - 2 * corner);
-          const down = corner + along * (box.height - 2 * corner);
+          const across = along * box.width;
+          const down = along * box.height;
           const point = {
             top: { x: x + across, y },
             bottom: { x: x + across, y: y + box.height },
@@ -2270,26 +2269,88 @@ describe("what a node covers", () => {
     ]);
   });
 
-  describe("onFilledOutline", () => {
+  test("every kind but a tile with a label covers the middle of each side of its box", () => {
+    const shadowed = defineTheme(fonts, {});
+    const kinds: [Part, unknown][] = [
+      [activeRoundButton, "service"],
+      [badge, "Beta"],
+      [redBadge, "Beta"],
+      [itemCard, "い"],
+      [iconTitleCard, { icon: "spark", title: "ここで" }],
+      [iconTitleBodyCard, { icon: "spark", text: { title: "ここで", body: "Keeps answers." } }],
+      [
+        iconTitleCardPair,
+        { first: { icon: "spark", title: "ここで" }, second: { icon: "plus", title: "ここで" } },
+      ],
+      [
+        imageTitleBodyCard,
+        { image: "https://example.com/sunset.jpg", title: "ここで", body: "Keeps answers." },
+      ],
+      [selectedIconTile, { icon: "spark" }],
+      [statusTitleCard, { status: "red", title: "ここで" }],
+      [titleBadgeCard, { title: "ここで", badge: "Badge" }],
+      [titleBodyBadgeCard, { title: "ここで", body: "Keeps answers.", badge: "Badge" }],
+      [titleBodyCard, { title: "ここで", body: "Keeps answers." }],
+      [
+        titleBodyItemsSectionCard,
+        {
+          title: "ここで",
+          body: "Keeps answers.",
+          items: ["い"],
+          section: { heading: "見出し", items: ["え"] },
+        },
+      ],
+    ];
+    for (const looks of [theme, shadowed]) {
+      for (const [kind, content] of kinds) {
+        const node = buildNode(kind, looks, "k", content);
+        const box = atOwnSize(node);
+        for (const point of middles(box)) expect(node.covers(box, point)).toBe(true);
+      }
+    }
+  });
+
+  test("a tile with a caption and a subcaption covers the middle of its box's sides on its round corner", () => {
+    const tile = buildNode(iconTile, defineTheme(fonts, {}), "t", {
+      icon: "service",
+      label: { caption: "User", subcaption: "sub" },
+    });
+    const card = { x: 40, y: 20, width: 72, height: 72 };
+    const box = { ...card, height: tile.leaf.size.height };
+    expect(box.height / 2).toBeGreaterThan(card.height - 12);
+    expect(box.height / 2).toBeLessThan(card.height);
+    expect(tile.covers(box, { x: box.x, y: box.y + box.height / 2 })).toBe(true);
+    expect(tile.covers(box, { x: box.x + box.width, y: box.y + box.height / 2 })).toBe(true);
+  });
+
+  describe("onFilledRectSide", () => {
     const middleOfTop = { x: 60, y: 10 };
 
-    test("takes the stroke as part of the outline", () => {
-      expect(onFilledOutline([filledRect()], middleOfTop)).toBe(true);
-      expect(onFilledOutline([filledRect()], { x: 60, y: 10.5 })).toBe(false);
+    test("takes the stroke as part of the rect, and leaves its corners out", () => {
+      expect(onFilledRectSide([filledRect()], middleOfTop)).toBe(true);
+      expect(onFilledRectSide([filledRect()], { x: 60, y: 10.5 })).toBe(false);
+      expect(onFilledRectSide([filledRect()], { x: 10, y: 10 })).toBe(false);
+      expect(onFilledRectSide([filledRect()], { x: 10, y: 11 })).toBe(true);
     });
 
     test("finds a rect inside a group", () => {
-      expect(onFilledOutline([element("g", {}, [filledRect()])], middleOfTop)).toBe(true);
+      expect(onFilledRectSide([element("g", {}, [filledRect()])], middleOfTop)).toBe(true);
     });
 
-    test("leaves out a rect with no fill, one under a transform, and one in a clip path", () => {
-      expect(onFilledOutline([filledRect({ fill: "none" })], middleOfTop)).toBe(false);
+    test("leaves out a rect with no fill, one under a transform, one in a clip path, and what is no rect", () => {
       expect(
-        onFilledOutline([element("g", { transform: "scale(1)" }, [filledRect()])], middleOfTop),
+        onFilledRectSide(
+          [element("circle", { cx: 60, cy: 10, r: 0, x: 10.5, y: 10.5, width: 99, height: 49 })],
+          middleOfTop,
+        ),
       ).toBe(false);
-      expect(onFilledOutline([element("clipPath", { id: "c" }, [filledRect()])], middleOfTop)).toBe(
-        false,
-      );
+      expect(onFilledRectSide([filledRect({ fill: "none" })], middleOfTop)).toBe(false);
+      expect(
+        onFilledRectSide([element("g", { transform: "scale(1)" }, [filledRect()])], middleOfTop),
+      ).toBe(false);
+      expect(
+        onFilledRectSide([element("clipPath", { id: "c" }, [filledRect()])], middleOfTop),
+      ).toBe(false);
     });
   });
 });

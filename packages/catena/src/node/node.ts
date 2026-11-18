@@ -29,7 +29,7 @@ import {
   textPart,
   title,
 } from "./parts";
-import { onFilledOutline, idsOfNode } from "./svg";
+import { onFilledRectSide, idsOfNode } from "./svg";
 import type { CardLook, Theme } from "./theme";
 
 export class InvalidNodeContentError extends Error {
@@ -43,7 +43,7 @@ export interface Node {
    * graph; nodes of two graphs, or the same node drawn twice, in one document can repeat them.
    */
   draw(box: Rect): string;
-  /** Whether `point` is on the outline of a filled card the node draws in `box`, so the card covers about half of anything centred there. */
+  /** Whether `point` is on a side of a filled card the node draws in `box`, between its corners. */
   covers(box: Rect, point: Point): boolean;
 }
 
@@ -153,7 +153,7 @@ export function buildNode<TSchema extends v.GenericSchema>(
   return {
     leaf: { id, size: block.size },
     draw: (box) => writeSvg(element("g", {}, block.draw(box, idsOfNode(id)))),
-    covers: (box, point) => onFilledOutline(block.draw(box, idsOfNode(id)), point),
+    covers: (box, point) => onFilledRectSide(block.draw(box, idsOfNode(id)), point),
   };
 }
 
