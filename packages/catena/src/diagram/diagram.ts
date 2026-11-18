@@ -1,4 +1,4 @@
-import { drawEdge } from "../edge";
+import { drawEdge, drawEdgeEnds } from "../edge";
 import type { Layout, PlacedNode } from "../layout";
 import type { Node } from "../node";
 import { element, writeSvg, type SvgElement } from "../svg";
@@ -37,7 +37,9 @@ export const DEFAULT_EDGE_PAINT: EdgePaint = { stroke: "#8c8c8c", strokeWidth: 1
 const DOT_PATTERN_ID = "catena-dots";
 
 /**
- * A placed node with no `Node` is not drawn, though its children are. Every document names its dot
+ * A placed node with no `Node` is not drawn, though its children are. Each end of an edge gets a dot in
+ * the edges' stroke colour, drawn before the nodes so a node covers the half inside it; a dot on a group,
+ * which has no `Node`, stays whole. Every document names its dot
  * pattern `catena-dots`, so documents inlined in one HTML page show the first one's dot grid. Given a
  * header, the document is 72 higher, the header is drawn over the background at its top, and the edges
  * and nodes 72 lower, below it.
@@ -62,8 +64,14 @@ export function drawDiagram(
     { fill: "none", stroke: paint.stroke, "stroke-width": paint.strokeWidth },
     layout.edges.map((edge) => drawEdge(edge)),
   );
+  const ends = element(
+    "g",
+    { fill: paint.stroke },
+    layout.edges.flatMap((edge) => drawEdgeEnds(edge)),
+  );
   const drawn = [
     writeSvg(edges),
+    writeSvg(ends),
     ...placedNodes(layout.nodes).flatMap((placed) => {
       const node = nodes.get(placed.id);
       return node === undefined ? [] : [node.draw(placed.box)];

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { PlacedEdge, Point } from "../layout";
 import { writeSvg } from "../svg";
-import { DEFAULT_EDGE_RADIUS, drawEdge } from "./index";
+import { DEFAULT_EDGE_END_RADIUS, DEFAULT_EDGE_RADIUS, drawEdge, drawEdgeEnds } from "./index";
 
 const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
   id: "e",
@@ -13,6 +13,9 @@ const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
 
 const pathOf = (edge: PlacedEdge, radius?: number) =>
   writeSvg(drawEdge(edge, radius === undefined ? {} : { radius }));
+
+const dotsOf = (edge: PlacedEdge, radius?: number) =>
+  drawEdgeEnds(edge, radius).map(writeSvg).join("");
 
 describe("drawEdge", () => {
   const corner = edgeAlong({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 });
@@ -118,5 +121,29 @@ describe("drawEdge", () => {
   test("refuses a negative radius or none at all", () => {
     expect(() => drawEdge(corner, { radius: -1 })).toThrow(RangeError);
     expect(() => drawEdge(corner, { radius: Number.NaN })).toThrow(RangeError);
+  });
+});
+
+describe("drawEdgeEnds", () => {
+  const bent = edgeAlong({ x: 10, y: 0 }, { x: 10, y: 40 }, { x: 90, y: 40 }, { x: 90, y: 70 });
+
+  test("centres a dot of the default radius on the first point, then one on the last", () => {
+    expect(DEFAULT_EDGE_END_RADIUS).toBe(4);
+    expect(dotsOf(bent)).toBe('<circle cx="10" cy="0" r="4"/><circle cx="90" cy="70" r="4"/>');
+  });
+
+  test("takes the radius given", () => {
+    expect(dotsOf(bent, 6)).toBe('<circle cx="10" cy="0" r="6"/><circle cx="90" cy="70" r="6"/>');
+  });
+
+  test("draws both dots on the one point of an edge that starts where it ends", () => {
+    expect(dotsOf(edgeAlong({ x: 1, y: 1 }, { x: 1, y: 1 }))).toBe(
+      '<circle cx="1" cy="1" r="4"/><circle cx="1" cy="1" r="4"/>',
+    );
+  });
+
+  test("refuses a negative radius or none at all", () => {
+    expect(() => drawEdgeEnds(bent, -1)).toThrow(RangeError);
+    expect(() => drawEdgeEnds(bent, Number.NaN)).toThrow(RangeError);
   });
 });

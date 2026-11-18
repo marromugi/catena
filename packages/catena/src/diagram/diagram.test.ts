@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { drawEdge } from "../edge";
+import { drawEdge, drawEdgeEnds } from "../edge";
 import { filledIconPathData } from "../icon";
 import type { Layout, Rect } from "../layout";
 import type { Node } from "../node";
@@ -35,6 +35,8 @@ const layout: Layout = placeGraph(
   },
   spacing,
 );
+const placedBoxes = (placed: Layout["nodes"]): [string, Rect][] =>
+  placed.flatMap((node) => [[node.id, node.box] as [string, Rect], ...placedBoxes(node.children)]);
 const boxAt = (x: number): Rect => ({ x, y: 0, width: 10, height: 10 });
 const nodes = new Map([a, b, c].map((node) => [node.leaf.id, node]));
 
@@ -136,6 +138,38 @@ describe("drawDiagram", () => {
     ).toContain(`<g fill="none" stroke="#123456" stroke-width="3">${paths}</g>`);
   });
 
+  test("draws a dot at both ends of every edge in one group filled with the edges' stroke", () => {
+    const dots = layout.edges.flatMap((edge) => drawEdgeEnds(edge).map(writeSvg)).join("");
+    expect(drawDiagram(layout, nodes)).toContain(`<g fill="#8c8c8c">${dots}</g>`);
+    expect(drawDiagram(layout, nodes, { edgePaint: { stroke: "#123456" } })).toContain(
+      `<g fill="#123456">${dots}</g>`,
+    );
+  });
+
+  test("centres each node end's dot on the node's border, so the node covers half of it", () => {
+    const boxes = new Map(placedBoxes(layout.nodes));
+    for (const edge of layout.edges) {
+      const ends = [
+        [edge.from, edge.points[0]],
+        [edge.to, edge.points.at(-1)],
+      ] as const;
+      for (const [id, point] of ends) {
+        const box = boxes.get(id);
+        expect(box).toBeDefined();
+        expect(point).toBeDefined();
+        if (box === undefined || point === undefined) continue;
+        const onSide =
+          ((point.x === box.x || point.x === box.x + box.width) &&
+            point.y > box.y &&
+            point.y < box.y + box.height) ||
+          ((point.y === box.y || point.y === box.y + box.height) &&
+            point.x > box.x &&
+            point.x < box.x + box.width);
+        expect(onSide).toBe(true);
+      }
+    }
+  });
+
   test("draws every placed node with a Node at its box, group children too, and skips the rest", () => {
     const svg = drawDiagram(layout, nodes);
     const group = layout.nodes.find((node) => node.id === "g");
@@ -149,9 +183,10 @@ describe("drawDiagram", () => {
 
   test("draws nothing for a placed node with no Node", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
+    const dots = layout.edges.flatMap((edge) => drawEdgeEnds(edge).map(writeSvg)).join("");
     expect(drawDiagram(layout, new Map())).toMatch(
       new RegExp(
-        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g></svg>$`,
+        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g [^>]*>${dots}</g></svg>$`,
       ),
     );
   });
@@ -195,14 +230,16 @@ describe("drawDiagram", () => {
     expect(svg.indexOf('data-node="g"')).toBeLessThan(svg.indexOf('data-node="b"'));
   });
 
-  test("puts the background first, then the edges, then the nodes", () => {
+  test("puts the background first, then the edges, then their dots, then the nodes", () => {
     const svg = drawDiagram(layout, nodes);
     const background = svg.indexOf("<defs>");
     const edges = svg.indexOf('<g fill="none"');
+    const dots = svg.indexOf('<g fill="#8c8c8c"><circle');
     const firstNode = svg.indexOf("data-node=");
     expect(background).toBeGreaterThan(-1);
     expect(background).toBeLessThan(edges);
-    expect(edges).toBeLessThan(firstNode);
+    expect(edges).toBeLessThan(dots);
+    expect(dots).toBeLessThan(firstNode);
   });
 });
 
@@ -329,16 +366,17 @@ describe("drawDiagram with a header", () => {
     );
   });
 
-  test("draws the header over the background, then the edges and the nodes 72 lower", () => {
+  test("draws the header over the background, then the edges, their dots and the nodes 72 lower", () => {
     const svg = drawDiagram(layout, nodes, { header });
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
+    const dots = layout.edges.flatMap((edge) => drawEdgeEnds(edge).map(writeSvg)).join("");
     const group = layout.nodes.find((node) => node.id === "g");
     const drawn = [...layout.nodes, ...(group?.children ?? [])]
       .flatMap(({ id, box }) => nodes.get(id)?.draw(box) ?? [])
       .join("");
     expect(
       svg.endsWith(
-        `<g transform="translate(0 72)"><g fill="none" stroke="#8c8c8c" stroke-width="1.5">${paths}</g>${drawn}</g></svg>`,
+        `<g transform="translate(0 72)"><g fill="none" stroke="#8c8c8c" stroke-width="1.5">${paths}</g><g fill="#8c8c8c">${dots}</g>${drawn}</g></svg>`,
       ),
     ).toBe(true);
     const background = svg.indexOf('fill="url(#catena-dots)"');
