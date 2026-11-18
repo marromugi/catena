@@ -1,3 +1,5 @@
+import type { Point, Rect } from "../layout";
+
 /** Which way a diagram or a group flows: a node goes further down, or further right, than the nodes listed before it that lead to it, unless it names its cell. */
 export type Direction = "down" | "right";
 
@@ -13,10 +15,23 @@ export interface Cell {
   readonly column: number;
 }
 
+/** The part of a leaf that lines up with its neighbours, measured from the leaf's top-left corner. */
+export interface LineUp {
+  /** The point that sits on the middle line of the leaf's row and of its column, where edges meet the leaf across the flow. */
+  readonly middle: Point;
+  /**
+   * The box whose sides facing along the flow and back are where edges leave and enter the leaf; its
+   * sides across the flow are how far the leaf reaches from its middle line where edges meet it.
+   */
+  readonly edgeBox: Rect;
+}
+
 /** A node of a known size. */
 export interface Leaf {
   readonly id: string;
   readonly size: Size;
+  /** Left out, the middle of the leaf lines up, and edges meet its own sides. */
+  readonly lineUp?: LineUp;
   /** Where the node goes in its grid. Left out, the edges decide. */
   readonly cell?: Cell;
 }

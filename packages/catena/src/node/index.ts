@@ -1,5 +1,6 @@
 export {
   atWidth,
+  captioned,
   centered,
   fitted,
   frame,
