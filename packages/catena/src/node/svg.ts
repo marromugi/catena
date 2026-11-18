@@ -114,7 +114,7 @@ function between(value: number, from: number, to: number): boolean {
   return value > from && value < to;
 }
 
-/** Read as SVG reads a `<rect>`, `rx` cut to half its width and height. */
+/** Its corners taken as circles `rx` round, cut to the smaller of half its width and half its height. */
 function onSide(
   attributes: Readonly<Record<string, string | number>>,
   point: Point,

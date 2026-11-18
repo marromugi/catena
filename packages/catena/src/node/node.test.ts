@@ -2353,6 +2353,8 @@ describe("what a node covers", () => {
       // The corners are 8.5 round, stroke included: 1.6 from the curve at y 13, 2.2 at y 12.
       expect(onFilledRectSide([filledRect()], { x: 10, y: 13 }, REACH)).toBe(true);
       expect(onFilledRectSide([filledRect()], { x: 10, y: 12 }, REACH)).toBe(false);
+      expect(onFilledRectSide([filledRect()], { x: 107, y: 10 }, REACH)).toBe(true);
+      expect(onFilledRectSide([filledRect()], { x: 108, y: 10 }, REACH)).toBe(false);
     });
 
     test("reads a rect with no stroke width as unstroked, and a side a sum of fractions away as the side", () => {
