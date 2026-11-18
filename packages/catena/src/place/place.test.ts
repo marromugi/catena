@@ -469,6 +469,19 @@ describe("placeGraph: a leaf that lines up by a part of it", () => {
     });
   });
 
+  test("makes its row reach as far before the middle line as the node beside it, and as far after as itself", () => {
+    const placed = place("right", [tile, leaf("C", 80, 70)], ["T>C"]);
+
+    expect(placed.height).toBe(135);
+    expect(boxes(placed)).toEqual({ T: [10, 25, 60, 100], C: [90, 10, 80, 70] });
+    expect(paths(placed)).toEqual({
+      "T>C #0": [
+        [60, 45],
+        [90, 45],
+      ],
+    });
+  });
+
   test("sits with its part's middle on the middle line of its row, beside a node in a grid that flows down", () => {
     expect(boxes(place("down", [tile, leaf("C", 80, 30)]))).toEqual({
       T: [10, 10, 60, 100],
@@ -488,19 +501,91 @@ describe("placeGraph: a leaf that lines up by a part of it", () => {
     });
   });
 
-  test("is too narrow for its edges when its middle lies nearer than edgeToNode to its edge box's side", () => {
-    const near: GraphNode = {
+  test("is entered at the side of its edge box that faces back along the flow", () => {
+    expect(paths(place("right", [leaf("C", 80, 30), tile], ["C>T"]))).toEqual({
+      "C>T #0": [
+        [90, 30],
+        [120, 30],
+      ],
+    });
+  });
+
+  test.each([
+    { middle: { x: 30, y: 3 }, edgeBox: { x: 0, y: 0, width: 60, height: 100 }, across: 6 },
+    { middle: { x: 30, y: 97 }, edgeBox: { x: 0, y: 0, width: 60, height: 100 }, across: 6 },
+    { middle: { x: 30, y: 52 }, edgeBox: { x: 0, y: 50, width: 60, height: 50 }, across: 4 },
+  ])(
+    "is too narrow for its edges when its middle lies nearer than edgeToNode to a side of its edge box: %o",
+    ({ middle, edgeBox, across }) => {
+      const near: GraphNode = {
+        id: "N",
+        size: { width: 60, height: 100 },
+        lineUp: { middle, edgeBox },
+      };
+
+      expect(() => place("right", [near, leaf("C", 80, 30)], ["N>C"])).toThrow(
+        new InvalidGraphError(
+          `Node "N" is ${across} across where its edges meet it, too narrow for an edge to keep 5 from its corners.`,
+        ),
+      );
+    },
+  );
+
+  test("is too short for its edges when its edge box is shorter along the flow than edgeGap", () => {
+    const short: GraphNode = {
       id: "N",
       size: { width: 60, height: 100 },
-      lineUp: { middle: { x: 30, y: 3 }, edgeBox: { x: 0, y: 0, width: 60, height: 100 } },
+      lineUp: { middle: { x: 30, y: 42 }, edgeBox: { x: 0, y: 40, width: 60, height: 4 } },
     };
 
-    expect(() => place("right", [near, leaf("C", 80, 30)], ["N>C"])).toThrow(
+    expect(() =>
+      place("down", [leaf("A", 20, 20), short, leaf("B", 20, 20)], ["A>N", "N>B"]),
+    ).toThrow(
       new InvalidGraphError(
-        'Node "N" is 6 across where its edges meet it, too narrow for an edge to keep 5 from its corners.',
+        'Node "N" is 4 long between the edges that enter it and the edges that leave it, less than the gap of 5 between edges.',
       ),
     );
   });
+
+  test.each([
+    { middle: { x: 58, y: 10 }, right: { x: 4, y: 10 } },
+    { middle: { x: 56, y: 10 }, right: { x: 2, y: 10 } },
+  ])(
+    "keeps the middle lines of two columns edgeRoom apart, measured from where each column reaches: %o",
+    ({ middle, right }) => {
+      const whole = { x: 0, y: 0, width: 60, height: 20 };
+      const placed = placeGraph(
+        graph(
+          "down",
+          [
+            {
+              id: "L",
+              size: { width: 60, height: 20 },
+              cell: { row: 0, column: 0 },
+              lineUp: { middle, edgeBox: whole },
+            },
+            {
+              id: "R",
+              size: { width: 60, height: 20 },
+              cell: { row: 0, column: 1 },
+              lineUp: { middle: right, edgeBox: whole },
+            },
+            leaf("A", 20, 20, { row: 1, column: 2 }),
+            leaf("B", 20, 20, { row: 2, column: 2 }),
+          ],
+          ["A>B"],
+        ),
+        { nodeGap: 0, padding: 0, edgeToNode: 5, edgeGap: 5, minSegment: 8 },
+      );
+
+      expect(boxes(placed)).toEqual({
+        L: [0, 0, 60, 20],
+        R: [66, 0, 60, 20],
+        A: [126, 20, 20, 20],
+        B: [126, 48, 20, 20],
+      });
+    },
+  );
 
   test.each([
     { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: 40, height: 101 } },
@@ -508,6 +593,9 @@ describe("placeGraph: a leaf that lines up by a part of it", () => {
     { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: -1, height: 100 } },
     { middle: { x: 5, y: 20 }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
     { middle: { x: 30, y: Number.NaN }, edgeBox: { x: 10, y: 0, width: 40, height: 100 } },
+    { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: -1, width: 40, height: 100 } },
+    { middle: { x: 30, y: 20 }, edgeBox: { x: 10, y: 0, width: 60, height: 100 } },
+    { middle: { x: 30, y: 5 }, edgeBox: { x: 10, y: 10, width: 40, height: 90 } },
   ])("refuses a line-up that does not lie inside the leaf: %o", (lineUp) => {
     expect(() => place("right", [{ ...tile, lineUp }])).toThrow(
       new InvalidGraphError(

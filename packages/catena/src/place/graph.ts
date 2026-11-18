@@ -19,7 +19,10 @@ export interface Cell {
 export interface LineUp {
   /** The point that sits on the middle line of the leaf's row and of its column, where edges meet the leaf across the flow. */
   readonly middle: Point;
-  /** The box whose sides facing along the flow and back are where edges leave and enter the leaf. */
+  /**
+   * The box whose sides facing along the flow and back are where edges leave and enter the leaf; its
+   * sides across the flow are how far the leaf reaches from its middle line where edges meet it.
+   */
   readonly edgeBox: Rect;
 }
 
