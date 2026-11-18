@@ -269,6 +269,13 @@ describe("lineOutline", () => {
     expect(bottom).toBeGreaterThan(20);
   });
 
+  test("keeps the box of a run with an outline beside a run in another typeface with none", () => {
+    // Inter's Latin file has no ideographic space, so it runs in the Japanese typeface, with no outline.
+    expect(lineOutline("A\u3000", bold, 10, 5, 20).box).toEqual(
+      lineOutline("A", bold, 10, 5, 20).box,
+    );
+  });
+
   test("has no box for a line with no outline", () => {
     expect(lineOutline(" ", bold, 10, 0, 0)).toEqual({ pathData: "", box: undefined });
   });

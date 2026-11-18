@@ -231,7 +231,7 @@ const BUILT_IN_VIEW_BOX = { x: 0, y: 0, width: iconGrid, height: iconGrid };
  * - a logo or image registered on the theme, named ({@link RegisteredLogo}), drawn as that logo or
  *   image given here would be;
  * - one or two letters ({@link Letters}), in the theme's bold fonts and the look's colour, centred in
- *   the square by the box their outline takes, and made smaller only where they would not fit it.
+ *   the square by the box their outline takes, and made smaller only where they would not fit across it.
  * An icon or logo has its view box scaled to fit the square and centred in it.
  *
  * catena ships no logos: a logo or image is one the caller passes, and theirs to use, following that
@@ -353,7 +353,7 @@ function oneColourIcon(
 
 /**
  * `letters` filled in `ink`, centred by their outline's box in the square `size` across at the top-left
- * of `box`: at {@link LETTERS_SIZE} of the square, or smaller where that box would not fit in it.
+ * of `box`: at {@link LETTERS_SIZE} of the square, or smaller where that box would be wider than it.
  */
 function lettersIn(
   letters: string,
@@ -365,7 +365,7 @@ function lettersIn(
   // An outline grows with its font size, so its box at size 1 from the origin gives it at any size.
   const unit = lineOutline(letters, fonts, 1, 0, 0).box;
   if (unit === undefined) return [];
-  const fontSize = Math.min(LETTERS_SIZE * size, size / unit.width, size / unit.height);
+  const fontSize = Math.min(LETTERS_SIZE * size, size / unit.width);
   const x = box.x + (size - unit.width * fontSize) / 2 - unit.x * fontSize;
   const baseline = box.y + (size - unit.height * fontSize) / 2 - unit.y * fontSize;
   const { pathData } = lineOutline(letters, fonts, fontSize, x, baseline);
