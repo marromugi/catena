@@ -1,0 +1,203 @@
+{
+  "direction": "right",
+  "nodes": [
+    {
+      "id": "user",
+      "kind": "titleBodyCard",
+      "content": {
+        "title": "User",
+        "body": "User service"
+      }
+    },
+    {
+      "id": "client",
+      "direction": "right",
+      "children": [
+        {
+          "id": "web",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Web",
+            "body": "Web service"
+          }
+        },
+        {
+          "id": "mobile",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Mobile",
+            "body": "Mobile service"
+          }
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "direction": "right",
+      "children": [
+        {
+          "id": "gateway",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Gateway",
+            "body": "Gateway service"
+          }
+        },
+        {
+          "id": "auth",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Auth",
+            "body": "Auth service"
+          }
+        }
+      ]
+    },
+    {
+      "id": "services",
+      "direction": "right",
+      "children": [
+        {
+          "id": "orders",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Orders",
+            "body": "Orders service"
+          }
+        },
+        {
+          "id": "billing",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Billing",
+            "body": "Billing service"
+          }
+        },
+        {
+          "id": "jobs",
+          "direction": "right",
+          "children": [
+            {
+              "id": "queue",
+              "kind": "titleBodyCard",
+              "content": {
+                "title": "Queue",
+                "body": "Queue service"
+              }
+            },
+            {
+              "id": "worker",
+              "kind": "titleBodyCard",
+              "content": {
+                "title": "Worker",
+                "body": "Worker service"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "direction": "right",
+      "children": [
+        {
+          "id": "db",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "DB",
+            "body": "DB service"
+          }
+        },
+        {
+          "id": "cache",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Cache",
+            "body": "Cache service"
+          }
+        },
+        {
+          "id": "files",
+          "kind": "titleBodyCard",
+          "content": {
+            "title": "Files",
+            "body": "Files service"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "user>web",
+      "from": "user",
+      "to": "web"
+    },
+    {
+      "id": "user>mobile",
+      "from": "user",
+      "to": "mobile"
+    },
+    {
+      "id": "web>gateway",
+      "from": "web",
+      "to": "gateway"
+    },
+    {
+      "id": "mobile>gateway",
+      "from": "mobile",
+      "to": "gateway"
+    },
+    {
+      "id": "gateway>auth",
+      "from": "gateway",
+      "to": "auth"
+    },
+    {
+      "id": "gateway>orders",
+      "from": "gateway",
+      "to": "orders"
+    },
+    {
+      "id": "gateway>billing",
+      "from": "gateway",
+      "to": "billing"
+    },
+    {
+      "id": "auth>db",
+      "from": "auth",
+      "to": "db"
+    },
+    {
+      "id": "orders>db",
+      "from": "orders",
+      "to": "db"
+    },
+    {
+      "id": "orders>queue",
+      "from": "orders",
+      "to": "queue"
+    },
+    {
+      "id": "queue>worker",
+      "from": "queue",
+      "to": "worker"
+    },
+    {
+      "id": "worker>db",
+      "from": "worker",
+      "to": "db"
+    },
+    {
+      "id": "billing>cache",
+      "from": "billing",
+      "to": "cache"
+    },
+    {
+      "id": "worker>files",
+      "from": "worker",
+      "to": "files"
+    }
+  ]
+}
