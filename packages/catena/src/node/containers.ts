@@ -68,19 +68,21 @@ function atOwnSize(block: Block): Block {
   };
 }
 
+/** `block` drawn at its own size, centred across whatever box it is given. */
+function atCentre(block: Block): Block {
+  const { width, height } = block.size;
+  return {
+    size: block.size,
+    draw: (box, newId) =>
+      block.draw({ x: box.x + (box.width - width) / 2, y: box.y, width, height }, newId),
+  };
+}
+
 /** `child` drawn at its own size, centred across the box it is given. */
 export function centered<TSchema extends v.GenericSchema>(child: Part<TSchema>): Part<TSchema> {
   return {
     schema: child.schema,
-    layout(content, theme, maxWidth) {
-      const inner = child.layout(content, theme, maxWidth);
-      const { width, height } = inner.size;
-      return {
-        size: inner.size,
-        draw: (box, newId) =>
-          inner.draw({ x: box.x + (box.width - width) / 2, y: box.y, width, height }, newId),
-      };
-    },
+    layout: (content, theme, maxWidth) => atCentre(child.layout(content, theme, maxWidth)),
   };
 }
 
