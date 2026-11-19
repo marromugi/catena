@@ -1,5 +1,5 @@
 import { drawDiagram } from "../diagram";
-import { edgeIcon, type EdgeIcon } from "../edge";
+import { EDGE_ICON_RADIUS, edgeIcon, type EdgeIcon } from "../edge";
 import type { Spacing } from "../layout";
 import {
   buildNode,
@@ -33,8 +33,11 @@ export function drawDiagramFile(file: DiagramFile, theme: Theme): string {
       branchIcon === undefined ? [] : [[id, branchIconOf(id, branchIcon, theme)] as const],
     ),
   );
+  const edges = file.edges.map(({ id, from, to }) =>
+    branchIcons.has(id) ? { id, from, to, room: EDGE_ICON_RADIUS } : { id, from, to },
+  );
   const layout = placeGraph(
-    { direction: file.direction, nodes: built.map(({ node }) => node), edges: file.edges },
+    { direction: file.direction, nodes: built.map(({ node }) => node), edges },
     SPACING,
   );
   const nodes = new Map(built.flatMap(({ leaves }) => leaves).map((node) => [node.leaf.id, node]));

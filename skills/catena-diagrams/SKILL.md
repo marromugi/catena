@@ -26,7 +26,7 @@ The rules rest on these.
 - A node goes one column (in `down`, one row) past the furthest node **listed before it** that has an edge to it. An edge from a node listed later orders nothing. Nodes that land in the same column stack across the flow in the order they are listed, each taking the first free row.
 - `cell` (`{ "row": 0, "column": 2 }`) puts a node in that row and column of its own grid. Rows and columns that hold no node are dropped.
 - A line leaves a node from the side that faces along the flow and enters a node from the side that faces back: in `right`, out of the right side and into the left side. Lines that leave one node run as one until they part.
-- Where lines part, a dot marks the point. An edge's `branchIcon` (anything a node's icon takes) draws in a circle in place of that dot at the point where that edge leaves a stretch it shares with lines from the same node, or joins one into the same node. Where two edges with a `branchIcon` part at one point, the first in the file gives the icon. The outermost line of a fan runs on to the end of the shared stretch and parts nowhere, so its `branchIcon` draws nowhere.
+- Where lines part, a dot marks the point. An edge's `branchIcon` (anything a node's icon takes) draws in a circle in place of that dot at the point where that edge leaves a stretch it shares with lines from the same node, or joins one into the same node. Where two edges with a `branchIcon` part at one point, the first in the file gives the icon. The outermost line of a fan runs on to the end of the shared stretch and parts nowhere, so its `branchIcon` draws nowhere. A line with a `branchIcon` keeps room for the circle along its whole length, from other lines, from nodes and from the edge of the drawing, so a file with branch icons draws larger than the same file without them.
 - A line between two nodes of one grid in neighbouring columns is straight, or has two bends when the rows differ. A line goes around, through the gaps beside the nodes, when it skips a column, goes back, or would cross another line between the same two columns.
 - A group lays its children out in a grid of their own, flowing in the group's `direction`. The grid of the group is one node in the grid around it: an edge to any child counts as an edge to the group when nodes are ordered.
 - A group is not drawn: no box, no background, no label.
@@ -102,7 +102,6 @@ catena breaks these whatever the file says. Say so when a drawing shows one, rat
 - **Lines into or out of a group meet at one point** on the group's side (rule above), and run on top of each other there, so a reader can't follow which line goes to which child. Only not grouping avoids it. #107
 - **A group is not drawn.** A reader sees only the gaps between nodes; which nodes belong together can't be read from the drawing. #108
 - **A `branchIcon` on a fan's outermost edge draws nowhere**, and nothing warns. Put the icon on an edge that parts from the others.
-- **Branch icons have no room of their own.** The points where lines part sit 8 apart and an icon's circle is 22 across, so neighbouring icons overlap, an icon covers a neighbouring dot, and an icon can be cut off at the edge of the drawing or sit under a card drawn after it. #121
 
 ## Example
 

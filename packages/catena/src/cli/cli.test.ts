@@ -19,7 +19,7 @@ import * as v from "valibot";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { readCustomIcons } from "../config";
 import { drawDiagram, type DiagramOptions } from "../diagram";
-import { branchPoints, edgeIcon } from "../edge";
+import { branchPoints, EDGE_DOT_RADIUS, EDGE_ICON_RADIUS, edgeIcon } from "../edge";
 import * as nodeModule from "../node";
 import {
   badge,
@@ -328,6 +328,54 @@ const FAN = {
   ],
 };
 
+/** Three cards fanning out from `app`, with branch icons on the two edges that part from the third. */
+const ROOMY_FAN = {
+  direction: "down",
+  nodes: [
+    { id: "app", kind: "iconTitleCard", content: { icon: "spark", title: "App" } },
+    {
+      id: "stores",
+      direction: "right",
+      children: ["Cache", "Database", "Log"].map((title) => ({
+        id: title.toLowerCase(),
+        kind: "titleBodyCard",
+        content: { title, body: "Keeps things." },
+      })),
+    },
+  ],
+  edges: [
+    { id: "app>cache", from: "app", to: "cache" },
+    { id: "app>database", from: "app", to: "database", branchIcon: "plus" },
+    { id: "app>log", from: "app", to: "log", branchIcon: "spark" },
+  ],
+};
+
+/** An edge from `a` to itself and one into `a` from the group `g`, which part on the line along the top of the drawing. */
+const PARTING_AT_TOP = {
+  direction: "down",
+  nodes: [
+    { id: "a", kind: "badge", content: "A" },
+    { id: "g", direction: "down", children: [{ id: "b", kind: "badge", content: "B" }] },
+  ],
+  edges: [
+    { id: "a>a", from: "a", to: "a", branchIcon: "plus" },
+    { id: "g>a", from: "g", to: "a", branchIcon: "spark" },
+  ],
+};
+
+/** An edge from `b` to itself and one out of `b` to the group `g`, which part on the line right below `b`. */
+const PARTING_BELOW = {
+  direction: "down",
+  nodes: [
+    { id: "g", direction: "down", children: [{ id: "a", kind: "badge", content: "A" }] },
+    { id: "b", kind: "badge", content: "B", cell: { row: 1, column: 1 } },
+  ],
+  edges: [
+    { id: "b>b", from: "b", to: "b", branchIcon: "plus" },
+    { id: "b>g", from: "b", to: "g", branchIcon: "spark" },
+  ],
+};
+
 /** {@link FAN} with `icon` as every edge's branch icon. */
 const fanWith = (icon: unknown) => ({
   ...FAN,
@@ -407,7 +455,7 @@ describe("drawDiagramFile", () => {
     const graph: Graph = {
       direction: "down",
       nodes: [app, { id: "row", direction: "right", children: [b, ...row] }],
-      edges: FAN.edges,
+      edges: FAN.edges.map(({ id, from, to }) => ({ id, from, to, room: EDGE_ICON_RADIUS })),
     };
     const layout = placeGraph(graph, SPACING);
     expect(branchPoints(layout.edges)).toHaveLength(2);
@@ -427,41 +475,109 @@ describe("drawDiagramFile", () => {
       const byEdge = {
         e0: { id: "e0", from: "n1", to: "n0", branchIcon: "plus" },
         e1: { id: "e1", from: "n1", to: "n2", branchIcon: "spark" },
+        e2: { id: "e2", from: "n1", to: "n3", branchIcon: "service" },
       } as const;
-      const edges = [byEdge[first], byEdge[second]];
-      const leaves = ["n0", "n1", "n2"].map((id) => buildNode(badge, theme, id, id.toUpperCase()));
-      const [n0, n1, n2] = leaves.map(({ leaf }) => leaf);
-      if (n0 === undefined || n1 === undefined || n2 === undefined)
-        throw new Error("Three badges.");
+      const edges = [byEdge[first], byEdge[second], byEdge.e2];
+      const leaves = ["n0", "n1", "n2", "n3"].map((id) =>
+        buildNode(badge, theme, id, id.toUpperCase()),
+      );
+      const [n0, n1, n2, n3] = leaves.map(({ leaf }) => leaf);
+      if (n0 === undefined || n1 === undefined || n2 === undefined || n3 === undefined)
+        throw new Error("Four badges.");
       const layout = placeGraph(
         {
-          direction: "right",
-          nodes: [n1, { id: "row", direction: "right", children: [n0, n2] }],
-          edges,
+          direction: "down",
+          nodes: [n1, { id: "row", direction: "right", children: [n0, n2, n3] }],
+          edges: edges.map(({ id, from, to }) => ({ id, from, to, room: EDGE_ICON_RADIUS })),
         },
         SPACING,
       );
       expect(branchPoints(layout.edges).map((point) => point.edges.toSorted())).toEqual([
         ["e0", "e1"],
+        ["e1"],
       ]);
-      const drawnWith = ({ id, branchIcon }: (typeof edges)[number]) =>
+      const drawnWith = (inOrder: readonly (typeof edges)[number][]) =>
         drawDiagram(layout, byId(leaves), {
-          branchIcons: new Map([[id, edgeIcon(branchIcon, theme)]]),
+          branchIcons: new Map(
+            inOrder.map(({ id, branchIcon }) => [id, edgeIcon(branchIcon, theme)]),
+          ),
         });
       const drawn = draw({
-        direction: "right",
+        direction: "down",
         nodes: [
           { id: "n1", kind: "badge", content: "N1" },
           {
             id: "row",
             direction: "right",
-            children: ["n0", "n2"].map((id) => ({ id, kind: "badge", content: id.toUpperCase() })),
+            children: ["n0", "n2", "n3"].map((id) => ({
+              id,
+              kind: "badge",
+              content: id.toUpperCase(),
+            })),
           },
         ],
         edges,
       });
-      expect(drawn).toBe(drawnWith(byEdge[first]));
-      expect(drawn).not.toBe(drawnWith(byEdge[second]));
+      expect(drawn).toBe(drawnWith(edges));
+      expect(drawn).not.toBe(drawnWith([byEdge[second], byEdge[first], byEdge.e2]));
+    },
+  );
+
+  test.each([
+    [
+      "a fan of three from one card, with icons on the two edges that part from the others",
+      ROOMY_FAN,
+      2,
+    ],
+    [
+      "a badge's edge to itself beside one into it from a group, parting at the top",
+      PARTING_AT_TOP,
+      1,
+    ],
+    [
+      "a badge's edge to itself beside one out of it to a group, parting below it",
+      PARTING_BELOW,
+      1,
+    ],
+  ] as const)(
+    "draws every branch icon of %s whole, and clear of the cards and the other dots",
+    (_, file, count) => {
+      const drawn = draw(file);
+      const [width = 0, height = 0] = (/viewBox="0 0 (\S+) (\S+)"/.exec(drawn) ?? [])
+        .slice(1)
+        .map(Number);
+      const circles = [...drawn.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/>/g)].map(
+        ([, x, y, r]) => ({ x: Number(x), y: Number(y), r: Number(r) }),
+      );
+      const cards = [
+        ...drawn.matchAll(/<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g),
+      ].map(([, x, y, w, h]) => ({
+        x: Number(x),
+        y: Number(y),
+        width: Number(w),
+        height: Number(h),
+      }));
+      const icons = circles.filter(({ r }) => r === EDGE_ICON_RADIUS);
+
+      expect(icons).toHaveLength(count);
+      expect(circles.every(({ r }) => r === EDGE_ICON_RADIUS || r === EDGE_DOT_RADIUS)).toBe(true);
+      for (const icon of icons) {
+        expect(Math.min(icon.x, icon.y, width - icon.x, height - icon.y)).toBeGreaterThanOrEqual(
+          icon.r,
+        );
+        for (const card of cards) {
+          const away = Math.hypot(
+            Math.max(card.x - icon.x, 0, icon.x - (card.x + card.width)),
+            Math.max(card.y - icon.y, 0, icon.y - (card.y + card.height)),
+          );
+          expect(away).toBeGreaterThanOrEqual(icon.r);
+        }
+        for (const other of circles.filter((each) => each !== icon)) {
+          expect(Math.hypot(other.x - icon.x, other.y - icon.y)).toBeGreaterThanOrEqual(
+            icon.r + other.r,
+          );
+        }
+      }
     },
   );
 
