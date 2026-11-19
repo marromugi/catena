@@ -419,6 +419,53 @@ describe("drawDiagramFile", () => {
   });
 
   test.each([
+    ["e0", "e1"],
+    ["e1", "e0"],
+  ] as const)(
+    "gives the icon at a branch point to the first in the file of the edges bending there (%s before %s)",
+    (first, second) => {
+      const byEdge = {
+        e0: { id: "e0", from: "n1", to: "n0", branchIcon: "plus" },
+        e1: { id: "e1", from: "n1", to: "n2", branchIcon: "spark" },
+      } as const;
+      const edges = [byEdge[first], byEdge[second]];
+      const leaves = ["n0", "n1", "n2"].map((id) => buildNode(badge, theme, id, id.toUpperCase()));
+      const [n0, n1, n2] = leaves.map(({ leaf }) => leaf);
+      if (n0 === undefined || n1 === undefined || n2 === undefined)
+        throw new Error("Three badges.");
+      const layout = placeGraph(
+        {
+          direction: "right",
+          nodes: [n1, { id: "row", direction: "right", children: [n0, n2] }],
+          edges,
+        },
+        SPACING,
+      );
+      expect(branchPoints(layout.edges).map(({ edges }) => [...edges].sort())).toEqual([
+        ["e0", "e1"],
+      ]);
+      const drawnWith = ({ id, branchIcon }: (typeof edges)[number]) =>
+        drawDiagram(layout, byId(leaves), {
+          branchIcons: new Map([[id, edgeIcon(branchIcon, theme)]]),
+        });
+      const drawn = draw({
+        direction: "right",
+        nodes: [
+          { id: "n1", kind: "badge", content: "N1" },
+          {
+            id: "row",
+            direction: "right",
+            children: ["n0", "n2"].map((id) => ({ id, kind: "badge", content: id.toUpperCase() })),
+          },
+        ],
+        edges,
+      });
+      expect(drawn).toBe(drawnWith(byEdge[first]));
+      expect(drawn).not.toBe(drawnWith(byEdge[second]));
+    },
+  );
+
+  test.each([
     [
       "a name neither built in nor custom",
       "nope",
