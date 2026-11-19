@@ -243,17 +243,17 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
 export type IconContent = v.InferOutput<typeof ICON>;
 
 /**
- * `content` drawn as {@link iconPart} draws it, in `look`, at the top-left of `box`.
+ * What draws `content` as {@link iconPart} draws it, in `look`, at the top-left of the box it is given.
  * @throws UnknownLogoError when the content names a logo the theme does not hold.
  * @throws UnknownIconError when the content is a name neither built in nor a custom icon's.
  */
-export function drawIcon(
+export function iconDrawing(
   content: IconContent,
   look: IconLook,
   theme: Theme,
-  box: Point,
-): SvgElement[] {
-  return drawResolvedIcon(resolved(theme, content), look, theme, box);
+): (box: Point) => SvgElement[] {
+  const found = resolved(theme, content);
+  return (box) => drawResolvedIcon(found, look, theme, box);
 }
 
 function drawResolvedIcon(

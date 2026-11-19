@@ -15,7 +15,7 @@ import {
   branchPoints,
   drawEdge,
   drawEdgeDot,
-  drawEdgeIcon,
+  edgeIcon,
 } from "./index";
 
 const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
@@ -444,7 +444,7 @@ describe("branchPoints on generated edges", () => {
   });
 });
 
-describe("drawEdgeIcon", () => {
+describe("edgeIcon", () => {
   const require = createRequire(import.meta.url);
   const inter = (weight: 400 | 700) =>
     Typeface.read(
@@ -461,7 +461,7 @@ describe("drawEdgeIcon", () => {
 
   test("centres an unpainted circle 11 round on the point, with the icon 14 across in its middle", () => {
     expect([EDGE_ICON_RADIUS, EDGE_ICON_SIZE]).toEqual([11, 14]);
-    expect(writeSvg(drawEdgeIcon(at, "plus", theme))).toBe(
+    expect(writeSvg(edgeIcon("plus", theme).draw(at))).toBe(
       '<g><circle cx="100" cy="50" r="11"/>' +
         `<path d="${iconPathData.plus}" transform="translate(93 43) scale(0.5833333333333334)" ` +
         'fill="none" stroke-width="2.571428571428571" stroke-linecap="round" stroke-linejoin="round" ' +
@@ -471,18 +471,18 @@ describe("drawEdgeIcon", () => {
 
   test("draws a built-in icon in the colour a node's icon gives it", () => {
     const spark = defineTheme(fonts, { icon: { colors: { spark: "#abcdef" } } });
-    expect(writeSvg(drawEdgeIcon(at, "spark", spark))).toContain('stroke="#abcdef"');
+    expect(writeSvg(edgeIcon("spark", spark).draw(at))).toContain('stroke="#abcdef"');
   });
 
   test("draws a custom icon named by the theme as the same icon given inline", () => {
-    expect(writeSvg(drawEdgeIcon(at, "cross", theme))).toBe(
-      writeSvg(drawEdgeIcon(at, cross, theme)),
+    expect(writeSvg(edgeIcon("cross", theme).draw(at))).toBe(
+      writeSvg(edgeIcon(cross, theme).draw(at)),
     );
-    expect(writeSvg(drawEdgeIcon(at, cross, theme))).toContain('d="M 4 4 L 44 44"');
+    expect(writeSvg(edgeIcon(cross, theme).draw(at))).toContain('d="M 4 4 L 44 44"');
   });
 
-  test("refuses a name neither built in nor custom, and a logo the theme does not hold", () => {
-    expect(() => drawEdgeIcon(at, "nowhere", theme)).toThrow(UnknownIconError);
-    expect(() => drawEdgeIcon(at, { logo: "nowhere" }, theme)).toThrow(UnknownLogoError);
+  test("refuses a name neither built in nor custom, and a logo the theme does not hold, before drawing", () => {
+    expect(() => edgeIcon("nowhere", theme)).toThrow(UnknownIconError);
+    expect(() => edgeIcon({ logo: "nowhere" }, theme)).toThrow(UnknownLogoError);
   });
 });

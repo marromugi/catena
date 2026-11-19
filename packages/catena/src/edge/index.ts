@@ -7,6 +7,6 @@ export {
   EDGE_ICON_SIZE,
   drawEdge,
   drawEdgeDot,
-  drawEdgeIcon,
+  edgeIcon,
 } from "./edge";
-export type { EdgeOptions } from "./edge";
+export type { EdgeIcon, EdgeOptions } from "./edge";
