@@ -206,6 +206,8 @@ function clearOf(
  * across the flow, onto the lane before its target or the lane after its source. The grid is made
  * longer at one end of that side by the least that puts that middle on each such line, or the edge gap
  * and the shortest stretch from it, and the room of that line and of the edges that cross, beyond that.
+ * A column's middle line takes its room from the edge that turns onto it, which also counts among the
+ * edges that cross: that edge can part at both ends of its turn, so its room is kept on each side.
  *
  * @param items The nodes of the grid by id, with no row or column left empty.
  * @param edges The edges `lanes` was made for.
