@@ -475,6 +475,112 @@ const TWO_OFF_ONE_LINE = {
   ],
 };
 
+/** Edges from `n14` across the side of a group flowing down, one with an icon: they turn onto the lanes before their targets. */
+const ONTO_LANES_BEFORE = {
+  direction: "right",
+  nodes: [
+    { id: "n0", kind: "badge", content: "A" },
+    {
+      id: "n1",
+      direction: "down",
+      children: [
+        { id: "n2", kind: "badge", content: "A", cell: { row: 2, column: 0 } },
+        {
+          id: "n3",
+          direction: "down",
+          children: [
+            {
+              id: "n4",
+              direction: "down",
+              children: [
+                { id: "n5", kind: "badge", content: "A" },
+                { id: "n6", kind: "badge", content: "A", cell: { row: 0, column: 0 } },
+                { id: "n7", kind: "badge", content: "A" },
+              ],
+            },
+          ],
+          cell: { row: 0, column: 0 },
+        },
+        {
+          id: "n8",
+          direction: "down",
+          children: [
+            { id: "n9", kind: "badge", content: "A" },
+            { id: "n10", kind: "badge", content: "A" },
+          ],
+          cell: { row: 1, column: 0 },
+        },
+      ],
+    },
+    {
+      id: "n11",
+      direction: "down",
+      children: [
+        {
+          id: "n12",
+          direction: "down",
+          children: [
+            { id: "n13", kind: "badge", content: "A" },
+            { id: "n14", kind: "badge", content: "A" },
+          ],
+        },
+      ],
+    },
+  ],
+  edges: [
+    { id: "e0", from: "n14", to: "n8", branchIcon: "plus" },
+    { id: "e1", from: "n14", to: "n2" },
+    { id: "e2", from: "n14", to: "n3" },
+  ],
+};
+
+/** Edges out of a group around its nodes to `n0`, one with an icon: they turn off the lanes beside a column. */
+const OFF_LANES_BESIDE = {
+  direction: "down",
+  nodes: [
+    { id: "n0", kind: "badge", content: "A" },
+    {
+      id: "n1",
+      direction: "down",
+      children: [
+        {
+          id: "n2",
+          direction: "down",
+          children: [
+            { id: "n3", kind: "badge", content: "A" },
+            {
+              id: "n4",
+              direction: "down",
+              children: [
+                { id: "n5", kind: "badge", content: "A" },
+                {
+                  id: "n6",
+                  kind: "iconTile",
+                  content: { icon: "service", label: { caption: "User" } },
+                  cell: { row: 1, column: 0 },
+                },
+              ],
+            },
+            {
+              id: "n7",
+              kind: "iconTile",
+              content: { icon: "service", label: { caption: "User" } },
+            },
+          ],
+        },
+        { id: "n8", kind: "badge", content: "A" },
+      ],
+    },
+    { id: "n9", kind: "badge", content: "A" },
+  ],
+  edges: [
+    { id: "e0", from: "n3", to: "n0", branchIcon: "plus" },
+    { id: "e1", from: "n4", to: "n0" },
+    { id: "e2", from: "n7", to: "n0" },
+    { id: "e3", from: "n3", to: "n4" },
+  ],
+};
+
 /** {@link FAN} with `icon` as every edge's branch icon. */
 const fanWith = (icon: unknown) => ({
   ...FAN,
@@ -640,6 +746,8 @@ describe("drawDiagramFile", () => {
     ],
     ["edges into a group with and without room turning onto one middle line", TWO_ONTO_ONE_LINE, 2],
     ["edges out of a group with and without room turning off one middle line", TWO_OFF_ONE_LINE, 0],
+    ["edges into a group turning onto the lanes before their targets", ONTO_LANES_BEFORE, 0],
+    ["edges out of a group turning off the lanes beside a column", OFF_LANES_BESIDE, 1],
   ] as const)(
     "draws every branch icon of %s whole, and clear of the cards and the other dots",
     (_, file, count) => {
