@@ -3,11 +3,11 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { branchPoints, drawEdge, drawEdgeDot, EDGE_DOT_RADIUS } from "../edge";
+import { branchPoints, drawEdge, drawEdgeDot, EDGE_DOT_RADIUS, type EdgeIcon } from "../edge";
 import { filledIconPathData } from "../icon";
 import type { Layout, Point, Rect } from "../layout";
 import type { Node } from "../node";
-import { writeSvg } from "../svg";
+import { element, writeSvg } from "../svg";
 import { placeGraph } from "../place";
 import { layoutText, textPathData, Typeface } from "../text";
 import { DEFAULT_DOT_GRID, DEFAULT_EDGE_PAINT, drawDiagram, type DiagramHeader } from "./index";
@@ -60,6 +60,14 @@ const branchDotsOf = (drawnLayout: Layout) =>
   branchPoints(drawnLayout.edges)
     .map(({ point }) => writeSvg(drawEdgeDot(point)))
     .join("");
+/** An edge icon that draws a marker naming itself and the point. */
+const marker = (name: string): EdgeIcon => ({
+  draw: ({ x, y }) => element("g", { "data-icon": name, "data-at": `${x},${y}` }),
+});
+/** The marker drawn at `point` by {@link marker}`(name)`. */
+const markerAt = ({ x, y }: Point, name: string) => `<g data-icon="${name}" data-at="${x},${y}"/>`;
+/** A marker for each of `ids`, by id, in that order. */
+const markers = (...ids: string[]) => new Map(ids.map((id) => [id, marker(id)]));
 /** `text` as a pattern that matches it and nothing else. */
 const literal = (text: string) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const boxAt = (x: number): Rect => ({ x, y: 0, width: 10, height: 10 });
@@ -234,6 +242,76 @@ describe("drawDiagram", () => {
     expect(
       drawDiagram(combs, new Map([a, b, c, d, z].map((node) => [node.leaf.id, node]))),
     ).toContain(`<g fill="#ebebeb">${endDotsOf(combs)}${branchDotsOf(combs)}</g>`);
+  });
+
+  describe("branch icons", () => {
+    /** Edges out of `a`: `up` and `down` part both ways at (50, 0) from the stretch `on` runs along. */
+    const split: Layout = {
+      width: 100,
+      height: 100,
+      nodes: [],
+      edges: [
+        {
+          id: "on",
+          from: "a",
+          to: "x",
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+          ],
+          labels: [],
+        },
+        {
+          id: "up",
+          from: "a",
+          to: "y",
+          points: [
+            { x: 0, y: 0 },
+            { x: 50, y: 0 },
+            { x: 50, y: -50 },
+          ],
+          labels: [],
+        },
+        {
+          id: "down",
+          from: "a",
+          to: "z",
+          points: [
+            { x: 0, y: 0 },
+            { x: 50, y: 0 },
+            { x: 50, y: 50 },
+          ],
+          labels: [],
+        },
+      ],
+    };
+
+    test("draws an edge's icon in place of the dot at a branch point where it bends", () => {
+      const [branch] = branchPoints(layout.edges);
+      expect(branch?.edges).toEqual(["a>c"]);
+      const drawn = drawDiagram(layout, nodes, { branchIcons: new Map([["a>c", marker("c")]]) });
+      expect(drawn).toContain(
+        `${endDotsOf(layout)}${markerAt(branch?.point ?? { x: 0, y: 0 }, "c")}</g>`,
+      );
+      expect(drawn).not.toContain(branchDotsOf(layout));
+    });
+
+    test("keeps the dot where no edge that bends there has an icon", () => {
+      const drawn = drawDiagram(layout, nodes, { branchIcons: new Map([["a>b", marker("b")]]) });
+      expect(drawn).toBe(drawDiagram(layout, nodes));
+    });
+
+    test("draws the icon of the first edge in the order given, where two with icons bend at one point", () => {
+      expect(branchPoints(split.edges)).toEqual([
+        { point: { x: 50, y: 0 }, edges: ["up", "down"] },
+      ]);
+      expect(drawDiagram(split, new Map(), { branchIcons: markers("down", "up") })).toContain(
+        `<g fill="#ebebeb">${markerAt({ x: 50, y: 0 }, "down")}</g>`,
+      );
+      expect(drawDiagram(split, new Map(), { branchIcons: markers("up", "down") })).toContain(
+        `<g fill="#ebebeb">${markerAt({ x: 50, y: 0 }, "up")}</g>`,
+      );
+    });
   });
 
   test("draws every placed node with a Node at its box, group children too, and skips the rest", () => {

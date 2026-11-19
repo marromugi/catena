@@ -1,4 +1,11 @@
-import { branchPoints, drawEdge, drawEdgeDot, EDGE_DOT_RADIUS } from "../edge";
+import {
+  branchPoints,
+  drawEdge,
+  drawEdgeDot,
+  EDGE_DOT_RADIUS,
+  type BranchPoint,
+  type EdgeIcon,
+} from "../edge";
 import type { Layout, PlacedEdge, PlacedNode, Point, Rect } from "../layout";
 import type { Node } from "../node";
 import { element, writeSvg, type SvgElement } from "../svg";
@@ -22,6 +29,8 @@ export interface DiagramOptions {
   readonly background?: Partial<DotGrid>;
   readonly edgePaint?: Partial<EdgePaint>;
   readonly header?: DiagramHeader;
+  /** Each by the id of the edge it belongs to. */
+  readonly branchIcons?: ReadonlyMap<string, EdgeIcon>;
 }
 
 export const DEFAULT_DOT_GRID: DotGrid = {
@@ -41,7 +50,8 @@ const DOT_PATTERN_ID = "catena-dots";
  * edges' stroke colour where its node's card has the end on one of its sides and its round outline comes
  * within half the dot's radius of it, drawn before the nodes so the card covers part of it; any other
  * end, such as one on a group with no `Node`, gets none. Every branch point of the edges gets the same
- * dot, after the ends' dots, whatever the nodes cover. Every document names its dot pattern
+ * dot, after the ends' dots, whatever the nodes cover, or the icon `branchIcons` gives the first edge that
+ * bends there, in the order of `branchIcons`, which has one. Every document names its dot pattern
  * `catena-dots`, so documents inlined in one HTML page show the first one's dot grid. Given a header,
  * the document is 72 higher, the header is drawn over the background at its top, and the edges and
  * nodes 72 lower, below it.
@@ -68,16 +78,15 @@ export function drawDiagram(
   );
   const placed = placedNodes(layout.nodes);
   const boxes = new Map(placed.map(({ id, box }) => [id, box]));
-  const ends = element(
-    "g",
-    { fill: paint.stroke },
-    [
-      ...layout.edges
-        .flatMap(edgeEnds)
-        .filter(({ id, point }) => coveredBy(nodes.get(id), boxes.get(id), point)),
-      ...branchPoints(layout.edges),
-    ].map(({ point }) => drawEdgeDot(point)),
-  );
+  const ends = element("g", { fill: paint.stroke }, [
+    ...layout.edges
+      .flatMap(edgeEnds)
+      .filter(({ id, point }) => coveredBy(nodes.get(id), boxes.get(id), point))
+      .map(({ point }) => drawEdgeDot(point)),
+    ...branchPoints(layout.edges).map((branch) =>
+      drawBranchPoint(branch, options.branchIcons ?? new Map()),
+    ),
+  ]);
   const drawn = [
     writeSvg(edges),
     writeSvg(ends),
@@ -122,6 +131,14 @@ function dotGrid(width: number, height: number, grid: DotGrid): SvgElement[] {
     element("rect", { width, height, fill: canvas }),
     element("rect", { width, height, fill: `url(#${DOT_PATTERN_ID})` }),
   ];
+}
+
+function drawBranchPoint(
+  { point, edges }: BranchPoint,
+  icons: ReadonlyMap<string, EdgeIcon>,
+): SvgElement {
+  const icon = [...icons].find(([id]) => edges.includes(id));
+  return icon === undefined ? drawEdgeDot(point) : icon[1].draw(point);
 }
 
 /** The two ends of `edge`, each with the id of the node it meets. */

@@ -40,7 +40,7 @@ export {
   divider,
   icon,
   ICON_NAME,
-  drawIcon,
+  iconDrawing,
   iconPart,
   image,
   imagePart,
