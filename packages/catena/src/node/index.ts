@@ -32,7 +32,7 @@ export {
 } from "./node";
 export type { Node } from "./node";
 export type { Block, Part } from "./part";
-export type { Letters } from "./parts";
+export type { IconContent, Letters } from "./parts";
 export {
   badge,
   badgePart,
@@ -40,6 +40,7 @@ export {
   divider,
   icon,
   ICON_NAME,
+  drawIcon,
   iconPart,
   image,
   imagePart,

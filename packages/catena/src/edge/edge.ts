@@ -1,4 +1,5 @@
 import type { PlacedEdge, Point } from "../layout";
+import { drawIcon, type IconContent, type Theme } from "../node";
 import { element, type SvgElement } from "../svg";
 
 export interface EdgeOptions {
@@ -19,6 +20,30 @@ export const EDGE_DOT_RADIUS = 4;
 /** A circle {@link EDGE_DOT_RADIUS} round centred on `point`. It carries no fill, so the caller paints it. */
 export function drawEdgeDot({ x, y }: Point): SvgElement {
   return element("circle", { cx: x, cy: y, r: EDGE_DOT_RADIUS });
+}
+
+/** The radius of the circle an icon on an edge sits in. */
+export const EDGE_ICON_RADIUS = 11;
+
+/** How far across an icon on an edge is drawn, centred in its circle. */
+export const EDGE_ICON_SIZE = 14;
+
+const EDGE_ICON_STROKE_WIDTH = 1.5;
+
+/**
+ * A circle {@link EDGE_ICON_RADIUS} round centred on `point`, with `content` drawn {@link EDGE_ICON_SIZE}
+ * across in its middle in the colours of `theme.icon`. The circle carries no fill, so
+ * the caller paints it.
+ * @throws UnknownIconError when `content` is a name neither built in nor one of the theme's custom icons.
+ * @throws UnknownLogoError when `content` names a logo the theme does not hold.
+ */
+export function drawEdgeIcon(point: Point, content: IconContent, theme: Theme): SvgElement {
+  const look = { ...theme.icon, size: EDGE_ICON_SIZE, strokeWidth: EDGE_ICON_STROKE_WIDTH };
+  const corner = { x: point.x - EDGE_ICON_SIZE / 2, y: point.y - EDGE_ICON_SIZE / 2 };
+  return element("g", {}, [
+    element("circle", { cx: point.x, cy: point.y, r: EDGE_ICON_RADIUS }),
+    ...drawIcon(content, look, theme, corner),
+  ]);
 }
 
 /**
