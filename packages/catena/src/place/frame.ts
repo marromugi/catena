@@ -60,42 +60,29 @@ interface Line {
   readonly length: number;
 }
 
-/** Lanes side by side in a corridor, each the edge gap beyond its room and the room of the lane before it. */
+/** Lanes side by side in a corridor, each with its room to both sides and the edge gap beyond that from the next. */
 interface Stack {
   readonly lanes: number;
-  /** From the first lane to the last. */
+  /** From the near side of the first lane's room to the far side of the last lane's. */
   readonly height: number;
-  /** The room of the first lane. */
-  readonly before: number;
-  /** The room of the last lane. */
-  readonly after: number;
 }
 
-/** A stack of the lanes of `ends`, in order, with how far each lies from the first. */
+/** A stack of the lanes of `ends`, in order, with how far each lies from where the stack starts. */
 function stackOf(
   ends: readonly End[],
   rooms: ReadonlyMap<End, number> | undefined,
   gap: number,
 ): Stack & { readonly offsets: ReadonlyMap<End, number> } {
   const offsets = new Map<End, number>();
-  let roomsBetween = 0;
-  let before = 0;
-  let after = 0;
+  let roomsBefore = 0;
   ends.forEach((end, index) => {
     const room = rooms?.get(end) ?? 0;
-    if (index === 0) {
-      before = room;
-    } else {
-      roomsBetween += after + room;
-    }
-    offsets.set(end, index * gap + roomsBetween);
-    after = room;
+    offsets.set(end, index * gap + roomsBefore + room);
+    roomsBefore += 2 * room;
   });
   return {
     lanes: ends.length,
-    height: Math.max(0, ends.length - 1) * gap + roomsBetween,
-    before,
-    after,
+    height: Math.max(0, ends.length - 1) * gap + roomsBefore,
     offsets,
   };
 }
@@ -138,7 +125,7 @@ function trackOf(line: Line, index: number): Track {
   return track;
 }
 
-/** How far the lane of `end` lies from the first lane of its stack in `corridor`. */
+/** How far the lane of `end` lies from where its stack in `corridor` starts. */
 function laneOf(offsets: ReadonlyMap<End, number> | undefined, corridor: number, end: End): number {
   const offset = offsets?.get(end);
   if (offset === undefined) {
@@ -149,11 +136,10 @@ function laneOf(offsets: ReadonlyMap<End, number> | undefined, corridor: number,
   return offset;
 }
 
-/** Where the first lane of `stack` lies, the stack and its rooms in the middle of the corridor before the track `index`. */
-function firstLane(line: Line, index: number, stack: Stack | undefined): number {
+/** Where `stack` starts, in the middle of the corridor before the track `index`. */
+function stackStart(line: Line, index: number, stack: Stack | undefined): number {
   const end = line.tracks[index]?.offset ?? line.length;
-  const { height = 0, before = 0, after = 0 } = stack ?? {};
-  return end - ((line.corridors[index] ?? 0) + height + after - before) / 2;
+  return end - ((line.corridors[index] ?? 0) + (stack?.height ?? 0)) / 2;
 }
 
 /**
@@ -248,14 +234,10 @@ export function frameOf(
     const leaving = stackOf(lanes.leaving[corridor] ?? [], lanes.rooms.leaving, spacing.edgeGap);
     const entering = stackOf(lanes.entering[corridor] ?? [], lanes.rooms.entering, spacing.edgeGap);
     const between =
-      leaving.lanes > 0 && entering.lanes > 0
-        ? Math.max(spacing.edgeGap, spacing.minSegment) + leaving.after + entering.before
-        : 0;
+      leaving.lanes > 0 && entering.lanes > 0 ? Math.max(spacing.edgeGap, spacing.minSegment) : 0;
     return {
       lanes: leaving.lanes + entering.lanes,
       height: leaving.height + between + entering.height,
-      before: leaving.lanes > 0 ? leaving.before : entering.before,
-      after: entering.lanes > 0 ? entering.after : leaving.after,
       leaving: leaving.offsets,
       entering: entering.offsets,
       enteringFrom: leaving.height + between,
@@ -288,7 +270,7 @@ export function frameOf(
       return Math.max(
         corridor === 0 || corridor === reaches.length ? spacing.padding : spacing.nodeGap,
         edges.length > 0 ? edgeRoom - nearestLine : 0,
-        stack.lanes > 0 ? edgeRoom * 2 + stack.height + stack.before + stack.after : 0,
+        stack.lanes > 0 ? edgeRoom * 2 + stack.height : 0,
         crossing(corridor),
       );
     });
@@ -311,20 +293,20 @@ export function frameOf(
     return column.offset + column.before;
   };
   const laneBeside = (corridor: number, end: End): number =>
-    firstLane(columns, corridor, columnStacks[corridor]) +
+    stackStart(columns, corridor, columnStacks[corridor]) +
     laneOf(columnStacks[corridor]?.offsets, corridor, end);
 
   const laneAfter = (end: End): number => {
     const corridor = end === outside ? 0 : itemOf(end).step + 1;
     return (
-      firstLane(rows, corridor, rowStacks[corridor]) +
+      stackStart(rows, corridor, rowStacks[corridor]) +
       laneOf(rowStacks[corridor]?.leaving, corridor, end)
     );
   };
   const laneBefore = (end: End): number => {
     const corridor = end === outside ? rowReaches.length : itemOf(end).step;
     return (
-      firstLane(rows, corridor, rowStacks[corridor]) +
+      stackStart(rows, corridor, rowStacks[corridor]) +
       (rowStacks[corridor]?.enteringFrom ?? 0) +
       laneOf(rowStacks[corridor]?.entering, corridor, end)
     );
