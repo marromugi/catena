@@ -2,6 +2,7 @@ import * as v from "valibot";
 import {
   activeRoundButton,
   badge,
+  icon,
   iconTile,
   iconTitleBodyCard,
   iconTitleCard,
@@ -16,6 +17,7 @@ import {
   titleBodyBadgeCard,
   titleBodyCard,
   titleBodyItemsSectionCard,
+  type IconContent,
   type Part,
 } from "../node";
 import type { Cell, Direction } from "../place";
@@ -76,11 +78,19 @@ export interface GroupEntry {
 
 export type NodeEntry = LeafEntry | GroupEntry;
 
+export interface EdgeEntry {
+  readonly id: string;
+  readonly from: string;
+  readonly to: string;
+  /** Drawn at each point where this edge bends off a stretch it shares, or onto one. */
+  readonly branchIcon?: IconContent;
+}
+
 export interface DiagramFile {
   readonly $schema?: string;
   readonly direction: Direction;
   readonly nodes: readonly NodeEntry[];
-  readonly edges: readonly { readonly id: string; readonly from: string; readonly to: string }[];
+  readonly edges: readonly EdgeEntry[];
   readonly header?: {
     readonly title?: string;
     readonly repository?: { readonly name: string };
@@ -117,7 +127,14 @@ function diagramFileOf<TNode extends v.GenericSchema>(node: TNode) {
     $schema: v.optional(v.string()),
     direction: DIRECTION,
     nodes: v.array(node),
-    edges: v.array(v.strictObject({ id: v.string(), from: v.string(), to: v.string() })),
+    edges: v.array(
+      v.strictObject({
+        id: v.string(),
+        from: v.string(),
+        to: v.string(),
+        branchIcon: v.optional(icon.schema),
+      }),
+    ),
     header: v.optional(
       v.strictObject({
         title: v.optional(v.string()),

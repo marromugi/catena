@@ -8,7 +8,7 @@ import { InvalidGraphError } from "../place";
 import { Typeface } from "../text";
 import { InvalidDiagramFileError, readDiagramFile } from "./diagram-file";
 import { diagramJsonSchema } from "./diagram-schema";
-import { drawDiagramFile } from "./draw";
+import { drawDiagramFile, InvalidEdgeIconError } from "./draw";
 
 export const USAGE = [
   "Usage: catena draw <diagram.json> [-o <out.svg>]",
@@ -45,6 +45,7 @@ function isRefusal(error: unknown): error is Error {
   return (
     error instanceof InvalidDiagramFileError ||
     error instanceof InvalidNodeContentError ||
+    error instanceof InvalidEdgeIconError ||
     error instanceof InvalidGraphError
   );
 }

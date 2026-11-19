@@ -19,6 +19,7 @@ import * as v from "valibot";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { readCustomIcons } from "../config";
 import { drawDiagram, type DiagramOptions } from "../diagram";
+import { branchPoints, edgeIcon } from "../edge";
 import * as nodeModule from "../node";
 import {
   badge,
@@ -40,7 +41,7 @@ import {
   readDiagramFile,
 } from "./diagram-file";
 import { diagramJsonSchema } from "./diagram-schema";
-import { drawDiagramFile } from "./draw";
+import { drawDiagramFile, InvalidEdgeIconError } from "./draw";
 import { run, USAGE } from "./main";
 
 const theme = defineTheme({
@@ -138,6 +139,10 @@ function wellFormed(svg: string): boolean {
 describe("readDiagramFile", () => {
   test("reads the graph, each node's kind and content, the header and the background", () => {
     expect(readDiagramFile(text(SAMPLE))).toEqual(SAMPLE);
+  });
+
+  test("reads an edge's branch icon", () => {
+    expect(readDiagramFile(text(FAN)).edges).toEqual(FAN.edges);
   });
 
   test("names every part the node module exports as a kind, but the parts that are not nodes", () => {
@@ -305,6 +310,30 @@ const MOVED = {
   edges: [],
 };
 
+/** Three edges fanning out from `app` to a row of three badges, each giving a branch icon. */
+const FAN = {
+  direction: "down",
+  nodes: [
+    { id: "app", kind: "badge", content: "App" },
+    {
+      id: "row",
+      direction: "right",
+      children: ["b", "c", "d"].map((id) => ({ id, kind: "badge", content: id.toUpperCase() })),
+    },
+  ],
+  edges: [
+    { id: "app>b", from: "app", to: "b", branchIcon: "plus" },
+    { id: "app>c", from: "app", to: "c", branchIcon: "spark" },
+    { id: "app>d", from: "app", to: "d", branchIcon: { letters: "D" } },
+  ],
+};
+
+/** {@link FAN} with `icon` as every edge's branch icon. */
+const fanWith = (icon: unknown) => ({
+  ...FAN,
+  edges: FAN.edges.map((edge) => ({ ...edge, branchIcon: icon })),
+});
+
 describe("drawDiagramFile", () => {
   test("draws what building each node from its kind, placing the graph and drawing the layout draws", () => {
     expect(draw(SAMPLE)).toBe(
@@ -368,6 +397,48 @@ describe("drawDiagramFile", () => {
     expect(draw({ ...MOVED, nodes: [leaf, { ...group, cell: undefined }] })).not.toBe(moved);
     expect(draw({ ...MOVED, nodes: [leaf, { ...group, direction: "down" }] })).not.toBe(moved);
   });
+
+  test("draws each edge's branch icon in place of the dot at the branch points where that edge bends", () => {
+    const leaves = ["app", "b", "c", "d"].map((id) =>
+      buildNode(badge, theme, id, id === "app" ? "App" : id.toUpperCase()),
+    );
+    const [app, b, ...row] = leaves.map(({ leaf }) => leaf);
+    if (app === undefined || b === undefined) throw new Error("Four badges.");
+    const graph: Graph = {
+      direction: "down",
+      nodes: [app, { id: "row", direction: "right", children: [b, ...row] }],
+      edges: FAN.edges,
+    };
+    const layout = placeGraph(graph, SPACING);
+    expect(branchPoints(layout.edges)).toHaveLength(2);
+    const branchIcons = new Map(
+      FAN.edges.map(({ id, branchIcon }) => [id, edgeIcon(branchIcon, theme)]),
+    );
+    expect(draw(FAN)).toBe(drawDiagram(layout, byId(leaves), { branchIcons }));
+    expect(draw(FAN)).not.toBe(drawDiagram(layout, byId(leaves)));
+  });
+
+  test.each([
+    [
+      "a name neither built in nor custom",
+      "nope",
+      'the icon "nope", which is neither a built-in icon nor a custom one.',
+    ],
+    [
+      "a logo the theme does not hold",
+      { logo: "nope" },
+      'the logo "nope", which the theme does not hold.',
+    ],
+  ])(
+    "refuses a branch icon of %s, naming the edge, even on an edge that bends nowhere",
+    (_, icon, named) => {
+      const [edge] = SAMPLE.edges;
+      const file = readDiagramFile(text({ ...SAMPLE, edges: [{ ...edge, branchIcon: icon }] }));
+      expect(() => drawDiagramFile(file, theme)).toThrow(
+        new InvalidEdgeIconError(`The branch icon of edge "user>app" names ${named}`),
+      );
+    },
+  );
 
   test("refuses content a kind refuses, naming the node", () => {
     const file = readDiagramFile(
@@ -572,6 +643,24 @@ describe("icons from the user's config", () => {
     const refused = runWith(["draw", path]);
     expect(refused.code).toBe(1);
     expect(refused.stderr).toContain(`catena: ${path}: The content of node "app"`);
+  });
+
+  test("draws the config's icon named as an edge's branch icon as it draws the same one inline", () => {
+    writeConfig({ icons: { mine: ownIcon } });
+    expect(runWith(["draw", fileOf(text(fanWith("mine")))])).toEqual({
+      code: 0,
+      stdout: `${draw(fanWith(ownIcon))}\n`,
+      stderr: "",
+    });
+  });
+
+  test("exits 1 for a branch icon neither built in nor the config's, naming the edge", () => {
+    const path = fileOf(text(fanWith("nope")));
+    expect(runWith(["draw", path])).toEqual({
+      code: 1,
+      stdout: "",
+      stderr: `catena: ${path}: The branch icon of edge "app>b" names the icon "nope", which is neither a built-in icon nor a custom one.\n`,
+    });
   });
 
   test("draws a built-in icon's name as the built-in icon beside the config's icons", () => {

@@ -16,7 +16,7 @@ import {
   type NodeKind,
 } from "./diagram-file";
 import { diagramJsonSchema } from "./diagram-schema";
-import { drawDiagramFile } from "./draw";
+import { drawDiagramFile, InvalidEdgeIconError } from "./draw";
 
 // Made-up shapes: catena's tests carry no real company's mark or colours.
 const OWN_ICON: CustomIcon = {
@@ -50,6 +50,7 @@ function draws(file: unknown): boolean {
     if (
       error instanceof InvalidDiagramFileError ||
       error instanceof InvalidNodeContentError ||
+      error instanceof InvalidEdgeIconError ||
       error instanceof InvalidGraphError
     ) {
       return false;
@@ -105,6 +106,16 @@ const holding = (kind: string, content: unknown) => ({
 
 /** A diagram of one card whose icon is `icon`. */
 const naming = (icon: unknown) => holding("iconTitleCard", { icon, title: "App" });
+
+/** A diagram of one edge between two badges, whose branch icon is `icon`. */
+const branching = (icon: unknown) => ({
+  direction: "down",
+  nodes: [
+    { id: "a", kind: "badge", content: "A" },
+    { id: "b", kind: "badge", content: "B" },
+  ],
+  edges: [{ id: "a>b", from: "a", to: "b", branchIcon: icon }],
+});
 
 /** A diagram of one group holding `children`, in `direction`. */
 const grouping = (children: unknown[], direction: unknown = "down") => ({
@@ -197,10 +208,15 @@ describe("diagramJsonSchema", () => {
     ["a letter outside A to Z", { letters: "É" }, false],
     ["two letters and a line break", { letters: "AB\n" }, false],
     ["letters with another key", { letters: "AB", color: "red" }, false],
-  ])("for an icon, takes %s: %s, as catena draw does", (_, icon, accepted) => {
-    expect(valid(naming(icon))).toBe(accepted);
-    expect(draws(naming(icon))).toBe(accepted);
-  });
+  ])(
+    "for a node's icon and an edge's branch icon, takes %s: %s, as catena draw does",
+    (_, icon, accepted) => {
+      expect(valid(naming(icon))).toBe(accepted);
+      expect(draws(naming(icon))).toBe(accepted);
+      expect(valid(branching(icon))).toBe(accepted);
+      expect(draws(branching(icon))).toBe(accepted);
+    },
+  );
 
   test("lists only the built-in names with no custom icons", () => {
     const builtInOnly = validator([]);
@@ -321,6 +337,12 @@ describe("properties", () => {
     ),
   });
 
+  const branchIcon = fc.oneof(
+    { weight: 6, arbitrary: fc.constant(undefined) },
+    { weight: 2, arbitrary: fc.constantFrom("spark", "mine", "sprak") },
+    { weight: 1, arbitrary: junk },
+  );
+
   const header = { title: "Sample", repository: { name: "catena" }, capturedAt: "2026-11-18" };
   const background = { canvas: "#ffffff", dot: "#eeeeee", dotRadius: 1, spacing: 20 };
 
@@ -332,11 +354,12 @@ describe("properties", () => {
       { weight: 1, arbitrary: changed(value) },
     );
 
-  /** A diagram file each of whose parts is as catena draws it, or changed; its ids unique and its edges between top-level leaves. */
+  /** A diagram file each of whose parts is as catena draws it, or changed; its ids unique and its edges between top-level leaves, some with a branch icon. */
   const file = fc
     .record({
       direction,
       nodes: fc.array(fc.oneof({ weight: 3, arbitrary: leaf }, group), { maxLength: 4 }),
+      branchIcons: fc.array(branchIcon, { minLength: 4, maxLength: 4 }),
       header: sometimesChanged(header),
       background: sometimesChanged(background),
       extra: fc.oneof(
@@ -345,7 +368,7 @@ describe("properties", () => {
         { weight: 1, arbitrary: fc.tuple(fc.constantFrom("$schema", "notes"), junk) },
       ),
     })
-    .map(({ direction: way, nodes, header: given, background: drawnOn, extra }) => {
+    .map(({ direction: way, nodes, branchIcons, header: given, background: drawnOn, extra }) => {
       let ids = 0;
       const withId = (node: unknown): unknown => {
         if (!isObject(node)) return node;
@@ -362,11 +385,15 @@ describe("properties", () => {
       return {
         direction: way,
         nodes: placed,
-        edges: leaves.slice(1).map((node, index) => ({
-          id: `e${index}`,
-          from: leaves[index]?.["id"],
-          to: node["id"],
-        })),
+        edges: leaves.slice(1).map((node, index) => {
+          const icon = branchIcons[index];
+          return {
+            id: `e${index}`,
+            from: leaves[index]?.["id"],
+            to: node["id"],
+            ...(icon === undefined ? {} : { branchIcon: icon }),
+          };
+        }),
         ...(given === undefined ? {} : { header: given }),
         ...(drawnOn === undefined ? {} : { background: drawnOn }),
         ...(extra === undefined ? {} : { [extra[0]]: extra[1] }),
