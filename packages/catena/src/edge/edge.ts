@@ -13,6 +13,14 @@ export interface EdgeOptions {
 /** The radius of a bend when none is given: the corner radius of a default card. */
 export const DEFAULT_EDGE_RADIUS = 8;
 
+/** The radius of the dot at each end of an edge. */
+export const EDGE_END_RADIUS = 4;
+
+/** A circle {@link EDGE_END_RADIUS} round centred on `point`. It carries no fill, so the caller paints it. */
+export function drawEdgeEnd({ x, y }: Point): SvgElement {
+  return element("circle", { cx: x, cy: y, r: EDGE_END_RADIUS });
+}
+
 /**
  * Where a horizontal stretch meets a vertical one the bend is rounded; any other turn, which `verify`
  * reports as `edge-not-orthogonal`, or a turn back, is drawn sharp. The path carries no stroke, so the

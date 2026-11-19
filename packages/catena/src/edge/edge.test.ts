@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { PlacedEdge, Point } from "../layout";
 import { writeSvg } from "../svg";
-import { DEFAULT_EDGE_RADIUS, drawEdge } from "./index";
+import { DEFAULT_EDGE_RADIUS, EDGE_END_RADIUS, drawEdge, drawEdgeEnd } from "./index";
 
 const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
   id: "e",
@@ -118,5 +118,12 @@ describe("drawEdge", () => {
   test("refuses a negative radius or none at all", () => {
     expect(() => drawEdge(corner, { radius: -1 })).toThrow(RangeError);
     expect(() => drawEdge(corner, { radius: Number.NaN })).toThrow(RangeError);
+  });
+});
+
+describe("drawEdgeEnd", () => {
+  test("centres an unpainted circle 4 round on the point", () => {
+    expect(EDGE_END_RADIUS).toBe(4);
+    expect(writeSvg(drawEdgeEnd({ x: 10, y: 0.5 }))).toBe('<circle cx="10" cy="0.5" r="4"/>');
   });
 });

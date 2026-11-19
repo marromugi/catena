@@ -3,9 +3,9 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { drawEdge } from "../edge";
+import { drawEdge, drawEdgeEnd, EDGE_END_RADIUS } from "../edge";
 import { filledIconPathData } from "../icon";
-import type { Layout, Rect } from "../layout";
+import type { Layout, Point, Rect } from "../layout";
 import type { Node } from "../node";
 import { writeSvg } from "../svg";
 import { placeGraph } from "../place";
@@ -14,11 +14,21 @@ import { DEFAULT_DOT_GRID, DEFAULT_EDGE_PAINT, drawDiagram, type DiagramHeader }
 
 const spacing = { nodeGap: 40, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 16 };
 
-/** A node that draws a marker naming its id and box. */
+/** Whether `point` is on a side of `box`, not at a corner. */
+const onSideOf = (box: Rect, point: Point) =>
+  ((point.x === box.x || point.x === box.x + box.width) &&
+    point.y > box.y &&
+    point.y < box.y + box.height) ||
+  ((point.y === box.y || point.y === box.y + box.height) &&
+    point.x > box.x &&
+    point.x < box.x + box.width);
+
+/** A node that draws a marker naming its id and box, and covers the sides of its box. */
 const markerNode = (id: string, width: number, height: number): Node => ({
   leaf: { id, size: { width, height } },
   draw: (box: Rect) =>
     `<g data-node="${id}" data-box="${box.x},${box.y},${box.width},${box.height}"/>`,
+  covers: onSideOf,
 });
 
 const a = markerNode("a", 120, 60);
@@ -35,6 +45,16 @@ const layout: Layout = placeGraph(
   },
   spacing,
 );
+/** The dots at `points`, in order. */
+const dotsAt = (...points: (Point | undefined)[]) =>
+  points.map((point) => writeSvg(drawEdgeEnd(point ?? { x: 0, y: 0 }))).join("");
+
+/** The dots of both ends of every edge of `layout`, first end then last. */
+const endDotsOf = (drawnLayout: Layout) =>
+  drawnLayout.edges
+    .flatMap(({ points }) => [points[0], points.at(-1) ?? points[0]])
+    .map((point) => writeSvg(drawEdgeEnd(point)))
+    .join("");
 const boxAt = (x: number): Rect => ({ x, y: 0, width: 10, height: 10 });
 const nodes = new Map([a, b, c].map((node) => [node.leaf.id, node]));
 
@@ -136,6 +156,54 @@ describe("drawDiagram", () => {
     ).toContain(`<g fill="none" stroke="#123456" stroke-width="3">${paths}</g>`);
   });
 
+  test("draws a dot at both ends of every edge in one group filled with the edges' stroke", () => {
+    const dots = endDotsOf(layout);
+    expect(drawDiagram(layout, nodes)).toContain(`<g fill="#ebebeb">${dots}</g>`);
+    expect(drawDiagram(layout, nodes, { edgePaint: { stroke: "#123456" } })).toContain(
+      `<g fill="#123456">${dots}</g>`,
+    );
+  });
+
+  test("draws no dot at an end whose node doesn't cover it, nor at one with no Node", () => {
+    const flat: Node = { ...b, covers: () => false };
+    const [toB, toC] = layout.edges;
+    expect(drawDiagram(layout, new Map([...nodes, ["b", flat]]))).toContain(
+      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0], toC?.points.at(-1))}</g>`,
+    );
+    expect(drawDiagram(layout, new Map([["a", a]]))).toContain(
+      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0])}</g>`,
+    );
+  });
+
+  test("asks each end's node whether it covers the end within half the dot's radius", () => {
+    const asked: number[] = [];
+    const asking: Node = {
+      ...b,
+      covers: (box, point, reach) => {
+        asked.push(reach);
+        return onSideOf(box, point);
+      },
+    };
+    drawDiagram(layout, new Map([...nodes, ["b", asking]]));
+    expect(asked).toEqual([EDGE_END_RADIUS / 2]);
+  });
+
+  test("draws no dot at an end on a group with no Node", () => {
+    const toGroup = placeGraph(
+      {
+        direction: "down",
+        nodes: [a.leaf, { id: "g", direction: "right", children: [b.leaf] }],
+        edges: [{ id: "a>g", from: "a", to: "g" }],
+      },
+      spacing,
+    );
+    const [edge] = toGroup.edges;
+    expect(edge).toBeDefined();
+    expect(drawDiagram(toGroup, nodes)).toContain(
+      `<g fill="#ebebeb">${writeSvg(drawEdgeEnd(edge?.points[0] ?? { x: 0, y: 0 }))}</g>`,
+    );
+  });
+
   test("draws every placed node with a Node at its box, group children too, and skips the rest", () => {
     const svg = drawDiagram(layout, nodes);
     const group = layout.nodes.find((node) => node.id === "g");
@@ -151,7 +219,7 @@ describe("drawDiagram", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
     expect(drawDiagram(layout, new Map())).toMatch(
       new RegExp(
-        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g></svg>$`,
+        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g fill="#ebebeb"/></svg>$`,
       ),
     );
   });
@@ -195,14 +263,16 @@ describe("drawDiagram", () => {
     expect(svg.indexOf('data-node="g"')).toBeLessThan(svg.indexOf('data-node="b"'));
   });
 
-  test("puts the background first, then the edges, then the nodes", () => {
+  test("puts the background first, then the edges, then their dots, then the nodes", () => {
     const svg = drawDiagram(layout, nodes);
     const background = svg.indexOf("<defs>");
     const edges = svg.indexOf('<g fill="none"');
+    const dots = svg.indexOf('<g fill="#ebebeb"><circle');
     const firstNode = svg.indexOf("data-node=");
     expect(background).toBeGreaterThan(-1);
     expect(background).toBeLessThan(edges);
-    expect(edges).toBeLessThan(firstNode);
+    expect(edges).toBeLessThan(dots);
+    expect(dots).toBeLessThan(firstNode);
   });
 });
 
@@ -329,16 +399,17 @@ describe("drawDiagram with a header", () => {
     );
   });
 
-  test("draws the header over the background, then the edges and the nodes 72 lower", () => {
+  test("draws the header over the background, then the edges, their dots and the nodes 72 lower", () => {
     const svg = drawDiagram(layout, nodes, { header });
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
+    const dots = endDotsOf(layout);
     const group = layout.nodes.find((node) => node.id === "g");
     const drawn = [...layout.nodes, ...(group?.children ?? [])]
       .flatMap(({ id, box }) => nodes.get(id)?.draw(box) ?? [])
       .join("");
     expect(
       svg.endsWith(
-        `<g transform="translate(0 72)"><g fill="none" stroke="#ebebeb" stroke-width="1.5">${paths}</g>${drawn}</g></svg>`,
+        `<g transform="translate(0 72)"><g fill="none" stroke="#ebebeb" stroke-width="1.5">${paths}</g><g fill="#ebebeb">${dots}</g>${drawn}</g></svg>`,
       ),
     ).toBe(true);
     const background = svg.indexOf('fill="url(#catena-dots)"');
