@@ -23,7 +23,7 @@ export class InvalidEdgeIconError extends Error {
  * Where edges carrying a branch icon bend at one point, the first of them in the file gives the icon.
  * @throws InvalidNodeContentError when a node's content is not what its kind shows, naming the node.
  * @throws InvalidEdgeIconError when an edge's branch icon names an icon or logo there is none of,
- * naming the edge.
+ * naming the edge, with the UnknownIconError or UnknownLogoError as its cause.
  * @throws InvalidGraphError when the graph cannot be laid out as written.
  */
 export function drawDiagramFile(file: DiagramFile, theme: Theme): string {

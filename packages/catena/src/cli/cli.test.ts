@@ -470,19 +470,24 @@ describe("drawDiagramFile", () => {
       "a name neither built in nor custom",
       "nope",
       'the icon "nope", which is neither a built-in icon nor a custom one.',
+      { name: "UnknownIconError", icon: "nope" },
     ],
     [
       "a logo the theme does not hold",
       { logo: "nope" },
       'the logo "nope", which the theme does not hold.',
+      { name: "UnknownLogoError", logo: "nope" },
     ],
   ])(
-    "refuses a branch icon of %s, naming the edge, even on an edge that bends nowhere",
-    (_, icon, named) => {
+    "refuses a branch icon of %s, naming the edge and keeping the cause, even on an edge that bends nowhere",
+    (_, icon, named, cause) => {
       const [edge] = SAMPLE.edges;
       const file = readDiagramFile(text({ ...SAMPLE, edges: [{ ...edge, branchIcon: icon }] }));
       expect(() => drawDiagramFile(file, theme)).toThrow(
         new InvalidEdgeIconError(`The branch icon of edge "user>app" names ${named}`),
+      );
+      expect(() => drawDiagramFile(file, theme)).toThrow(
+        expect.objectContaining({ cause: expect.objectContaining(cause) }),
       );
     },
   );
