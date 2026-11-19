@@ -1,7 +1,20 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { describe, expect, test } from "vitest";
+import { iconPathData } from "../icon";
 import type { PlacedEdge, Point } from "../layout";
+import { defineTheme, UnknownIconError, UnknownLogoError, type OwnIcon } from "../node";
 import { writeSvg } from "../svg";
-import { DEFAULT_EDGE_RADIUS, EDGE_END_RADIUS, drawEdge, drawEdgeEnd } from "./index";
+import { Typeface } from "../text";
+import {
+  DEFAULT_EDGE_RADIUS,
+  EDGE_END_RADIUS,
+  EDGE_ICON_RADIUS,
+  EDGE_ICON_SIZE,
+  drawEdge,
+  drawEdgeEnd,
+  drawEdgeIcon,
+} from "./index";
 
 const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
   id: "e",
@@ -125,5 +138,48 @@ describe("drawEdgeEnd", () => {
   test("centres an unpainted circle 4 round on the point", () => {
     expect(EDGE_END_RADIUS).toBe(4);
     expect(writeSvg(drawEdgeEnd({ x: 10, y: 0.5 }))).toBe('<circle cx="10" cy="0.5" r="4"/>');
+  });
+});
+
+describe("drawEdgeIcon", () => {
+  const require = createRequire(import.meta.url);
+  const inter = (weight: 400 | 700) =>
+    Typeface.read(
+      readFileSync(require.resolve(`@fontsource/inter/files/inter-latin-${weight}-normal.woff`)),
+    );
+  const fonts = { regular: [inter(400)], bold: [inter(700)] } as const;
+  const cross: OwnIcon = {
+    pathData: "M 4 4 L 44 44",
+    viewBox: { x: 0, y: 0, width: 48, height: 48 },
+    paint: "stroke",
+  };
+  const theme = defineTheme(fonts, { icon: { color: "#123456" }, icons: { cross } });
+  const at = { x: 100, y: 50 };
+
+  test("centres an unpainted circle 11 round on the point, with the icon 14 across in its middle", () => {
+    expect([EDGE_ICON_RADIUS, EDGE_ICON_SIZE]).toEqual([11, 14]);
+    expect(writeSvg(drawEdgeIcon(at, "plus", theme))).toBe(
+      '<g><circle cx="100" cy="50" r="11"/>' +
+        `<path d="${iconPathData.plus}" transform="translate(93 43) scale(0.5833333333333334)" ` +
+        'fill="none" stroke-width="2.571428571428571" stroke-linecap="round" stroke-linejoin="round" ' +
+        'stroke="#123456"/></g>',
+    );
+  });
+
+  test("draws a built-in icon in the colour a node's icon gives it", () => {
+    const spark = defineTheme(fonts, { icon: { colors: { spark: "#abcdef" } } });
+    expect(writeSvg(drawEdgeIcon(at, "spark", spark))).toContain('stroke="#abcdef"');
+  });
+
+  test("draws a custom icon named by the theme as the same icon given inline", () => {
+    expect(writeSvg(drawEdgeIcon(at, "cross", theme))).toBe(
+      writeSvg(drawEdgeIcon(at, cross, theme)),
+    );
+    expect(writeSvg(drawEdgeIcon(at, cross, theme))).toContain('d="M 4 4 L 44 44"');
+  });
+
+  test("refuses a name neither built in nor custom, and a logo the theme does not hold", () => {
+    expect(() => drawEdgeIcon(at, "nowhere", theme)).toThrow(UnknownIconError);
+    expect(() => drawEdgeIcon(at, { logo: "nowhere" }, theme)).toThrow(UnknownLogoError);
   });
 });
