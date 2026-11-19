@@ -32,7 +32,7 @@ const EDGE_ICON_STROKE_WIDTH = 1.5;
 
 /**
  * A circle {@link EDGE_ICON_RADIUS} round centred on `point`, with `content` drawn {@link EDGE_ICON_SIZE}
- * across in its middle in the colours a node's icon takes from `theme`. The circle carries no fill, so
+ * across in its middle in the colours of `theme.icon`. The circle carries no fill, so
  * the caller paints it.
  * @throws UnknownIconError when `content` is a name neither built in nor one of the theme's custom icons.
  * @throws UnknownLogoError when `content` names a logo the theme does not hold.
