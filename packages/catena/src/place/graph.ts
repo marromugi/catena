@@ -57,6 +57,11 @@ export interface EdgeEnds {
 /** A connection between two nodes. */
 export interface GraphEdge extends EdgeEnds {
   readonly id: string;
+  /**
+   * How far to each side of its line the edge takes up, for what is drawn on it: the lanes it runs along
+   * keep the spacing's gaps from that far out, and 0 when not given.
+   */
+  readonly room?: number;
 }
 
 /** What a layout is made from. */

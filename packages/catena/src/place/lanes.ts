@@ -22,6 +22,7 @@ export type Run =
       readonly startsInside: boolean;
       /** Whether the edge ends inside `to`, not at it. */
       readonly endsInside: boolean;
+      readonly room: number;
     }
   | {
       readonly id: string;
@@ -29,6 +30,7 @@ export type Run =
       readonly to: string;
       readonly startsInside: false;
       readonly endsInside: boolean;
+      readonly room: number;
     }
   | {
       readonly id: string;
@@ -36,6 +38,7 @@ export type Run =
       readonly to: typeof outside;
       readonly startsInside: boolean;
       readonly endsInside: false;
+      readonly room: number;
     };
 
 /**
@@ -71,6 +74,12 @@ export interface Lanes {
   readonly entering: readonly (readonly End[])[];
   /** For each corridor between columns, the ends whose edges run along it. */
   readonly beside: readonly (readonly End[])[];
+  /** The room each lane keeps on both sides of its line: the most that an edge running along it asks. A lane not listed keeps none. */
+  readonly rooms: {
+    readonly leaving: ReadonlyMap<End, number>;
+    readonly entering: ReadonlyMap<End, number>;
+    readonly beside: readonly ReadonlyMap<End, number>[];
+  };
 }
 
 function spotOf(spots: ReadonlyMap<string, Spot>, id: string): Spot {
@@ -222,23 +231,26 @@ export function assignLanes(
   };
 
   const routes = new Map<string, Route>();
-  const turning = new Set<End>();
-  const entering = new Set<End>();
-  const beside = Array.from({ length: places + 1 }, () => new Set<End>());
+  const turning = new Map<End, number>();
+  const entering = new Map<End, number>();
+  const beside = Array.from({ length: places + 1 }, () => new Map<End, number>());
   for (const edge of edges) {
     const route = routeBetween(edge);
     routes.set(edge.id, route);
+    const runAlong = (lanes: Map<End, number> | undefined, end: End): void => {
+      lanes?.set(end, Math.max(lanes.get(end) ?? 0, edge.room));
+    };
     if (route.kind === "direct" || route.kind === "around" || route.kind === "toBeside") {
-      turning.add(edge.from);
+      runAlong(turning, edge.from);
     }
     if (route.kind === "joining" || route.kind === "around" || route.kind === "fromBeside") {
-      entering.add(edge.to);
+      runAlong(entering, edge.to);
     }
     if (route.kind === "around") {
-      beside[route.beside]?.add(edge.from);
+      runAlong(beside[route.beside], edge.from);
     }
     if (route.kind === "fromBeside" || route.kind === "toBeside") {
-      beside[route.beside]?.add(outside);
+      runAlong(beside[route.beside], outside);
     }
   }
 
@@ -256,5 +268,6 @@ export function assignLanes(
     beside: beside.map((besideIt, corridor) =>
       besideIn(corridor).filter((end) => besideIt.has(end)),
     ),
+    rooms: { leaving: turning, entering, beside },
   };
 }

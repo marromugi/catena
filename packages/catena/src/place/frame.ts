@@ -60,9 +60,44 @@ interface Line {
   readonly length: number;
 }
 
+/** Lanes side by side in a corridor, each the edge gap beyond its room and the room of the lane before it. */
 interface Stack {
   readonly lanes: number;
+  /** From the first lane to the last. */
   readonly height: number;
+  /** The room of the first lane. */
+  readonly before: number;
+  /** The room of the last lane. */
+  readonly after: number;
+}
+
+/** A stack of the lanes of `ends`, in order, with how far each lies from the first. */
+function stackOf(
+  ends: readonly End[],
+  rooms: ReadonlyMap<End, number> | undefined,
+  gap: number,
+): Stack & { readonly offsets: ReadonlyMap<End, number> } {
+  const offsets = new Map<End, number>();
+  let roomsBetween = 0;
+  let before = 0;
+  let after = 0;
+  ends.forEach((end, index) => {
+    const room = rooms?.get(end) ?? 0;
+    if (index === 0) {
+      before = room;
+    } else {
+      roomsBetween += after + room;
+    }
+    offsets.set(end, index * gap + roomsBetween);
+    after = room;
+  });
+  return {
+    lanes: ends.length,
+    height: Math.max(0, ends.length - 1) * gap + roomsBetween,
+    before,
+    after,
+    offsets,
+  };
 }
 
 /** A place the middle of a grid's side may be moved to, and whether it is on a line an edge turns onto. */
@@ -103,19 +138,34 @@ function trackOf(line: Line, index: number): Track {
   return track;
 }
 
-/** Where the first of the lanes that take up `stack` lies, in the middle of the corridor before the track `index`. */
-function firstLane(line: Line, index: number, stack: number): number {
+/** How far the lane of `end` lies from the first lane of its stack in `corridor`. */
+function laneOf(offsets: ReadonlyMap<End, number> | undefined, corridor: number, end: End): number {
+  const offset = offsets?.get(end);
+  if (offset === undefined) {
+    throw new Error(
+      `${end === outside ? "The outside" : `Node "${end}"`} has no lane in corridor ${corridor}, though an edge runs in it.`,
+    );
+  }
+  return offset;
+}
+
+/** Where the first lane of `stack` lies, the stack and its rooms in the middle of the corridor before the track `index`. */
+function firstLane(line: Line, index: number, stack: Stack | undefined): number {
   const end = line.tracks[index]?.offset ?? line.length;
-  return end - ((line.corridors[index] ?? 0) + stack) / 2;
+  const { height = 0, before = 0, after = 0 } = stack ?? {};
+  return end - ((line.corridors[index] ?? 0) + height + after - before) / 2;
 }
 
 /**
- * The place nearest `from` that is on each of `lines` or at least `apart` from it. Of two as near, a
+ * The place nearest `from` that is on each of `lines` or at least its `apart` from it. Of two as near, a
  * place on a line comes first, then the smaller.
  */
-function clearOf(lines: readonly number[], from: number, apart: number): number {
+function clearOf(
+  lines: readonly { readonly line: number; readonly apart: number }[],
+  from: number,
+): number {
   const isClear = (place: number, measuredFrom?: number): boolean =>
-    lines.every((line) => line === measuredFrom || Math.abs(place - line) >= apart);
+    lines.every(({ line, apart }) => line === measuredFrom || Math.abs(place - line) >= apart);
   const comesFirst = (one: Stop, other: Stop): boolean => {
     const nearer = Math.abs(one.place - from) - Math.abs(other.place - from);
     if (nearer !== 0) {
@@ -125,7 +175,7 @@ function clearOf(lines: readonly number[], from: number, apart: number): number 
   };
   return [
     ...[{ place: from, onLine: false }].filter(({ place }) => isClear(place)),
-    ...lines.flatMap((line) =>
+    ...lines.flatMap(({ line, apart }) =>
       [
         { place: line, onLine: true },
         { place: line - apart, onLine: false },
@@ -150,7 +200,7 @@ function clearOf(lines: readonly number[], from: number, apart: number): number 
  * that line runs along the flow, onto the middle line of a column or a lane beside one; where it runs
  * across the flow, onto the lane before its target or the lane after its source. The grid is made
  * longer at one end of that side by the least that puts that middle on each such line, or the edge gap
- * and the shortest stretch from it.
+ * and the shortest stretch from it, and the room of that line and of the edges that cross, beyond that.
  *
  * @param items The nodes of the grid by id, with no row or column left empty.
  * @param edges The edges `lanes` was made for.
@@ -187,21 +237,26 @@ export function frameOf(
   }
 
   const edgeRoom = Math.max(spacing.edgeToNode, spacing.edgeGap, spacing.minSegment);
-  const stackOf = (count: number): number => Math.max(0, count - 1) * spacing.edgeGap;
   const rowStacks = [...rowReaches, undefined].map((_, corridor) => {
-    const leaving = lanes.leaving[corridor]?.length ?? 0;
-    const entering = lanes.entering[corridor]?.length ?? 0;
-    const between = leaving > 0 && entering > 0 ? Math.max(spacing.edgeGap, spacing.minSegment) : 0;
+    const leaving = stackOf(lanes.leaving[corridor] ?? [], lanes.rooms.leaving, spacing.edgeGap);
+    const entering = stackOf(lanes.entering[corridor] ?? [], lanes.rooms.entering, spacing.edgeGap);
+    const between =
+      leaving.lanes > 0 && entering.lanes > 0
+        ? Math.max(spacing.edgeGap, spacing.minSegment) + leaving.after + entering.before
+        : 0;
     return {
-      lanes: leaving + entering,
-      entering: stackOf(leaving) + between,
-      height: stackOf(leaving) + between + stackOf(entering),
+      lanes: leaving.lanes + entering.lanes,
+      height: leaving.height + between + entering.height,
+      before: leaving.lanes > 0 ? leaving.before : entering.before,
+      after: entering.lanes > 0 ? entering.after : leaving.after,
+      leaving: leaving.offsets,
+      entering: entering.offsets,
+      enteringFrom: leaving.height + between,
     };
   });
-  const columnStacks = [...columnReaches, undefined].map((_, corridor): Stack => {
-    const count = lanes.beside[corridor]?.length ?? 0;
-    return { lanes: count, height: stackOf(count) };
-  });
+  const columnStacks = [...columnReaches, undefined].map((_, corridor) =>
+    stackOf(lanes.beside[corridor] ?? [], lanes.rooms.beside[corridor], spacing.edgeGap),
+  );
   const entered = new Set(
     edges.flatMap((edge) => (edge.to === outside ? [] : [itemOf(edge.to).step])),
   );
@@ -226,7 +281,7 @@ export function frameOf(
       return Math.max(
         corridor === 0 || corridor === reaches.length ? spacing.padding : spacing.nodeGap,
         edges.length > 0 ? edgeRoom - nearestLine : 0,
-        stack.lanes > 0 ? edgeRoom * 2 + stack.height : 0,
+        stack.lanes > 0 ? edgeRoom * 2 + stack.height + stack.before + stack.after : 0,
         crossing(corridor),
       );
     });
@@ -244,55 +299,52 @@ export function frameOf(
     corridorsOf(columnReaches, columnStacks, () => 0),
   );
 
-  const laneOf = (list: readonly (readonly End[])[], corridor: number, end: End): number => {
-    const lane = list[corridor]?.indexOf(end) ?? -1;
-    if (lane === -1) {
-      throw new Error(
-        `${end === outside ? "The outside" : `Node "${end}"`} has no lane in corridor ${corridor}, though an edge runs in it.`,
-      );
-    }
-    return lane * spacing.edgeGap;
-  };
   const middleOf = (place: number): number => {
     const column = trackOf(columns, place);
     return column.offset + column.before;
   };
   const laneBeside = (corridor: number, end: End): number =>
-    firstLane(columns, corridor, columnStacks[corridor]?.height ?? 0) +
-    laneOf(lanes.beside, corridor, end);
+    firstLane(columns, corridor, columnStacks[corridor]) +
+    laneOf(columnStacks[corridor]?.offsets, corridor, end);
 
   const laneAfter = (end: End): number => {
     const corridor = end === outside ? 0 : itemOf(end).step + 1;
     return (
-      firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
-      laneOf(lanes.leaving, corridor, end)
+      firstLane(rows, corridor, rowStacks[corridor]) +
+      laneOf(rowStacks[corridor]?.leaving, corridor, end)
     );
   };
   const laneBefore = (end: End): number => {
     const corridor = end === outside ? rowReaches.length : itemOf(end).step;
     return (
-      firstLane(rows, corridor, rowStacks[corridor]?.height ?? 0) +
-      (rowStacks[corridor]?.entering ?? 0) +
-      laneOf(lanes.entering, corridor, end)
+      firstLane(rows, corridor, rowStacks[corridor]) +
+      (rowStacks[corridor]?.enteringFrom ?? 0) +
+      laneOf(rowStacks[corridor]?.entering, corridor, end)
     );
   };
 
-  const turns = edges.flatMap((edge): number[] => {
-    if (edge.from !== outside && edge.to !== outside) {
-      return [];
-    }
+  const crossingEdges = edges.filter((edge) => edge.from === outside || edge.to === outside);
+  const crossingRoom = Math.max(0, ...crossingEdges.map((edge) => edge.room));
+  /** A line a crossing edge turns onto, kept apart from the crossing by the gap and by its room and the crossing's. */
+  const turn = (line: number, room: number | undefined) => ({
+    line,
+    apart: Math.max(spacing.edgeGap, spacing.minSegment) + (room ?? 0) + crossingRoom,
+  });
+  const turns = crossingEdges.map((edge) => {
     const node = edge.from === outside ? edge.to : edge.from;
     if (border === "across") {
-      return [edge.from === outside ? laneBefore(node) : laneAfter(node)];
+      return edge.from === outside
+        ? turn(laneBefore(node), lanes.rooms.entering.get(node))
+        : turn(laneAfter(node), lanes.rooms.leaving.get(node));
     }
     const route = lanes.routes.get(edge.id);
-    return [
-      route?.kind === "around" ? laneBeside(route.beside, edge.from) : middleOf(itemOf(node).place),
-    ];
+    return route?.kind === "around"
+      ? turn(laneBeside(route.beside, edge.from), lanes.rooms.beside[route.beside]?.get(edge.from))
+      : turn(middleOf(itemOf(node).place), edge.room);
   });
   const [side, depth] = border === "along" ? [columns, rows] : [rows, columns];
   const lined = middleOfLine(side);
-  const crossing = clearOf(turns, lined, Math.max(spacing.edgeGap, spacing.minSegment));
+  const crossing = clearOf(turns, lined);
   const moved = Math.max(0, 2 * (lined - crossing));
   /** The point `onSide` along the side the edges come in at, and `inFrom` in from that side. */
   const pointOf = (onSide: number, inFrom: number): FlowPoint =>

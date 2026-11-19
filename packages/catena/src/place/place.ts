@@ -92,24 +92,34 @@ function runsOf(
 ): Run[] {
   const nodeAround = nodeAroundOf(nodes);
   return edges.flatMap((edge): Run[] => {
+    const room = edge.room ?? 0;
     const from = nodeAround.get(edge.from);
     const to = nodeAround.get(edge.to);
     if (from !== undefined && to !== undefined) {
       const startsInside = from !== edge.from;
       const endsInside = to !== edge.to;
       return from !== to || (!startsInside && !endsInside)
-        ? [{ id: edge.id, from, to, startsInside, endsInside }]
+        ? [{ id: edge.id, from, to, startsInside, endsInside, room }]
         : [];
     }
     if (!crossing.has(edge.id)) {
       return [];
     }
     if (to !== undefined) {
-      return [{ id: edge.id, from: outside, to, startsInside: false, endsInside: to !== edge.to }];
+      return [
+        { id: edge.id, from: outside, to, startsInside: false, endsInside: to !== edge.to, room },
+      ];
     }
     if (from !== undefined) {
       return [
-        { id: edge.id, from, to: outside, startsInside: from !== edge.from, endsInside: false },
+        {
+          id: edge.id,
+          from,
+          to: outside,
+          startsInside: from !== edge.from,
+          endsInside: false,
+          room,
+        },
       ];
     }
     throw new Error(
@@ -403,6 +413,11 @@ function requireSound(graph: Graph, spacing: Spacing): void {
       throw new InvalidGraphError(`The graph has two edges with the id "${edge.id}".`);
     }
     edgeIds.add(edge.id);
+    if (edge.room !== undefined && !isLength(edge.room)) {
+      throw new InvalidGraphError(
+        `The room of edge "${edge.id}" is ${edge.room}, which is not a length.`,
+      );
+    }
     for (const end of [edge.from, edge.to]) {
       if (!ids.has(end)) {
         throw new InvalidGraphError(
@@ -432,6 +447,8 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * edges that leave a node run as one until they part, and so do the edges that enter a node once they
  * have met. A corridor is at least the gap between nodes, or the padding at the outside, and wider where
  * edges need the room: for their lanes, to keep clear of the next row or column, or for a straight stretch.
+ * A lane takes up, to each side of its line, the most room an edge running along it has, and what keeps
+ * clear of the lane keeps clear of that.
  *
  * An edge with an end inside a group runs to the group as an edge to the group itself does, through the
  * group's middle on its side, and on inside the group to the node that is its end or holds it, as far in
@@ -442,10 +459,10 @@ function requireSound(graph: Graph, spacing: Spacing): void {
  * @returns Node boxes in the order and nesting of `graph.nodes`, and the edges drawn in the order of
  * `graph.edges`, in canvas coordinates.
  * @throws InvalidGraphError when the graph cannot be laid out as written: two nodes share an id or a
- * cell, two edges share an id, an edge connects a node that is not in the graph, a cell is not a pair of
- * whole numbers from 0 up, a size is negative or not finite, a leaf's line-up lies outside it or its
- * middle outside its edge box, a node reaches less than `edgeToNode`
- * to one side of its middle line where edges meet it, or a node is shorter than `edgeGap` between the
+ * cell, two edges share an id, an edge's room is negative or not finite, an edge connects a node that
+ * is not in the graph, a cell is not a pair of whole numbers from 0 up, a size is negative or not finite,
+ * a leaf's line-up lies outside it or its middle outside its edge box, a node reaches less than
+ * `edgeToNode` to one side of its middle line where edges meet it, or a node is shorter than `edgeGap` between the
  * edges that enter it and those that leave it.
  * @throws Error when a spacing is negative or not finite.
  */

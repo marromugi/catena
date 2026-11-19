@@ -1,6 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import type { Layout, PlacedNode, Spacing } from "../layout";
+import { branchPoints } from "../edge";
+import type { Layout, PlacedNode, Point, Rect, Spacing } from "../layout";
 import { verify } from "../verify";
 import { graphs } from "./graph.arbitrary";
 import { InvalidGraphError, placeGraph } from "./index";
@@ -4713,6 +4714,13 @@ describe("placeGraph: an edge whose end lies in a group inside a group", () => {
   });
 });
 
+/** Two leaves and an edge "A>B" between them with `room`. */
+const withRoom = (room: number): Graph => ({
+  direction: "down",
+  nodes: [leaf("A", 50, 30), leaf("B", 50, 30)],
+  edges: [{ id: "A>B", from: "A", to: "B", room }],
+});
+
 describe("placeGraph: a graph that cannot be laid out", () => {
   test.each([
     ["two nodes with one id", graph("down", [leaf("A", 50, 30), leaf("A", 50, 30)]), '"A"'],
@@ -4773,6 +4781,9 @@ describe("placeGraph: a graph that cannot be laid out", () => {
       graph("down", [group("G", "down", [leaf("A", 50, Number.NaN)])]),
       'height of node "A"',
     ],
+    ["an edge with a negative room", withRoom(-1), 'room of edge "A>B" is -1'],
+    ["an edge with a room that is not a number", withRoom(Number.NaN), "NaN"],
+    ["an edge with a room without end", withRoom(Number.POSITIVE_INFINITY), "Infinity"],
   ])("refuses %s", (_, broken, said) => {
     expect(() => placeGraph(broken, spacing)).toThrow(InvalidGraphError);
     expect(() => placeGraph(broken, spacing)).toThrow(said);
@@ -4959,6 +4970,97 @@ const spacings = fc.record({
   edgeToNode: fc.double({ min: 0.5, max: 30, noNaN: true }),
   edgeGap: fc.double({ min: 0.5, max: 30, noNaN: true }),
   minSegment: fc.double({ min: 0.5, max: 30, noNaN: true }),
+});
+
+/** The leaves of `nodes` at any depth. */
+const leavesOf = (nodes: readonly PlacedNode[]): PlacedNode[] =>
+  nodes.flatMap((node) => (node.children.length === 0 ? [node] : leavesOf(node.children)));
+
+/** How far `point` lies from the nearest point of `box`, 0 inside it. */
+const distanceTo = (point: Point, box: Rect): number =>
+  Math.hypot(
+    Math.max(box.x - point.x, 0, point.x - (box.x + box.width)),
+    Math.max(box.y - point.y, 0, point.y - (box.y + box.height)),
+  );
+
+describe("placeGraph: edges with room", () => {
+  test("move the middle of a group's side that edges cross the gap between edges and both rooms from the line an edge with room turns onto", () => {
+    const placement = placeGraph(
+      {
+        direction: "down",
+        nodes: [
+          group("G", "right", [
+            group("H", "down", [
+              group("K", "right", [leaf("A", 40, 22)]),
+              leaf("B", 40, 22, { row: 1, column: 0 }),
+              leaf("C", 40, 22),
+            ]),
+            leaf("D", 40, 22),
+          ]),
+        ],
+        edges: [
+          { id: "K>D", from: "K", to: "D" },
+          { id: "B>D", from: "B", to: "D" },
+          { id: "C>D", from: "C", to: "D", room: 11 },
+        ],
+      },
+      { nodeGap: 32, padding: 16, edgeToNode: 8, edgeGap: 8, minSegment: 8 },
+    );
+
+    expect(branchPoints(placement.edges)).toEqual([
+      { point: { x: 211, y: 146 }, edges: ["K>D"] },
+      { point: { x: 211, y: 165 }, edges: ["C>D"] },
+    ]);
+  });
+
+  test("in any graph whose leaves are at least as wide and tall as twice the largest room, keep the room clear around each point where an edge with room parts from edges that share an end: inside the canvas, the clearance from every leaf, and clear of the room around every other such point", () => {
+    const rooms = fc.array(
+      fc.option(fc.double({ min: 0, max: 30, noNaN: true }), { nil: undefined }),
+      {
+        minLength: 12,
+        maxLength: 12,
+      },
+    );
+    fc.assert(
+      fc.property(graphs, spacings, rooms, (any, anySpacing, roomOfEach) => {
+        const widest = Math.max(0, ...roomOfEach.map((room) => room ?? 0));
+        const by = Math.max(anySpacing.edgeGap, anySpacing.edgeToNode * 2) + widest * 2;
+        const roomed: Graph = {
+          ...any,
+          nodes: any.nodes.map((node) => widenedNode(node, by)),
+          edges: any.edges.map((edge, index) => {
+            const room = roomOfEach[index];
+            return room === undefined ? edge : { ...edge, room };
+          }),
+        };
+        const layout = placeGraph(roomed, anySpacing);
+        const roomOf = new Map(roomed.edges.map((edge) => [edge.id, edge.room ?? 0]));
+        const points = branchPoints(layout.edges).map(({ point, edges }) => ({
+          point,
+          room: Math.max(...edges.map((id) => roomOf.get(id) ?? 0)),
+        }));
+        const leaves = leavesOf(layout.nodes);
+        const near = 1e-6;
+        for (const { point, room } of points.filter((each) => each.room > 0)) {
+          const { x, y } = point;
+          expect(Math.min(x, y, layout.width - x, layout.height - y)).toBeGreaterThanOrEqual(
+            room - near,
+          );
+          for (const { box } of leaves) {
+            expect(distanceTo(point, box)).toBeGreaterThanOrEqual(
+              room + anySpacing.edgeToNode - near,
+            );
+          }
+          for (const other of points.filter((each) => each.point !== point)) {
+            expect(Math.hypot(other.point.x - x, other.point.y - y)).toBeGreaterThanOrEqual(
+              room + other.room - near,
+            );
+          }
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
 });
 
 describe("placeGraph: any graph", () => {
