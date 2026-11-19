@@ -5013,26 +5013,39 @@ describe("placeGraph: edges with room", () => {
     ]);
   });
 
-  test("in any graph whose leaves are at least as wide and tall as twice the largest room, keep the room clear around each point where an edge with room parts from edges that share an end: inside the canvas, the clearance from every leaf, and clear of the room around every other such point", () => {
-    const rooms = fc.array(
-      fc.option(fc.double({ min: 0, max: 30, noNaN: true }), { nil: undefined }),
-      {
-        minLength: 12,
-        maxLength: 12,
-      },
+  /** Rooms from 0 to 30, or none, for the edges of a generated graph in order. */
+  const rooms = fc.array(
+    fc.option(fc.double({ min: 0, max: 30, noNaN: true }), { nil: undefined }),
+    { minLength: 12, maxLength: 12 },
+  );
+  /** `any` with `roomOfEach` on its edges in order. */
+  const withRooms = (any: Graph, roomOfEach: readonly (number | undefined)[]): Graph => ({
+    ...any,
+    edges: any.edges.map((edge, index) => {
+      const room = roomOfEach[index];
+      return room === undefined ? edge : { ...edge, room };
+    }),
+  });
+
+  test("in any graph with room for its edges, and any rooms on them, is laid out with nothing broken", () => {
+    fc.assert(
+      fc.property(graphs, spacings, rooms, (any, anySpacing, roomOfEach) => {
+        const roomed = withRooms(roomy(any, anySpacing), roomOfEach);
+        expect(verify(placeGraph(roomed, anySpacing), anySpacing)).toEqual([]);
+      }),
+      { numRuns: 300 },
     );
+  });
+
+  test("in any graph whose leaves are at least as wide and tall as twice the largest room, keep the room clear around each point where an edge with room parts from edges that share an end: inside the canvas, the clearance from every leaf, and clear of the room around every other such point", () => {
     fc.assert(
       fc.property(graphs, spacings, rooms, (any, anySpacing, roomOfEach) => {
         const widest = Math.max(0, ...roomOfEach.map((room) => room ?? 0));
         const by = Math.max(anySpacing.edgeGap, anySpacing.edgeToNode * 2) + widest * 2;
-        const roomed: Graph = {
-          ...any,
-          nodes: any.nodes.map((node) => widenedNode(node, by)),
-          edges: any.edges.map((edge, index) => {
-            const room = roomOfEach[index];
-            return room === undefined ? edge : { ...edge, room };
-          }),
-        };
+        const roomed = withRooms(
+          { ...any, nodes: any.nodes.map((node) => widenedNode(node, by)) },
+          roomOfEach,
+        );
         const layout = placeGraph(roomed, anySpacing);
         const roomOf = new Map(roomed.edges.map((edge) => [edge.id, edge.room ?? 0]));
         const points = branchPoints(layout.edges).map(({ point, edges }) => ({

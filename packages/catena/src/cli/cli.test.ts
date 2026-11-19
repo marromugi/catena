@@ -121,6 +121,49 @@ const isPart = (value: unknown) =>
 
 const draw = (json: unknown) => drawDiagramFile(readDiagramFile(text(json)), theme);
 
+/**
+ * Expects every branch icon's circle in `drawn` to lie inside the view box, off every card, and clear of
+ * every other dot and circle, and returns how many there are.
+ */
+function iconsDrawnClear(drawn: string): number {
+  const [width = 0, height = 0] = (/viewBox="0 0 (\S+) (\S+)"/.exec(drawn) ?? [])
+    .slice(1)
+    .map(Number);
+  const circles = [...drawn.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/>/g)].map(
+    ([, x, y, r]) => ({ x: Number(x), y: Number(y), r: Number(r) }),
+  );
+  const cards = [
+    ...drawn.matchAll(/<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g),
+  ].map(([, x, y, w, h]) => ({
+    x: Number(x),
+    y: Number(y),
+    width: Number(w),
+    height: Number(h),
+  }));
+  const icons = circles.filter(({ r }) => r === EDGE_ICON_RADIUS);
+  const near = 1e-6;
+
+  expect(circles.every(({ r }) => r === EDGE_ICON_RADIUS || r === EDGE_DOT_RADIUS)).toBe(true);
+  for (const icon of icons) {
+    expect(Math.min(icon.x, icon.y, width - icon.x, height - icon.y)).toBeGreaterThanOrEqual(
+      icon.r - near,
+    );
+    for (const card of cards) {
+      const away = Math.hypot(
+        Math.max(card.x - icon.x, 0, icon.x - (card.x + card.width)),
+        Math.max(card.y - icon.y, 0, icon.y - (card.y + card.height)),
+      );
+      expect(away).toBeGreaterThanOrEqual(icon.r - near);
+    }
+    for (const other of circles.filter((each) => each !== icon)) {
+      expect(Math.hypot(other.x - icon.x, other.y - icon.y)).toBeGreaterThanOrEqual(
+        icon.r + other.r - near,
+      );
+    }
+  }
+  return icons.length;
+}
+
 /** Whether every tag in `svg` is closed in the order it was opened, under one root `<svg>`. */
 function wellFormed(svg: string): boolean {
   const open: string[] = [];
@@ -595,55 +638,12 @@ describe("drawDiagramFile", () => {
       PARTING_BELOW,
       1,
     ],
-    [
-      "edges into a group with and without room turning onto one middle line",
-      TWO_ONTO_ONE_LINE,
-      2,
-    ],
-    [
-      "edges out of a group with and without room turning off one middle line",
-      TWO_OFF_ONE_LINE,
-      0,
-    ],
+    ["edges into a group with and without room turning onto one middle line", TWO_ONTO_ONE_LINE, 2],
+    ["edges out of a group with and without room turning off one middle line", TWO_OFF_ONE_LINE, 0],
   ] as const)(
     "draws every branch icon of %s whole, and clear of the cards and the other dots",
     (_, file, count) => {
-      const drawn = draw(file);
-      const [width = 0, height = 0] = (/viewBox="0 0 (\S+) (\S+)"/.exec(drawn) ?? [])
-        .slice(1)
-        .map(Number);
-      const circles = [...drawn.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/>/g)].map(
-        ([, x, y, r]) => ({ x: Number(x), y: Number(y), r: Number(r) }),
-      );
-      const cards = [
-        ...drawn.matchAll(/<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g),
-      ].map(([, x, y, w, h]) => ({
-        x: Number(x),
-        y: Number(y),
-        width: Number(w),
-        height: Number(h),
-      }));
-      const icons = circles.filter(({ r }) => r === EDGE_ICON_RADIUS);
-
-      expect(icons).toHaveLength(count);
-      expect(circles.every(({ r }) => r === EDGE_ICON_RADIUS || r === EDGE_DOT_RADIUS)).toBe(true);
-      for (const icon of icons) {
-        expect(Math.min(icon.x, icon.y, width - icon.x, height - icon.y)).toBeGreaterThanOrEqual(
-          icon.r,
-        );
-        for (const card of cards) {
-          const away = Math.hypot(
-            Math.max(card.x - icon.x, 0, icon.x - (card.x + card.width)),
-            Math.max(card.y - icon.y, 0, icon.y - (card.y + card.height)),
-          );
-          expect(away).toBeGreaterThanOrEqual(icon.r);
-        }
-        for (const other of circles.filter((each) => each !== icon)) {
-          expect(Math.hypot(other.x - icon.x, other.y - icon.y)).toBeGreaterThanOrEqual(
-            icon.r + other.r,
-          );
-        }
-      }
+      expect(iconsDrawnClear(draw(file))).toBe(count);
     },
   );
 
@@ -1268,6 +1268,74 @@ describe("properties", () => {
         expect(wellFormed(first.stdout.trimEnd())).toBe(true);
       }),
       { seed: SEED, numRuns: 100 },
+    );
+  });
+
+  test("draws every branch icon of any file whole, and clear of the cards and the other dots", () => {
+    type Shape = { readonly cell?: { readonly row: number; readonly column: number } } & (
+      | { readonly kind: "badge" | "titleBodyCard" | "iconTile" }
+      | { readonly direction: string; readonly children: readonly Shape[] }
+    );
+    const shapeCell = fc.option(cell, { nil: undefined });
+    const { shape } = fc.letrec<{ shape: Shape }>((tie) => ({
+      shape: fc.oneof(
+        { depthSize: "small" },
+        fc.record({
+          kind: fc.constantFrom("badge", "titleBodyCard", "iconTile"),
+          cell: shapeCell,
+        }),
+        fc.record({
+          direction,
+          children: fc.array(tie("shape"), { minLength: 1, maxLength: 3 }),
+          cell: shapeCell,
+        }),
+      ),
+    }));
+    const CONTENT = {
+      badge: "A",
+      titleBodyCard: { title: "Cache", body: "Keeps things." },
+      iconTile: { icon: "service", label: { caption: "User" } },
+    };
+    /** Names the nodes n0, n1, … in the order they are written, and lets only the first of a grid keep a cell two of them name. */
+    const named = (shapes: readonly Shape[], ids: string[]): unknown[] => {
+      const taken = new Set<string>();
+      return shapes.map((each) => {
+        const id = `n${ids.length}`;
+        ids.push(id);
+        const key = each.cell === undefined ? undefined : `${each.cell.row}:${each.cell.column}`;
+        const kept = key === undefined || taken.has(key) ? {} : { cell: each.cell };
+        if (key !== undefined) taken.add(key);
+        return "kind" in each
+          ? { id, kind: each.kind, content: CONTENT[each.kind], ...kept }
+          : { id, direction: each.direction, children: named(each.children, ids), ...kept };
+      });
+    };
+    const withIcons = fc
+      .record({
+        direction,
+        shapes: fc.array(shape, { minLength: 1, maxLength: 5 }),
+        links: fc.array(fc.tuple(fc.nat(), fc.nat(), fc.boolean()), { maxLength: 8 }),
+      })
+      .map(({ direction: way, shapes, links }) => {
+        const ids: string[] = [];
+        const nodes = named(shapes, ids);
+        const at = (index: number) => ids[index % ids.length] ?? "n0";
+        return {
+          direction: way,
+          nodes,
+          edges: links.map(([from, to, icon], index) => ({
+            id: `e${index}`,
+            from: at(from),
+            to: at(to),
+            ...(icon ? { branchIcon: "plus" } : {}),
+          })),
+        };
+      });
+    fc.assert(
+      fc.property(withIcons, (file) => {
+        iconsDrawnClear(draw(file));
+      }),
+      { seed: SEED, numRuns: 300 },
     );
   });
 });
