@@ -39,12 +39,12 @@ const DOT_PATTERN_ID = "catena-dots";
 /**
  * A placed node with no `Node` is not drawn, though its children are. An end of an edge gets a dot in the
  * edges' stroke colour where its node's card has the end on one of its sides and its round outline comes
- * within half the dot's radius of it, drawn before the nodes so the card covers part of it; any other end, such as one on a group with no `Node`, gets none. Each
- * branch point of the edges gets the same dot, after the ends' dots. Every
- * document names its dot pattern `catena-dots`, so documents inlined in one HTML page show the first
- * one's dot grid. Given a
- * header, the document is 72 higher, the header is drawn over the background at its top, and the edges
- * and nodes 72 lower, below it.
+ * within half the dot's radius of it, drawn before the nodes so the card covers part of it; any other
+ * end, such as one on a group with no `Node`, gets none. Every branch point of the edges gets the same
+ * dot, after the ends' dots, whatever the nodes cover. Every document names its dot pattern
+ * `catena-dots`, so documents inlined in one HTML page show the first one's dot grid. Given a header,
+ * the document is 72 higher, the header is drawn over the background at its top, and the edges and
+ * nodes 72 lower, below it.
  * @throws RangeError when the dot radius or the edges' stroke width is below 0, the spacing is not above
  * 0, or any of them is not finite.
  */
