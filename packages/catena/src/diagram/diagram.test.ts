@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { sourceHanSansJP } from "@catena/font-source-han-sans";
 import * as fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { drawEdge, drawEdgeEnd, EDGE_END_RADIUS } from "../edge";
+import { branchPoints, drawEdge, drawEdgeDot, EDGE_DOT_RADIUS } from "../edge";
 import { filledIconPathData } from "../icon";
 import type { Layout, Point, Rect } from "../layout";
 import type { Node } from "../node";
@@ -47,14 +47,21 @@ const layout: Layout = placeGraph(
 );
 /** The dots at `points`, in order. */
 const dotsAt = (...points: (Point | undefined)[]) =>
-  points.map((point) => writeSvg(drawEdgeEnd(point ?? { x: 0, y: 0 }))).join("");
+  points.map((point) => writeSvg(drawEdgeDot(point ?? { x: 0, y: 0 }))).join("");
 
 /** The dots of both ends of every edge of `layout`, first end then last. */
 const endDotsOf = (drawnLayout: Layout) =>
   drawnLayout.edges
     .flatMap(({ points }) => [points[0], points.at(-1) ?? points[0]])
-    .map((point) => writeSvg(drawEdgeEnd(point)))
+    .map((point) => writeSvg(drawEdgeDot(point)))
     .join("");
+/** The dots of the branch points of `drawnLayout`'s edges. */
+const branchDotsOf = (drawnLayout: Layout) =>
+  branchPoints(drawnLayout.edges)
+    .map(({ point }) => writeSvg(drawEdgeDot(point)))
+    .join("");
+/** `text` as a pattern that matches it and nothing else. */
+const literal = (text: string) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const boxAt = (x: number): Rect => ({ x, y: 0, width: 10, height: 10 });
 const nodes = new Map([a, b, c].map((node) => [node.leaf.id, node]));
 
@@ -156,8 +163,9 @@ describe("drawDiagram", () => {
     ).toContain(`<g fill="none" stroke="#123456" stroke-width="3">${paths}</g>`);
   });
 
-  test("draws a dot at both ends of every edge in one group filled with the edges' stroke", () => {
-    const dots = endDotsOf(layout);
+  test("draws a dot at both ends of every edge, then at each branch point, in one group filled with the edges' stroke", () => {
+    const dots = endDotsOf(layout) + branchDotsOf(layout);
+    expect(branchPoints(layout.edges)).toHaveLength(1);
     expect(drawDiagram(layout, nodes)).toContain(`<g fill="#ebebeb">${dots}</g>`);
     expect(drawDiagram(layout, nodes, { edgePaint: { stroke: "#123456" } })).toContain(
       `<g fill="#123456">${dots}</g>`,
@@ -168,10 +176,10 @@ describe("drawDiagram", () => {
     const flat: Node = { ...b, covers: () => false };
     const [toB, toC] = layout.edges;
     expect(drawDiagram(layout, new Map([...nodes, ["b", flat]]))).toContain(
-      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0], toC?.points.at(-1))}</g>`,
+      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0], toC?.points.at(-1))}${branchDotsOf(layout)}</g>`,
     );
     expect(drawDiagram(layout, new Map([["a", a]]))).toContain(
-      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0])}</g>`,
+      `<g fill="#ebebeb">${dotsAt(toB?.points[0], toC?.points[0])}${branchDotsOf(layout)}</g>`,
     );
   });
 
@@ -185,7 +193,7 @@ describe("drawDiagram", () => {
       },
     };
     drawDiagram(layout, new Map([...nodes, ["b", asking]]));
-    expect(asked).toEqual([EDGE_END_RADIUS / 2]);
+    expect(asked).toEqual([EDGE_DOT_RADIUS / 2]);
   });
 
   test("draws no dot at an end on a group with no Node", () => {
@@ -200,8 +208,32 @@ describe("drawDiagram", () => {
     const [edge] = toGroup.edges;
     expect(edge).toBeDefined();
     expect(drawDiagram(toGroup, nodes)).toContain(
-      `<g fill="#ebebeb">${writeSvg(drawEdgeEnd(edge?.points[0] ?? { x: 0, y: 0 }))}</g>`,
+      `<g fill="#ebebeb">${writeSvg(drawEdgeDot(edge?.points[0] ?? { x: 0, y: 0 }))}</g>`,
     );
+  });
+
+  test("draws a dot where each edge of a fan out leaves the others and each of a fan in joins them", () => {
+    const d = markerNode("d", 80, 40);
+    const z = markerNode("z", 120, 60);
+    const combs = placeGraph(
+      {
+        direction: "right",
+        nodes: [a.leaf, { id: "g", direction: "down", children: [b.leaf, c.leaf, d.leaf] }, z.leaf],
+        edges: ["b", "c", "d"].flatMap((id) => [
+          { id: `a>${id}`, from: "a", to: id },
+          { id: `${id}>z`, from: id, to: "z" },
+        ]),
+      },
+      spacing,
+    );
+    const branches = branchPoints(combs.edges);
+    const parting = branches.map(({ edges }) => edges);
+    expect(parting.filter((ids) => ids.every((id) => id.startsWith("a>")))).toHaveLength(2);
+    expect(parting.filter((ids) => ids.every((id) => id.endsWith(">z")))).toHaveLength(2);
+    expect(parting).toHaveLength(4);
+    expect(
+      drawDiagram(combs, new Map([a, b, c, d, z].map((node) => [node.leaf.id, node]))),
+    ).toContain(`<g fill="#ebebeb">${endDotsOf(combs)}${branchDotsOf(combs)}</g>`);
   });
 
   test("draws every placed node with a Node at its box, group children too, and skips the rest", () => {
@@ -219,7 +251,7 @@ describe("drawDiagram", () => {
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
     expect(drawDiagram(layout, new Map())).toMatch(
       new RegExp(
-        `</defs>(<rect [^>]*/>){2}<g [^>]*>${paths.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}</g><g fill="#ebebeb"/></svg>$`,
+        `</defs>(<rect [^>]*/>){2}<g [^>]*>${literal(paths)}</g><g fill="#ebebeb">${literal(branchDotsOf(layout))}</g></svg>$`,
       ),
     );
   });
@@ -402,7 +434,7 @@ describe("drawDiagram with a header", () => {
   test("draws the header over the background, then the edges, their dots and the nodes 72 lower", () => {
     const svg = drawDiagram(layout, nodes, { header });
     const paths = layout.edges.map((edge) => writeSvg(drawEdge(edge))).join("");
-    const dots = endDotsOf(layout);
+    const dots = endDotsOf(layout) + branchDotsOf(layout);
     const group = layout.nodes.find((node) => node.id === "g");
     const drawn = [...layout.nodes, ...(group?.children ?? [])]
       .flatMap(({ id, box }) => nodes.get(id)?.draw(box) ?? [])
