@@ -441,7 +441,7 @@ describe("drawDiagramFile", () => {
         },
         SPACING,
       );
-      expect(branchPoints(layout.edges).map(({ edges }) => [...edges].sort())).toEqual([
+      expect(branchPoints(layout.edges).map((point) => point.edges.toSorted())).toEqual([
         ["e0", "e1"],
       ]);
       const drawnWith = ({ id, branchIcon }: (typeof edges)[number]) =>
