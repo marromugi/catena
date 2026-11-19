@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { iconGrid, iconPathData, iconStroke, isIconName, type IconName } from "../icon";
-import type { Rect } from "../layout";
+import type { Point, Rect } from "../layout";
 import { element, type SvgElement } from "../svg";
 import { layoutText, lineOutline, textPathData, type FontStack, type TextLayout } from "../text";
 import {
@@ -230,69 +230,86 @@ export function iconPart(lookOf: (theme: Theme) => IconLook): Part<typeof ICON> 
     schema: ICON,
     layout(given, theme) {
       const look = lookOf(theme);
-      const { size } = look;
       const content = resolved(theme, given);
       return {
-        size: { width: size, height: size },
-        draw: (box) => {
-          if (typeof content === "string") {
-            const ink = look.colors[content] ?? look.color;
-            return [
-              oneColourIcon(iconPathData[content], BUILT_IN_VIEW_BOX, "stroke", ink, look, box),
-            ];
-          }
-          if ("letters" in content) {
-            return lettersIn(content.letters, theme.fonts.bold, look.color, size, box);
-          }
-          if ("href" in content) {
-            const { href } = content;
-            return [
-              element("image", {
-                x: box.x,
-                y: box.y,
-                width: size,
-                height: size,
-                href,
-                preserveAspectRatio: "xMidYMid meet",
-              }),
-            ];
-          }
-          if ("shapes" in content) {
-            const { transform } = fitViewBox(content.viewBox, size, box);
-            return [
-              element(
-                "g",
-                { transform },
-                content.shapes.map((shape) =>
-                  shape.paint === "fill"
-                    ? element("path", {
-                        d: shape.pathData,
-                        fill: shape.color,
-                        ...(shape.fillRule === undefined ? {} : { "fill-rule": shape.fillRule }),
-                      })
-                    : element("path", {
-                        d: shape.pathData,
-                        ...iconStroke,
-                        stroke: shape.color,
-                        "stroke-width": shape.width,
-                      }),
-                ),
-              ),
-            ];
-          }
-          return [
-            oneColourIcon(content.pathData, content.viewBox, content.paint, look.color, look, box),
-          ];
-        },
+        size: { width: look.size, height: look.size },
+        draw: (box) => drawResolvedIcon(content, look, theme, box),
       };
     },
   };
 }
 
-function resolved(
+/** What an icon's content may be: see {@link iconPart}. */
+export type IconContent = v.InferOutput<typeof ICON>;
+
+/**
+ * `content` drawn as {@link iconPart} draws it, in `look`, at the top-left of `box`.
+ * @throws UnknownLogoError when the content names a logo the theme does not hold.
+ * @throws UnknownIconError when the content is a name neither built in nor a custom icon's.
+ */
+export function drawIcon(
+  content: IconContent,
+  look: IconLook,
   theme: Theme,
-  given: v.InferOutput<typeof ICON>,
-): IconName | CustomIcon | Letters {
+  box: Point,
+): SvgElement[] {
+  return drawResolvedIcon(resolved(theme, content), look, theme, box);
+}
+
+function drawResolvedIcon(
+  content: IconName | CustomIcon | Letters,
+  look: IconLook,
+  theme: Theme,
+  box: Point,
+): SvgElement[] {
+  const { size } = look;
+  if (typeof content === "string") {
+    const ink = look.colors[content] ?? look.color;
+    return [oneColourIcon(iconPathData[content], BUILT_IN_VIEW_BOX, "stroke", ink, look, box)];
+  }
+  if ("letters" in content) {
+    return lettersIn(content.letters, theme.fonts.bold, look.color, size, box);
+  }
+  if ("href" in content) {
+    const { href } = content;
+    return [
+      element("image", {
+        x: box.x,
+        y: box.y,
+        width: size,
+        height: size,
+        href,
+        preserveAspectRatio: "xMidYMid meet",
+      }),
+    ];
+  }
+  if ("shapes" in content) {
+    const { transform } = fitViewBox(content.viewBox, size, box);
+    return [
+      element(
+        "g",
+        { transform },
+        content.shapes.map((shape) =>
+          shape.paint === "fill"
+            ? element("path", {
+                d: shape.pathData,
+                fill: shape.color,
+                ...(shape.fillRule === undefined ? {} : { "fill-rule": shape.fillRule }),
+              })
+            : element("path", {
+                d: shape.pathData,
+                ...iconStroke,
+                stroke: shape.color,
+                "stroke-width": shape.width,
+              }),
+        ),
+      ),
+    ];
+  }
+  return [oneColourIcon(content.pathData, content.viewBox, content.paint, look.color, look, box)];
+}
+
+function resolved(theme: Theme, given: IconContent): IconName | CustomIcon | Letters {
   if (typeof given === "string") return isIconName(given) ? given : customIconOn(theme, given);
   return "logo" in given ? logoOn(theme, given) : given;
 }
@@ -312,7 +329,7 @@ function logoOn(theme: Theme, { logo }: RegisteredLogo): OwnLogo | OwnImage {
 function fitViewBox(
   viewBox: OwnIcon["viewBox"],
   size: number,
-  box: Rect,
+  box: Point,
 ): { transform: string; scale: number } {
   const longest = Math.max(viewBox.width, viewBox.height);
   const scale = size / longest;
@@ -327,7 +344,7 @@ function oneColourIcon(
   paint: OwnIcon["paint"],
   ink: string,
   { size, strokeWidth }: IconLook,
-  box: Rect,
+  box: Point,
 ): SvgElement {
   const { transform, scale } = fitViewBox(viewBox, size, box);
   return element("path", {
@@ -344,7 +361,7 @@ function lettersIn(
   fonts: FontStack,
   ink: string,
   size: number,
-  box: Rect,
+  box: Point,
 ): SvgElement[] {
   // An outline grows with its font size, so its box at size 1 from the origin gives it at any size.
   const unit = lineOutline(letters, fonts, 1, 0, 0).box;
