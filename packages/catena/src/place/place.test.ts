@@ -4983,6 +4983,15 @@ const distanceTo = (point: Point, box: Rect): number =>
     Math.max(box.y - point.y, 0, point.y - (box.y + box.height)),
   );
 
+/** `any` with `roomOfEach` on its edges in order. */
+const withRooms = (any: Graph, roomOfEach: readonly (number | undefined)[]): Graph => ({
+  ...any,
+  edges: any.edges.map((edge, index) => {
+    const room = roomOfEach[index];
+    return room === undefined ? edge : { ...edge, room };
+  }),
+});
+
 describe("placeGraph: edges with room", () => {
   test("move the middle of a group's side that edges cross the gap between edges and both rooms from the line an edge with room turns onto", () => {
     const placement = placeGraph(
@@ -5018,15 +5027,6 @@ describe("placeGraph: edges with room", () => {
     fc.option(fc.double({ min: 0, max: 30, noNaN: true }), { nil: undefined }),
     { minLength: 12, maxLength: 12 },
   );
-  /** `any` with `roomOfEach` on its edges in order. */
-  const withRooms = (any: Graph, roomOfEach: readonly (number | undefined)[]): Graph => ({
-    ...any,
-    edges: any.edges.map((edge, index) => {
-      const room = roomOfEach[index];
-      return room === undefined ? edge : { ...edge, room };
-    }),
-  });
-
   test("in any graph with room for its edges, and any rooms on them, is laid out with nothing broken", () => {
     fc.assert(
       fc.property(graphs, spacings, rooms, (any, anySpacing, roomOfEach) => {

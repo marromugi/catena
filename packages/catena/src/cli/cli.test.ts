@@ -121,11 +121,13 @@ const isPart = (value: unknown) =>
 
 const draw = (json: unknown) => drawDiagramFile(readDiagramFile(text(json)), theme);
 
+const placeOf = ({ x, y }: { readonly x: number; readonly y: number }) => `(${x}, ${y})`;
+
 /**
- * Expects every branch icon's circle in `drawn` to lie inside the view box, off every card, and clear of
- * every other dot and circle, and returns how many there are.
+ * The branch icons drawn in `drawn`, and what is wrong with them: a circle neither an icon nor a dot, or an
+ * icon's circle outside the view box, on a card, or overlapping another dot or circle.
  */
-function iconsDrawnClear(drawn: string): number {
+function iconsOf(drawn: string): { readonly icons: number; readonly wrong: readonly string[] } {
   const [width = 0, height = 0] = (/viewBox="0 0 (\S+) (\S+)"/.exec(drawn) ?? [])
     .slice(1)
     .map(Number);
@@ -143,25 +145,34 @@ function iconsDrawnClear(drawn: string): number {
   const icons = circles.filter(({ r }) => r === EDGE_ICON_RADIUS);
   const near = 1e-6;
 
-  expect(circles.every(({ r }) => r === EDGE_ICON_RADIUS || r === EDGE_DOT_RADIUS)).toBe(true);
-  for (const icon of icons) {
-    expect(Math.min(icon.x, icon.y, width - icon.x, height - icon.y)).toBeGreaterThanOrEqual(
-      icon.r - near,
-    );
-    for (const card of cards) {
-      const away = Math.hypot(
-        Math.max(card.x - icon.x, 0, icon.x - (card.x + card.width)),
-        Math.max(card.y - icon.y, 0, icon.y - (card.y + card.height)),
-      );
-      expect(away).toBeGreaterThanOrEqual(icon.r - near);
-    }
-    for (const other of circles.filter((each) => each !== icon)) {
-      expect(Math.hypot(other.x - icon.x, other.y - icon.y)).toBeGreaterThanOrEqual(
-        icon.r + other.r - near,
-      );
-    }
-  }
-  return icons.length;
+  const wrong = [
+    ...circles
+      .filter(({ r }) => r !== EDGE_ICON_RADIUS && r !== EDGE_DOT_RADIUS)
+      .map((circle) => `a circle of radius ${circle.r} at ${placeOf(circle)}`),
+    ...icons.flatMap((icon) => [
+      ...(Math.min(icon.x, icon.y, width - icon.x, height - icon.y) < icon.r - near
+        ? [`the icon at ${placeOf(icon)} reaches out of the view box`]
+        : []),
+      ...cards
+        .filter(
+          (card) =>
+            Math.hypot(
+              Math.max(card.x - icon.x, 0, icon.x - (card.x + card.width)),
+              Math.max(card.y - icon.y, 0, icon.y - (card.y + card.height)),
+            ) <
+            icon.r - near,
+        )
+        .map((card) => `the icon at ${placeOf(icon)} is on the card at ${placeOf(card)}`),
+      ...circles
+        .filter(
+          (other) =>
+            other !== icon &&
+            Math.hypot(other.x - icon.x, other.y - icon.y) < icon.r + other.r - near,
+        )
+        .map((other) => `the icon at ${placeOf(icon)} overlaps the circle at ${placeOf(other)}`),
+    ]),
+  ];
+  return { icons: icons.length, wrong };
 }
 
 /** Whether every tag in `svg` is closed in the order it was opened, under one root `<svg>`. */
@@ -751,7 +762,7 @@ describe("drawDiagramFile", () => {
   ] as const)(
     "draws every branch icon of %s whole, and clear of the cards and the other dots",
     (_, file, count) => {
-      expect(iconsDrawnClear(draw(file))).toBe(count);
+      expect(iconsOf(draw(file))).toEqual({ icons: count, wrong: [] });
     },
   );
 
@@ -1408,14 +1419,14 @@ describe("properties", () => {
     const named = (shapes: readonly Shape[], ids: string[]): unknown[] => {
       const taken = new Set<string>();
       return shapes.map((each) => {
-        const id = `n${ids.length}`;
-        ids.push(id);
+        const nodeId = `n${ids.length}`;
+        ids.push(nodeId);
         const key = each.cell === undefined ? undefined : `${each.cell.row}:${each.cell.column}`;
         const kept = key === undefined || taken.has(key) ? {} : { cell: each.cell };
         if (key !== undefined) taken.add(key);
         return "kind" in each
-          ? { id, kind: each.kind, content: CONTENT[each.kind], ...kept }
-          : { id, direction: each.direction, children: named(each.children, ids), ...kept };
+          ? { id: nodeId, kind: each.kind, content: CONTENT[each.kind], ...kept }
+          : { id: nodeId, direction: each.direction, children: named(each.children, ids), ...kept };
       });
     };
     const withIcons = fc
@@ -1441,7 +1452,7 @@ describe("properties", () => {
       });
     fc.assert(
       fc.property(withIcons, (file) => {
-        iconsDrawnClear(draw(file));
+        expect(iconsOf(draw(file)).wrong).toEqual([]);
       }),
       { seed: SEED, numRuns: 300 },
     );
