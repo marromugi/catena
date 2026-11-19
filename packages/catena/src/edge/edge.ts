@@ -13,12 +13,12 @@ export interface EdgeOptions {
 /** The radius of a bend when none is given: the corner radius of a default card. */
 export const DEFAULT_EDGE_RADIUS = 8;
 
-/** The radius of the dot at each end of an edge. */
-export const EDGE_END_RADIUS = 4;
+/** The radius of the dot at each end of an edge and at each of its branch points. */
+export const EDGE_DOT_RADIUS = 4;
 
-/** A circle {@link EDGE_END_RADIUS} round centred on `point`. It carries no fill, so the caller paints it. */
-export function drawEdgeEnd({ x, y }: Point): SvgElement {
-  return element("circle", { cx: x, cy: y, r: EDGE_END_RADIUS });
+/** A circle {@link EDGE_DOT_RADIUS} round centred on `point`. It carries no fill, so the caller paints it. */
+export function drawEdgeDot({ x, y }: Point): SvgElement {
+  return element("circle", { cx: x, cy: y, r: EDGE_DOT_RADIUS });
 }
 
 /**
@@ -35,13 +35,13 @@ export function drawEdge(edge: PlacedEdge, options: EdgeOptions = {}): SvgElemen
 }
 
 /** Which way a stretch goes, each of `x` and `y` -1, 0 or 1. */
-interface Heading {
+export interface Heading {
   readonly x: number;
   readonly y: number;
 }
 
 /** The points without repeats, and without a point a horizontal or vertical stretch goes straight through. */
-function turningPoints(points: readonly [Point, ...Point[]]): [Point, ...Point[]] {
+export function turningPoints(points: readonly [Point, ...Point[]]): [Point, ...Point[]] {
   const [first, ...others] = points;
   const distinct: [Point, ...Point[]] = [first];
   let previous = first;
@@ -99,7 +99,7 @@ function pathData(points: readonly [Point, ...Point[]], radius: number): string 
   return commands.join(" ");
 }
 
-function heading(from: Point, to: Point): Heading {
+export function heading(from: Point, to: Point): Heading {
   return { x: Math.sign(to.x - from.x), y: Math.sign(to.y - from.y) };
 }
 
@@ -115,6 +115,6 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-function samePoint(a: Point, b: Point): boolean {
+export function samePoint(a: Point, b: Point): boolean {
   return a.x === b.x && a.y === b.y;
 }

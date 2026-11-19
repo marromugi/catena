@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { PlacedEdge, Point } from "../layout";
 import { writeSvg } from "../svg";
-import { DEFAULT_EDGE_RADIUS, EDGE_END_RADIUS, drawEdge, drawEdgeEnd } from "./index";
+import { DEFAULT_EDGE_RADIUS, EDGE_DOT_RADIUS, branchPoints, drawEdge, drawEdgeDot } from "./index";
 
 const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
   id: "e",
@@ -9,6 +9,11 @@ const edgeAlong = (...points: [Point, Point, ...Point[]]): PlacedEdge => ({
   to: "b",
   points,
   labels: [],
+});
+
+const edgeNamed = (id: string, ...points: [Point, Point, ...Point[]]): PlacedEdge => ({
+  ...edgeAlong(...points),
+  id,
 });
 
 const pathOf = (edge: PlacedEdge, radius?: number) =>
@@ -121,9 +126,73 @@ describe("drawEdge", () => {
   });
 });
 
-describe("drawEdgeEnd", () => {
+describe("drawEdgeDot", () => {
   test("centres an unpainted circle 4 round on the point", () => {
-    expect(EDGE_END_RADIUS).toBe(4);
-    expect(writeSvg(drawEdgeEnd({ x: 10, y: 0.5 }))).toBe('<circle cx="10" cy="0.5" r="4"/>');
+    expect(EDGE_DOT_RADIUS).toBe(4);
+    expect(writeSvg(drawEdgeDot({ x: 10, y: 0.5 }))).toBe('<circle cx="10" cy="0.5" r="4"/>');
+  });
+});
+
+describe("branchPoints", () => {
+  // Down from (60, 0) to (60, 80), then left along y = 80, each turning down at its own x.
+  const fanOut = [
+    edgeNamed("ab", { x: 60, y: 0 }, { x: 60, y: 80 }, { x: 24, y: 80 }, { x: 24, y: 100 }),
+    edgeNamed("ac", { x: 60, y: 0 }, { x: 60, y: 80 }, { x: 32, y: 80 }, { x: 32, y: 150 }),
+    edgeNamed("ad", { x: 60, y: 0 }, { x: 60, y: 80 }, { x: 40, y: 80 }, { x: 40, y: 200 }),
+  ];
+
+  test("finds where each edge of a fan out leaves the stretch the others carry on along, n - 1 points", () => {
+    expect(branchPoints(fanOut)).toEqual([
+      { point: { x: 32, y: 80 }, edges: ["ac"] },
+      { point: { x: 40, y: 80 }, edges: ["ad"] },
+    ]);
+  });
+
+  test("finds where each edge of a fan in joins the stretch the others carry on along", () => {
+    const fanIn = [
+      edgeNamed("bz", { x: 0, y: 80 }, { x: 300, y: 80 }, { x: 300, y: 60 }, { x: 340, y: 60 }),
+      edgeNamed("cz", { x: 0, y: 90 }, { x: 300, y: 90 }, { x: 300, y: 60 }, { x: 340, y: 60 }),
+      edgeNamed("dz", { x: 0, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 60 }, { x: 340, y: 60 }),
+    ];
+    expect(branchPoints(fanIn)).toEqual([
+      { point: { x: 300, y: 80 }, edges: ["bz"] },
+      { point: { x: 300, y: 90 }, edges: ["cz"] },
+    ]);
+  });
+
+  test("gives a point once, with every edge that bends there, when the edges part in two ways", () => {
+    const split = [
+      edgeNamed("up", { x: 0, y: 50 }, { x: 40, y: 50 }, { x: 40, y: 0 }),
+      edgeNamed("down", { x: 0, y: 50 }, { x: 40, y: 50 }, { x: 40, y: 100 }),
+    ];
+    expect(branchPoints(split)).toEqual([{ point: { x: 40, y: 50 }, edges: ["up", "down"] }]);
+  });
+
+  test("finds none where edges bend together, or where another edge ends on a bend", () => {
+    const together = [
+      edgeNamed("a", { x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }),
+      edgeNamed("b", { x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }),
+    ];
+    const endingOnBend = [
+      edgeNamed("a", { x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }),
+      edgeNamed("b", { x: 40, y: -40 }, { x: 40, y: 0 }),
+    ];
+    expect(branchPoints(together)).toEqual([]);
+    expect(branchPoints(endingOnBend)).toEqual([]);
+    expect(branchPoints([])).toEqual([]);
+  });
+
+  test("reads an edge by its bends, past repeated points and points a stretch goes straight through", () => {
+    const padded = edgeNamed(
+      "ad",
+      { x: 60, y: 0 },
+      { x: 60, y: 40 },
+      { x: 60, y: 80 },
+      { x: 50, y: 80 },
+      { x: 40, y: 80 },
+      { x: 40, y: 80 },
+      { x: 40, y: 200 },
+    );
+    expect(branchPoints([...fanOut.slice(0, 2), padded])).toEqual(branchPoints(fanOut));
   });
 });
