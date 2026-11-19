@@ -5037,7 +5037,7 @@ describe("placeGraph: edges with room", () => {
     );
   });
 
-  test("in any graph whose leaves are at least as wide and tall as twice the largest room, keep the room clear around each point where an edge with room parts from edges that share an end: inside the canvas, the clearance from every leaf, and clear of the room around every other such point", () => {
+  test("in any graph whose leaves are made wider and taller by the larger of the edge gap and twice the clearance from nodes, and twice the largest room more, keep the room clear around each point where an edge with room parts from edges that share an end: inside the canvas, the clearance from every leaf, and clear of the room around every other such point", () => {
     fc.assert(
       fc.property(graphs, spacings, rooms, (any, anySpacing, roomOfEach) => {
         const widest = Math.max(0, ...roomOfEach.map((room) => room ?? 0));
