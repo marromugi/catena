@@ -19,7 +19,7 @@ import * as v from "valibot";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { readCustomIcons } from "../config";
 import { drawDiagram, type DiagramOptions } from "../diagram";
-import { branchPoints, edgeIcon } from "../edge";
+import { branchPoints, EDGE_DOT_RADIUS, EDGE_ICON_RADIUS, edgeIcon } from "../edge";
 import * as nodeModule from "../node";
 import {
   badge,
@@ -120,6 +120,60 @@ const isPart = (value: unknown) =>
   typeof value === "object" && value !== null && "schema" in value && "layout" in value;
 
 const draw = (json: unknown) => drawDiagramFile(readDiagramFile(text(json)), theme);
+
+const placeOf = ({ x, y }: { readonly x: number; readonly y: number }) => `(${x}, ${y})`;
+
+/**
+ * The branch icons drawn in `drawn`, and what is wrong with them: a circle neither an icon nor a dot, or an
+ * icon's circle outside the view box, on a card, or overlapping another dot or circle.
+ */
+function iconsOf(drawn: string): { readonly icons: number; readonly wrong: readonly string[] } {
+  const [width = 0, height = 0] = (/viewBox="0 0 (\S+) (\S+)"/.exec(drawn) ?? [])
+    .slice(1)
+    .map(Number);
+  const circles = [...drawn.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/>/g)].map(
+    ([, x, y, r]) => ({ x: Number(x), y: Number(y), r: Number(r) }),
+  );
+  const cards = [
+    ...drawn.matchAll(/<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g),
+  ].map(([, x, y, w, h]) => ({
+    x: Number(x),
+    y: Number(y),
+    width: Number(w),
+    height: Number(h),
+  }));
+  const icons = circles.filter(({ r }) => r === EDGE_ICON_RADIUS);
+  const near = 1e-6;
+
+  const wrong = [
+    ...circles
+      .filter(({ r }) => r !== EDGE_ICON_RADIUS && r !== EDGE_DOT_RADIUS)
+      .map((circle) => `a circle of radius ${circle.r} at ${placeOf(circle)}`),
+    ...icons.flatMap((icon) => [
+      ...(Math.min(icon.x, icon.y, width - icon.x, height - icon.y) < icon.r - near
+        ? [`the icon at ${placeOf(icon)} reaches out of the view box`]
+        : []),
+      ...cards
+        .filter(
+          (card) =>
+            Math.hypot(
+              Math.max(card.x - icon.x, 0, icon.x - (card.x + card.width)),
+              Math.max(card.y - icon.y, 0, icon.y - (card.y + card.height)),
+            ) <
+            icon.r - near,
+        )
+        .map((card) => `the icon at ${placeOf(icon)} is on the card at ${placeOf(card)}`),
+      ...circles
+        .filter(
+          (other) =>
+            other !== icon &&
+            Math.hypot(other.x - icon.x, other.y - icon.y) < icon.r + other.r - near,
+        )
+        .map((other) => `the icon at ${placeOf(icon)} overlaps the circle at ${placeOf(other)}`),
+    ]),
+  ];
+  return { icons: icons.length, wrong };
+}
 
 /** Whether every tag in `svg` is closed in the order it was opened, under one root `<svg>`. */
 function wellFormed(svg: string): boolean {
@@ -328,6 +382,216 @@ const FAN = {
   ],
 };
 
+/** Three cards fanning out from `app`, with branch icons on the two edges that part from the third. */
+const ROOMY_FAN = {
+  direction: "down",
+  nodes: [
+    { id: "app", kind: "iconTitleCard", content: { icon: "spark", title: "App" } },
+    {
+      id: "stores",
+      direction: "right",
+      children: ["Cache", "Database", "Log"].map((title) => ({
+        id: title.toLowerCase(),
+        kind: "titleBodyCard",
+        content: { title, body: "Keeps things." },
+      })),
+    },
+  ],
+  edges: [
+    { id: "app>cache", from: "app", to: "cache" },
+    { id: "app>database", from: "app", to: "database", branchIcon: "plus" },
+    { id: "app>log", from: "app", to: "log", branchIcon: "spark" },
+  ],
+};
+
+/** An edge from `a` to itself and one into `a` from the group `g`, which part on the line along the top of the drawing. */
+const PARTING_AT_TOP = {
+  direction: "down",
+  nodes: [
+    { id: "a", kind: "badge", content: "A" },
+    { id: "g", direction: "down", children: [{ id: "b", kind: "badge", content: "B" }] },
+  ],
+  edges: [
+    { id: "a>a", from: "a", to: "a", branchIcon: "plus" },
+    { id: "g>a", from: "g", to: "a", branchIcon: "spark" },
+  ],
+};
+
+/** An edge from `b` to itself and one out of `b` to the group `g`, which part on the line right below `b`. */
+const PARTING_BELOW = {
+  direction: "down",
+  nodes: [
+    { id: "g", direction: "down", children: [{ id: "a", kind: "badge", content: "A" }] },
+    { id: "b", kind: "badge", content: "B", cell: { row: 1, column: 1 } },
+  ],
+  edges: [
+    { id: "b>b", from: "b", to: "b", branchIcon: "plus" },
+    { id: "b>g", from: "b", to: "g", branchIcon: "spark" },
+  ],
+};
+
+/** Edges from `out` back into a group, two of them to `y`, one of those with an icon: both turn onto `y`'s middle line. */
+const TWO_ONTO_ONE_LINE = {
+  direction: "right",
+  nodes: [
+    {
+      id: "g",
+      direction: "right",
+      children: [
+        { id: "x", kind: "badge", content: "A" },
+        { id: "y", kind: "badge", content: "A" },
+        { id: "z", kind: "iconTitleCard", content: { icon: "spark", title: "App" } },
+      ],
+    },
+    { id: "out", kind: "badge", content: "A" },
+  ],
+  edges: [
+    { id: "x1", from: "out", to: "x" },
+    { id: "y1", from: "out", to: "y" },
+    { id: "z1", from: "out", to: "z" },
+    { id: "i", from: "out", to: "y", branchIcon: "plus" },
+  ],
+};
+
+/** Edges out of a group into `n0`, two of them from `n5`, one of those with an icon: both turn off `n5`'s middle line. */
+const TWO_OFF_ONE_LINE = {
+  direction: "right",
+  nodes: [
+    { id: "n0", kind: "badge", content: "A" },
+    {
+      id: "n1",
+      direction: "right",
+      children: [
+        { id: "n2", kind: "iconTile", content: { icon: "service", label: { caption: "User" } } },
+        { id: "n3", kind: "badge", content: "A", cell: { row: 3, column: 0 } },
+        {
+          id: "n4",
+          direction: "down",
+          children: [
+            {
+              id: "n5",
+              kind: "iconTile",
+              content: { icon: "service", label: { caption: "User" } },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  edges: [
+    { id: "e0", from: "n2", to: "n0" },
+    { id: "e1", from: "n5", to: "n0" },
+    { id: "e6", from: "n5", to: "n0", branchIcon: "plus" },
+    { id: "e7", from: "n3", to: "n0" },
+  ],
+};
+
+/** Edges from `n14` across the side of a group flowing down, one with an icon: they turn onto the lanes before their targets. */
+const ONTO_LANES_BEFORE = {
+  direction: "right",
+  nodes: [
+    { id: "n0", kind: "badge", content: "A" },
+    {
+      id: "n1",
+      direction: "down",
+      children: [
+        { id: "n2", kind: "badge", content: "A", cell: { row: 2, column: 0 } },
+        {
+          id: "n3",
+          direction: "down",
+          children: [
+            {
+              id: "n4",
+              direction: "down",
+              children: [
+                { id: "n5", kind: "badge", content: "A" },
+                { id: "n6", kind: "badge", content: "A", cell: { row: 0, column: 0 } },
+                { id: "n7", kind: "badge", content: "A" },
+              ],
+            },
+          ],
+          cell: { row: 0, column: 0 },
+        },
+        {
+          id: "n8",
+          direction: "down",
+          children: [
+            { id: "n9", kind: "badge", content: "A" },
+            { id: "n10", kind: "badge", content: "A" },
+          ],
+          cell: { row: 1, column: 0 },
+        },
+      ],
+    },
+    {
+      id: "n11",
+      direction: "down",
+      children: [
+        {
+          id: "n12",
+          direction: "down",
+          children: [
+            { id: "n13", kind: "badge", content: "A" },
+            { id: "n14", kind: "badge", content: "A" },
+          ],
+        },
+      ],
+    },
+  ],
+  edges: [
+    { id: "e0", from: "n14", to: "n8", branchIcon: "plus" },
+    { id: "e1", from: "n14", to: "n2" },
+    { id: "e2", from: "n14", to: "n3" },
+  ],
+};
+
+/** Edges out of a group around its nodes to `n0`, one with an icon: they turn off the lanes beside a column. */
+const OFF_LANES_BESIDE = {
+  direction: "down",
+  nodes: [
+    { id: "n0", kind: "badge", content: "A" },
+    {
+      id: "n1",
+      direction: "down",
+      children: [
+        {
+          id: "n2",
+          direction: "down",
+          children: [
+            { id: "n3", kind: "badge", content: "A" },
+            {
+              id: "n4",
+              direction: "down",
+              children: [
+                { id: "n5", kind: "badge", content: "A" },
+                {
+                  id: "n6",
+                  kind: "iconTile",
+                  content: { icon: "service", label: { caption: "User" } },
+                  cell: { row: 1, column: 0 },
+                },
+              ],
+            },
+            {
+              id: "n7",
+              kind: "iconTile",
+              content: { icon: "service", label: { caption: "User" } },
+            },
+          ],
+        },
+        { id: "n8", kind: "badge", content: "A" },
+      ],
+    },
+    { id: "n9", kind: "badge", content: "A" },
+  ],
+  edges: [
+    { id: "e0", from: "n3", to: "n0", branchIcon: "plus" },
+    { id: "e1", from: "n4", to: "n0" },
+    { id: "e2", from: "n7", to: "n0" },
+    { id: "e3", from: "n3", to: "n4" },
+  ],
+};
+
 /** {@link FAN} with `icon` as every edge's branch icon. */
 const fanWith = (icon: unknown) => ({
   ...FAN,
@@ -407,7 +671,7 @@ describe("drawDiagramFile", () => {
     const graph: Graph = {
       direction: "down",
       nodes: [app, { id: "row", direction: "right", children: [b, ...row] }],
-      edges: FAN.edges,
+      edges: FAN.edges.map(({ id, from, to }) => ({ id, from, to, room: EDGE_ICON_RADIUS })),
     };
     const layout = placeGraph(graph, SPACING);
     expect(branchPoints(layout.edges)).toHaveLength(2);
@@ -427,41 +691,78 @@ describe("drawDiagramFile", () => {
       const byEdge = {
         e0: { id: "e0", from: "n1", to: "n0", branchIcon: "plus" },
         e1: { id: "e1", from: "n1", to: "n2", branchIcon: "spark" },
+        e2: { id: "e2", from: "n1", to: "n3", branchIcon: "service" },
       } as const;
-      const edges = [byEdge[first], byEdge[second]];
-      const leaves = ["n0", "n1", "n2"].map((id) => buildNode(badge, theme, id, id.toUpperCase()));
-      const [n0, n1, n2] = leaves.map(({ leaf }) => leaf);
-      if (n0 === undefined || n1 === undefined || n2 === undefined)
-        throw new Error("Three badges.");
+      const edges = [byEdge[first], byEdge[second], byEdge.e2];
+      const leaves = ["n0", "n1", "n2", "n3"].map((id) =>
+        buildNode(badge, theme, id, id.toUpperCase()),
+      );
+      const [n0, n1, n2, n3] = leaves.map(({ leaf }) => leaf);
+      if (n0 === undefined || n1 === undefined || n2 === undefined || n3 === undefined)
+        throw new Error("Four badges.");
       const layout = placeGraph(
         {
-          direction: "right",
-          nodes: [n1, { id: "row", direction: "right", children: [n0, n2] }],
-          edges,
+          direction: "down",
+          nodes: [n1, { id: "row", direction: "right", children: [n0, n2, n3] }],
+          edges: edges.map(({ id, from, to }) => ({ id, from, to, room: EDGE_ICON_RADIUS })),
         },
         SPACING,
       );
       expect(branchPoints(layout.edges).map((point) => point.edges.toSorted())).toEqual([
         ["e0", "e1"],
+        ["e1"],
       ]);
-      const drawnWith = ({ id, branchIcon }: (typeof edges)[number]) =>
+      const drawnWith = (inOrder: readonly (typeof edges)[number][]) =>
         drawDiagram(layout, byId(leaves), {
-          branchIcons: new Map([[id, edgeIcon(branchIcon, theme)]]),
+          branchIcons: new Map(
+            inOrder.map(({ id, branchIcon }) => [id, edgeIcon(branchIcon, theme)]),
+          ),
         });
       const drawn = draw({
-        direction: "right",
+        direction: "down",
         nodes: [
           { id: "n1", kind: "badge", content: "N1" },
           {
             id: "row",
             direction: "right",
-            children: ["n0", "n2"].map((id) => ({ id, kind: "badge", content: id.toUpperCase() })),
+            children: ["n0", "n2", "n3"].map((id) => ({
+              id,
+              kind: "badge",
+              content: id.toUpperCase(),
+            })),
           },
         ],
         edges,
       });
-      expect(drawn).toBe(drawnWith(byEdge[first]));
-      expect(drawn).not.toBe(drawnWith(byEdge[second]));
+      expect(drawn).toBe(drawnWith(edges));
+      expect(drawn).not.toBe(drawnWith([byEdge[second], byEdge[first], byEdge.e2]));
+    },
+  );
+
+  test.each([
+    [
+      "a fan of three from one card, with icons on the two edges that part from the others",
+      ROOMY_FAN,
+      2,
+    ],
+    [
+      "a badge's edge to itself beside one into it from a group, parting at the top",
+      PARTING_AT_TOP,
+      1,
+    ],
+    [
+      "a badge's edge to itself beside one out of it to a group, parting below it",
+      PARTING_BELOW,
+      1,
+    ],
+    ["edges into a group with and without room turning onto one middle line", TWO_ONTO_ONE_LINE, 2],
+    ["edges out of a group with and without room turning off one middle line", TWO_OFF_ONE_LINE, 0],
+    ["edges into a group turning onto the lanes before their targets", ONTO_LANES_BEFORE, 0],
+    ["edges out of a group turning off the lanes beside a column", OFF_LANES_BESIDE, 1],
+  ] as const)(
+    "draws every branch icon of %s whole, and clear of the cards and the other dots",
+    (_, file, count) => {
+      expect(iconsOf(draw(file))).toEqual({ icons: count, wrong: [] });
     },
   );
 
@@ -1086,6 +1387,74 @@ describe("properties", () => {
         expect(wellFormed(first.stdout.trimEnd())).toBe(true);
       }),
       { seed: SEED, numRuns: 100 },
+    );
+  });
+
+  test("draws every branch icon of any file whole, and clear of the cards and the other dots", () => {
+    type Shape = { readonly cell?: { readonly row: number; readonly column: number } } & (
+      | { readonly kind: "badge" | "titleBodyCard" | "iconTile" }
+      | { readonly direction: string; readonly children: readonly Shape[] }
+    );
+    const shapeCell = fc.option(cell, { nil: undefined });
+    const { shape } = fc.letrec<{ shape: Shape }>((tie) => ({
+      shape: fc.oneof(
+        { depthSize: "small" },
+        fc.record({
+          kind: fc.constantFrom("badge", "titleBodyCard", "iconTile"),
+          cell: shapeCell,
+        }),
+        fc.record({
+          direction,
+          children: fc.array(tie("shape"), { minLength: 1, maxLength: 3 }),
+          cell: shapeCell,
+        }),
+      ),
+    }));
+    const CONTENT = {
+      badge: "A",
+      titleBodyCard: { title: "Cache", body: "Keeps things." },
+      iconTile: { icon: "service", label: { caption: "User" } },
+    };
+    /** Names the nodes n0, n1, … in the order they are written, and lets only the first of a grid keep a cell two of them name. */
+    const named = (shapes: readonly Shape[], ids: string[]): unknown[] => {
+      const taken = new Set<string>();
+      return shapes.map((each) => {
+        const nodeId = `n${ids.length}`;
+        ids.push(nodeId);
+        const key = each.cell === undefined ? undefined : `${each.cell.row}:${each.cell.column}`;
+        const kept = key === undefined || taken.has(key) ? {} : { cell: each.cell };
+        if (key !== undefined) taken.add(key);
+        return "kind" in each
+          ? { id: nodeId, kind: each.kind, content: CONTENT[each.kind], ...kept }
+          : { id: nodeId, direction: each.direction, children: named(each.children, ids), ...kept };
+      });
+    };
+    const withIcons = fc
+      .record({
+        direction,
+        shapes: fc.array(shape, { minLength: 1, maxLength: 5 }),
+        links: fc.array(fc.tuple(fc.nat(), fc.nat(), fc.boolean()), { maxLength: 8 }),
+      })
+      .map(({ direction: way, shapes, links }) => {
+        const ids: string[] = [];
+        const nodes = named(shapes, ids);
+        const at = (index: number) => ids[index % ids.length] ?? "n0";
+        return {
+          direction: way,
+          nodes,
+          edges: links.map(([from, to, icon], index) => ({
+            id: `e${index}`,
+            from: at(from),
+            to: at(to),
+            ...(icon ? { branchIcon: "plus" } : {}),
+          })),
+        };
+      });
+    fc.assert(
+      fc.property(withIcons, (file) => {
+        expect(iconsOf(draw(file)).wrong).toEqual([]);
+      }),
+      { seed: SEED, numRuns: 300 },
     );
   });
 });
