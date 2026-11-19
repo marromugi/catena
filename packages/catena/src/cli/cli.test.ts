@@ -376,6 +376,62 @@ const PARTING_BELOW = {
   ],
 };
 
+/** Edges from `out` back into a group, two of them to `y`, one of those with an icon: both turn onto `y`'s middle line. */
+const TWO_ONTO_ONE_LINE = {
+  direction: "right",
+  nodes: [
+    {
+      id: "g",
+      direction: "right",
+      children: [
+        { id: "x", kind: "badge", content: "A" },
+        { id: "y", kind: "badge", content: "A" },
+        { id: "z", kind: "iconTitleCard", content: { icon: "spark", title: "App" } },
+      ],
+    },
+    { id: "out", kind: "badge", content: "A" },
+  ],
+  edges: [
+    { id: "x1", from: "out", to: "x" },
+    { id: "y1", from: "out", to: "y" },
+    { id: "z1", from: "out", to: "z" },
+    { id: "i", from: "out", to: "y", branchIcon: "plus" },
+  ],
+};
+
+/** Edges out of a group into `n0`, two of them from `n5`, one of those with an icon: both turn off `n5`'s middle line. */
+const TWO_OFF_ONE_LINE = {
+  direction: "right",
+  nodes: [
+    { id: "n0", kind: "badge", content: "A" },
+    {
+      id: "n1",
+      direction: "right",
+      children: [
+        { id: "n2", kind: "iconTile", content: { icon: "service", label: { caption: "User" } } },
+        { id: "n3", kind: "badge", content: "A", cell: { row: 3, column: 0 } },
+        {
+          id: "n4",
+          direction: "down",
+          children: [
+            {
+              id: "n5",
+              kind: "iconTile",
+              content: { icon: "service", label: { caption: "User" } },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  edges: [
+    { id: "e0", from: "n2", to: "n0" },
+    { id: "e1", from: "n5", to: "n0" },
+    { id: "e6", from: "n5", to: "n0", branchIcon: "plus" },
+    { id: "e7", from: "n3", to: "n0" },
+  ],
+};
+
 /** {@link FAN} with `icon` as every edge's branch icon. */
 const fanWith = (icon: unknown) => ({
   ...FAN,
@@ -538,6 +594,16 @@ describe("drawDiagramFile", () => {
       "a badge's edge to itself beside one out of it to a group, parting below it",
       PARTING_BELOW,
       1,
+    ],
+    [
+      "edges into a group with and without room turning onto one middle line",
+      TWO_ONTO_ONE_LINE,
+      2,
+    ],
+    [
+      "edges out of a group with and without room turning off one middle line",
+      TWO_OFF_ONE_LINE,
+      0,
     ],
   ] as const)(
     "draws every branch icon of %s whole, and clear of the cards and the other dots",

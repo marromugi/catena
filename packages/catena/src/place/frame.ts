@@ -157,13 +157,18 @@ function firstLane(line: Line, index: number, stack: Stack | undefined): number 
 }
 
 /**
- * The place nearest `from` that is on each of `lines` or at least its `apart` from it. Of two as near, a
- * place on a line comes first, then the smaller.
+ * The place nearest `from` that is on each of `turns`' lines or at least every `apart` given for that
+ * line from it. Of two as near, a place on a line comes first, then the smaller.
  */
 function clearOf(
-  lines: readonly { readonly line: number; readonly apart: number }[],
+  turns: readonly { readonly line: number; readonly apart: number }[],
   from: number,
 ): number {
+  const apartFrom = new Map<number, number>();
+  for (const { line, apart } of turns) {
+    apartFrom.set(line, Math.max(apartFrom.get(line) ?? 0, apart));
+  }
+  const lines = [...apartFrom].map(([line, apart]) => ({ line, apart }));
   const isClear = (place: number, measuredFrom?: number): boolean =>
     lines.every(({ line, apart }) => line === measuredFrom || Math.abs(place - line) >= apart);
   const comesFirst = (one: Stop, other: Stop): boolean => {
